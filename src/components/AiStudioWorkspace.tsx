@@ -531,6 +531,205 @@ const [listening, setListening] = useState(false);
                     {/* Entradas procesadas y Salidas de datos limpias (cero herramientas/cero código) */}
                     {!isUser && msg.report && /crea|simul|calcul|juego|video|monta|orbit|onda|fluid|esculp|balance|salud|mar|genera|haz/i.test(msg.report.intent) && (
                       <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Salida coherente verificada
+                          </span>
+                          <span className="font-mono text-slate-500">
+                            {MORPH_SHAPE_LABELS[msg.shapeFormed]}
+                          </span>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="rounded border border-slate-200 bg-white p-2.5">
+                            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              Entradas procesadas
+                            </div>
+                            <div className="space-y-1 text-xs">
+                              {msg.report.dataInputs.map((d) => (
+                                <div key={d.label} className="flex justify-between gap-2">
+                                  <span className="text-slate-500">{d.label}</span>
+                                  <span className="font-mono font-medium text-slate-800 tabular-nums">
+                                    {d.value}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="rounded border border-slate-200 bg-white p-2.5">
+                            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                              Salidas del sistema
+                            </div>
+                            <div className="space-y-1 text-xs">
+                              {msg.report.dataOutputs.map((d) => (
+                                <div key={d.label} className="flex justify-between gap-2">
+                                  <span className="text-slate-500">{d.label}</span>
+                                  <span className="font-mono font-semibold text-blue-700 tabular-nums">
+                                    {d.value}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 pt-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              driveLiquidScreen(
+                                msg.report?.recombination?.synthesizedHlx ||
+                                  DEFAULT_HELIX_PHYSICS_PROGRAM,
+                                msg.shapeFormed,
+                                accentHex,
+                                MORPH_SHAPE_LABELS[msg.shapeFormed],
+                                msg.report?.dataOutputs[0]
+                                  ? `${msg.report.dataOutputs[0].label}: ${msg.report.dataOutputs[0].value}`
+                                  : 'Proyección activa',
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            Proyectar de nuevo en pantalla
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              downloadHtmlArtifact(
+                                'resultado-helix.html',
+                                msg.report!.materializedHtmlPreview,
+                              )
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Descargar salida (HTML)
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Barra de entradas de datos opcionales + peticiones rápidas + compositor */}
+          <div className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
+            <div className="mb-2.5 flex gap-1.5 overflow-x-auto pb-1">
+              {STARTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => handleSendInstruction(prompt)}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 whitespace-nowrap shrink-0"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+
+            {showDataPanel && (
+              <div className="mb-2.5 grid grid-cols-2 gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5 sm:grid-cols-5">
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">Altitud (km)</span>
+                  <input
+                    type="number"
+                    value={dataDraft.altitudeKm}
+                    onChange={(e) => setDataDraft({ ...dataDraft, altitudeKm: e.target.value })}
+                    placeholder="ej. 850"
+                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">Velocidad (m/s)</span>
+                  <input
+                    type="number"
+                    value={dataDraft.velocityMs}
+                    onChange={(e) => setDataDraft({ ...dataDraft, velocityMs: e.target.value })}
+                    placeholder="ej. 120"
+                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">Frecuencia (Hz)</span>
+                  <input
+                    type="number"
+                    value={dataDraft.freqHz}
+                    onChange={(e) => setDataDraft({ ...dataDraft, freqHz: e.target.value })}
+                    placeholder="ej. 528"
+                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">Gravedad (m/s²)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={dataDraft.gravityMs2}
+                    onChange={(e) => setDataDraft({ ...dataDraft, gravityMs2: e.target.value })}
+                    placeholder="ej. 9.81"
+                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">Masa (kg)</span>
+                  <input
+                    type="number"
+                    value={dataDraft.massKg}
+                    onChange={(e) => setDataDraft({ ...dataDraft, massKg: e.target.value })}
+                    placeholder="ej. 25"
+                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDataPanel((s) => !s)}
+                title="Adjuntar parámetros numéricos de entrada"
+                className={`inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  showDataPanel
+                    ? 'border-blue-600 bg-blue-50 text-blue-800'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Datos</span>
+              </button>
+
+              <textarea
+                rows={2}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Describe qué quieres crear, simular o combinar (sin código)..."
+                className="flex-1 resize-none rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={() => handleSendInstruction()}
+                disabled={!inputText.trim()}
+                className="inline-flex h-10 items-center gap-1.5 rounded-md bg-slate-900 px-4 text-xs font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap shrink-0"
+              >
+                <Send className="h-3.5 w-3.5" />
+                Enviar
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* COLUMNA DERECHA: PANTALLA LÍQUIDA DE BIOPIXELES */}
+        <section className="relative h-[48%] min-h-[280px] w-full flex-1 lg:h-full lg:w-[56%]">
+          <div className="flex h-full flex-col">
   {rightTab === 'app' ? (
     <iframe title="App Generada" srcDoc={[...messages].reverse().find((m) => m.report?.materializedHtmlPreview)?.report?.materializedHtmlPreview || ''} className="w-full flex-1 border-0 bg-slate-950" />
   ) : (
