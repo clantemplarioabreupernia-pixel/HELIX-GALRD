@@ -304,7 +304,7 @@ const [listening, setListening] = useState(false);
     };
 
 
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [...prev, userMsg]); try { const r = await fetch('/api/ollama/distill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) }); const d = r.ok ? await r.json() : null; if (d?.ok && d?.capsule?.reply) { if (d.capsule.hlxScript) { driveLiquidScreen(String(d.capsule.hlxScript), (d.capsule.shape || shape) as any, String(d.capsule.accentColor || '#38bdf8'), String(d.capsule.sceneTitle || 'Síntesis HELIX'), 'Qwen 2.5 Coder · Puente Cognitivo'); } setMessages((prev) => [...prev, { ...assistantMsg, text: String(d.capsule.reply) }]); return; } } catch {} setMessages((prev) => [...prev, assistantMsg]);
     void fetch('/api/ollama/distill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) }).then((r) => r.ok ? r.json() : null).then((d) => { if (d?.ok && d?.capsule?.hlxScript) { driveLiquidScreen(String(d.capsule.hlxScript), shape, '#38bdf8', String(d.capsule.sceneTitle || 'Cápsula Destilada L2'), 'Certificado SMT · Ollama -> Mini-GPT'); } }).catch(() => {});
   };
 
