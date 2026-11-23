@@ -384,9 +384,34 @@ export function LiquidBiopixelCanvas({
     });
     resizeObserver.observe(container);
 
+    // Buffer plano Zero-GC para trayectoria cinemática de 12 principios (120 frames)
+    const kin12Frames = 120;
+    const kin12Buf = new Float32Array(kin12Frames * FRAME_STRIDE);
+    HelixKinematics12Engine.synthesizeTrajectory(
+      new Float32Array(),
+      new Float32Array([0.14, 0.28, -0.10]),
+      new Float32Array(),
+      new Float32Array(),
+      {
+        duration: 2.0,
+        fps: 60,
+        elasticity: 0.24,
+        anticipationRatio: 0.16,
+        anticipationAmp: 0.22,
+        exaggeration: 1.25,
+        mass: 1.0,
+        damping: 3.8,
+        stiffness: 26.0,
+        lagFrames: 6,
+      },
+      kin12Buf,
+    );
+
     let rafId = 0;
     let lastTime = performance.now();
     let hudTick = 0;
+    let kinCursor = 0;
+    let prevExcitation = 0;
 
     const animate = (now: number) => {
       rafId = requestAnimationFrame(animate);
@@ -396,7 +421,11 @@ export function LiquidBiopixelCanvas({
       const st = surfaceRef.current;
       const target = targetShapeRef.current;
       if (st && !pausedRef.current) {
-        // Interpolación fluida líquida hacia la morfología destino
+        if (st.excitationEnvelope > 0.9 && prevExcitation <= 0.9) {
+          kinCursor = 0;
+        }
+        prevExcitation = st.excitationEnvelope;
+
         const morphAlpha = Math.min(1, dt * 4.2);
         for (let i = 0; i < st.count; i++) {
           st.restX[i] += (target.x[i] - st.restX[i]) * morphAlpha;
@@ -408,6 +437,27 @@ export function LiquidBiopixelCanvas({
         }
         const m = stepBiopixelSurfacePhysics(st, dt);
         syncMeshFromSurface(bpMesh, st, accentColorRef.current);
+
+        // Aplicar trayectoria RK4 + Arcos + Squash&Stretch (det(S)=1) al grupo 3D completo
+        const kOff = Math.min(kin12Frames - 1, Math.floor(kinCursor)) * FRAME_STRIDE;
+        const env = Math.min(1.0, st.excitationEnvelope);
+        bpMesh.position.set(
+          kin12Buf[kOff] * env,
+          kin12Buf[kOff + 1] * env,
+          kin12Buf[kOff + 2] * env,
+        );
+        bpMesh.scale.set(
+          1.0 + (kin12Buf[kOff + 3] - 1.0) * env,
+          1.0 + (kin12Buf[kOff + 4] - 1.0) * env,
+          1.0 + (kin12Buf[kOff + 5] - 1.0) * env,
+        );
+        ring.position.y = 0.025 + kin12Buf[kOff + 7] * 0.35 * env;
+        ring.rotation.z = kin12Buf[kOff + 6] * 0.45 * env;
+
+        if (kinCursor < kin12Frames - 1) {
+          kinCursor += dt * 60;
+        }
+
         bpMesh.rotation.y += dt * 0.14;
         hudTick += 1;
         if (hudTick % 8 === 0) {
