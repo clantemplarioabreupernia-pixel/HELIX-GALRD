@@ -1,4 +1,5 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿export const MORPH_SHAPE_LABELS: Record<string, string> = { torus: 'Toroide Dinámico', satellite: 'Nave / Satélite Orbital', terrain: 'Terreno Fractal', wave: 'Membrana Acústica', crystal: 'Cristal Icosaédrico', sphere: 'Esfera Cuántica' };
+import { useEffect, useRef, useState } from 'react';
 
 export interface LiquidBiopixelCanvasProps {
   hlxScript?: string;
