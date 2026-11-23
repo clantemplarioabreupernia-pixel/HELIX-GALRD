@@ -388,10 +388,10 @@ export function LiquidBiopixelCanvas({
     const kin12Frames = 120;
     const kin12Buf = new Float32Array(kin12Frames * FRAME_STRIDE);
     HelixKinematics12Engine.synthesizeTrajectory(
-      new Float32Array(),
+      new Float32Array([0, 0, 0]),
       new Float32Array([0.14, 0.28, -0.10]),
-      new Float32Array(),
-      new Float32Array(),
+      new Float32Array([0, 0, 0]),
+      new Float32Array([0, 0, 0]),
       {
         duration: 2.0,
         fps: 60,
@@ -447,9 +447,9 @@ export function LiquidBiopixelCanvas({
           kin12Buf[kOff + 2] * env,
         );
         bpMesh.scale.set(
-          1.0 + (kin12Buf[kOff + 3] - 1.0) * env,
-          1.0 + (kin12Buf[kOff + 4] - 1.0) * env,
-          1.0 + (kin12Buf[kOff + 5] - 1.0) * env,
+          1.0 + ((Number.isFinite(kin12Buf[kOff + 3]) ? kin12Buf[kOff + 3] : 1) - 1.0) * env,
+          1.0 + ((Number.isFinite(kin12Buf[kOff + 4]) ? kin12Buf[kOff + 4] : 1) - 1.0) * env,
+          1.0 + ((Number.isFinite(kin12Buf[kOff + 5]) ? kin12Buf[kOff + 5] : 1) - 1.0) * env,
         );
         ring.position.y = 0.025 + kin12Buf[kOff + 7] * 0.35 * env;
         ring.rotation.z = kin12Buf[kOff + 6] * 0.45 * env;
@@ -556,3 +556,4 @@ export function LiquidBiopixelCanvas({
     </div>
   );
 }
+
