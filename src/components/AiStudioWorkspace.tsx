@@ -527,7 +527,7 @@ const [listening, setListening] = useState(false);
                     )}
 
                     {/* Entradas procesadas y Salidas de datos limpias (cero herramientas/cero código) */}
-                    {!isUser && msg.report && (
+                    {!isUser && msg.report && /crea|simul|calcul|juego|video|monta|orbit|onda|fluid|esculp|balance|salud|mar|genera|haz/i.test(msg.report.intent) && (
                       <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                           <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
