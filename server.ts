@@ -1,4 +1,4 @@
-import crypto from 'node:crypto';
+﻿import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -186,6 +186,83 @@ function verifySceneScriptServer(script: string): ServerVerifyResult {
 async function startServer(): Promise<void> {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+
+  // Puente Híbrido Opcional hacia Ollama + Aduana Formal SMT + Encapsulamiento para Mini-GPT
+  app.post('/api/ollama/distill', async (req, res) => {
+    const prompt = String(req.body?.prompt ?? '').trim();
+    const model = String(req.body?.model ?? 'qwen2.5-coder:7b');
+    if (!prompt) {
+      return res.status(400).json({ ok: false, error: 'Prompt vacío' });
+    }
+
+    try {
+      const ollamaRes = await fetch('http://127.0.0', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          stream: false,
+          format: 'json',
+          system: `Eres el traductor semántico de HELIX-GALRD (Ingeniero + L2).
+Convierte la intención del usuario en un objeto JSON válido con estas claves exactas:
+{
+  "sceneTitle": "nombre de la escena",
+  "hlxScript": "MESH_NODE core 1200 1.2\\nMAT_ORM core 0.15 0.85 0.2",
+  "kinematics12": {
+    "duration": 2.5,
+    "fps": 60,
+    "elasticity": 0.25,
+    "anticipationRatio": 0.16,
+    "anticipationAmp": 0.22,
+    "exaggeration": 1.3,
+    "mass": 1.0,
+    "damping": 3.8,
+    "stiffness": 26.0,
+    "lagFrames": 6
+  }
+}`,
+          prompt,
+        }),
+      });
+
+      if (!ollamaRes.ok) {
+        return res.json({ ok: false, mode: 'BARE_METAL_FALLBACK', reason: 'Ollama no respondió' });
+      }
+
+      const rawData = (await ollamaRes.json()) as { response?: string };
+      const parsed = JSON.parse(rawData.response || '{}');
+      const hlxScript = String(parsed.hlxScript ?? '');
+      const smtAudit = verifySceneScriptServer(hlxScript);
+
+      if (!smtAudit.valid) {
+        return res.json({
+          ok: false,
+          mode: 'L2_SMT_REJECTED',
+          errors: smtAudit.errors,
+          candidate: parsed,
+        });
+      }
+
+      // Encapsular conocimiento certificado por L2 para reentrenamiento del Mini-GPT causal
+      const capsuleLine = JSON.stringify({
+        ts: new Date().toISOString(),
+        prompt,
+        certified: parsed,
+        smt: smtAudit,
+      }) + '\n';
+      fs.appendFileSync(path.join(process.cwd(), 'dataset_capsules.jsonl'), capsuleLine, 'utf8');
+
+      return res.json({
+        ok: true,
+        mode: 'OLLAMA_DISTILLED_CERTIFIED',
+        capsule: parsed,
+        smt: smtAudit,
+      });
+    } catch {
+      // Si Ollama está cerrado, devuelve fallback limpio para que actúe la IA Bare-Metal local
+      return res.json({ ok: false, mode: 'BARE_METAL_FALLBACK' });
+    }
+  });
 
   app.get('/api/health', (_req, res) => {
     let totalPeers = 0;
