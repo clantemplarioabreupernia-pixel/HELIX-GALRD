@@ -186,6 +186,8 @@ function verifySceneScriptServer(script: string): ServerVerifyResult {
 async function startServer(): Promise<void> {
   const app = express();
   app.use(express.json({ limit: '1mb' }));
+  app.post('/api/ollama/distill', async (req, res) => { try { const prompt = String(req.body?.prompt || '').trim(); const model = String(req.body?.model || 'qwen2.5-coder:7b'); if (!prompt) { res.status(400).json({ ok: false }); return; } const oRes = await fetch('http://127.0.0', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: false, format: 'json', system: 'Traductor HELIX-GALRD. Devuelve SOLO JSON con sceneTitle, hlxScript y kinematics12.', prompt }) }); if (!oRes.ok) { res.json({ ok: false, mode: 'BARE_METAL_FALLBACK' }); return; } const d = await oRes.json() as { response?: string }; const parsed = JSON.parse(d.response || '{}'); const smt = verifySceneScriptServer(String(parsed.hlxScript ?? '')); if (!smt.valid) { res.json({ ok: false, mode: 'L2_SMT_REJECTED', errors: smt.errors }); return; } fs.appendFileSync('dataset_capsules.jsonl', JSON.stringify({ ts: new Date().toISOString(), prompt, certified: parsed, smt }) + '\n'); res.json({ ok: true, mode: 'OLLAMA_DISTILLED_CERTIFIED', capsule: parsed, smt }); } catch { res.json({ ok: false, mode: 'BARE_METAL_FALLBACK' }); } });
+
 
   // Puente Híbrido Opcional hacia Ollama + Aduana Formal SMT + Encapsulamiento para Mini-GPT
   app.post('/api/ollama/distill', async (req, res) => {
@@ -505,3 +507,4 @@ startServer().catch((err) => {
   console.error('[Helix Server] Error fatal de arranque:', err);
   process.exit(1);
 });
+
