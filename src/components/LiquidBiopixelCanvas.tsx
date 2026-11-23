@@ -149,7 +149,7 @@ export function LiquidBiopixelCanvas({
 
   useEffect(() => {
     pulseRef.current = 1.45;
-    clickPosRef.current =;
+    clickPosRef.current = [0, 0];
     clickTimeRef.current = timeRef.current;
   }, [pulseCounter, shape]);
 
@@ -241,7 +241,7 @@ export function LiquidBiopixelCanvas({
         <button
           type="button"
           onClick={() => {
-            clickPosRef.current =;
+            clickPosRef.current = [0, 0];
             clickTimeRef.current = timeRef.current;
             pulseRef.current = 1.65;
           }}
