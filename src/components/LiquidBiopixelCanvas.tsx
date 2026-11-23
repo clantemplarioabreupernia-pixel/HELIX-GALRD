@@ -62,6 +62,13 @@ float sdCoreObject(vec3 p) {
     float h = sin(p.x * 2.4 + uTime * 0.6) * cos(p.z * 2.4) * 0.52 + w;
     return p.y - h + 0.18;
   }
+  if (uShape == 3) {
+    vec3 q = abs(p);
+    return max(max(q.x * 0.85 + q.y * 0.52, q.y * 0.85 + q.z * 0.52), q.z * 0.85 + q.x * 0.52) - (0.78 + w * 0.4);
+  }
+  if (uShape == 4) {
+    return length(p) - (0.82 + w * 0.65);
+  }
   return length(vec2(length(p.xz) - 1.12, p.y - w)) - (0.38 + 0.05 * sin(uTime * 3.2));
 }
 
@@ -205,7 +212,7 @@ export function LiquidBiopixelCanvas({
         const r = parseInt(hex.slice(0, 2) || '38', 16) / 255;
         const g = parseInt(hex.slice(2, 4) || 'bd', 16) / 255;
         const b = parseInt(hex.slice(4, 6) || 'f8', 16) / 255;
-        const shapeId = /nave|sat|orb/i.test(shape) ? 1 : /terr|mont|fract/i.test(shape) ? 2 : 0;
+        const shapeId = /nave|sat|orb/i.test(shape) ? 1 : /terr|mont|fract/i.test(shape) ? 2 : /crist|cryst|ico/i.test(shape) ? 3 : /esf|spher|cuant|wave/i.test(shape) ? 4 : 0;
 
         gl.uniform2f(uRes, w, h);
         gl.uniform1f(uTime, elapsed);

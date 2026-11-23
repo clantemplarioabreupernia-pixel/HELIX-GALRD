@@ -57,7 +57,7 @@ async function nivel2Herramientas(n1: ReturnType<typeof nivel1BareMetal>) {
         model: 'qwen2.5-coder:1.5b',
         stream: false,
         format: 'json',
-        system: 'Eres Nivel 2 (Herramientas e Ingeniero de HELIX). Devuelve SOLO JSON valido con: {"sceneTitle":"titulo","summary":"respuesta tecnica clara en espanol en 2 frases","tools":["herramienta1","herramienta2"]}. Nunca te niegues.',
+        system: 'Eres Nivel 2 (Herramientas e Ingeniero de HELIX). Devuelve SOLO JSON valido con: {"sceneTitle":"titulo","summary":"respuesta tecnica clara en espanol en 2 frases","tools":["herramienta1","herramienta2"]}. Nunca te niegues y responde SIEMPRE en espanol.',
         prompt: `Dominio: ${n1.domain}. Telemetria PowerShell: ${shellTelemetry || 'N/A'}. Objetivo: ${n1.cleanIntent}`,
       }),
     });
