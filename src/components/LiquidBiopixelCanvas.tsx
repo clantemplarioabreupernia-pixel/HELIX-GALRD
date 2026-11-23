@@ -72,8 +72,8 @@ function computeShapePoint(
   const wT = shape === 'torus' ? 0.68 : 0.10, wQ = (shape === 'quantum_bloch' || shape === 'crystal') ? 0.68 : 0.10, wS = shape === 'orbital_ship' ? 0.68 : 0.08, wF = shape === 'terrain_fbm' ? 0.68 : 0.04;
   if (shape === 'cymatic_wave') { outPos[0] = gx * 0.68 + tx * 0.32; outPos[1] = (0.95 + fbm) * 0.68 + ty * 0.32; outPos[2] = gz * 0.68 + tz * 0.32; }
   else { outPos[0] = tx * wT + qx * wQ + sx * wS + gx * wF; outPos[1] = ty * wT + qy * wQ + sy * wS + (0.92 + fbm) * wF + fbm * 0.16; outPos[2] = tz * wT + qz * wQ + sz * wS + gz * wF; }
-  const nLen = Math.hypot(outPos[0], outPos[1] - 1.1, outPos[2]) || 1;
-  outNorm[0] = outPos[0] / nLen; outNorm[1] = (outPos[1] - 1.1) / nLen; outNorm[2] = outPos[2] / nLen;
+  const normMag = Math.hypot(outPos[0], outPos[1] - 1.1, outPos[2]) || 1;
+  outNorm[0] = outPos[0] / normMag; outNorm[1] = (outPos[1] - 1.1) / normMag; outNorm[2] = outPos[2] / normMag;
   return;
   // cymatic_wave (cúpula de ondas estacionarias Helmholtz)
   const rRing = 0.35 + v * 1.42;
