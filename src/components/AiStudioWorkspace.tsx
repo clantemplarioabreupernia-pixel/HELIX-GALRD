@@ -732,11 +732,11 @@ const [listening, setListening] = useState(false);
           <div className="flex h-full flex-col">
   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2 text-xs">
     <div className="flex gap-1.5">
-      <button style={{display:'none'}} type="button" onClick={() => setRightTab('liquid')} className={rightTab === 'liquid' ? 'rounded px-2.5 py-1 font-semibold bg-sky-500 text-slate-950' : 'rounded px-2.5 py-1 font-semibold bg-slate-800 text-slate-300'}>🌊 Pantalla Líquida</button>
-      <button style={{display:'none'}} type="button" onClick={() => setRightTab('app')} className={rightTab === 'app' ? 'rounded px-2.5 py-1 font-semibold bg-emerald-400 text-slate-950' : 'rounded px-2.5 py-1 font-semibold bg-slate-800 text-slate-300'}>🚀 App en Vivo</button>
+      <button type="button" onClick={() => setRightTab('liquid')} className={rightTab === 'liquid' ? 'rounded px-2.5 py-1 font-semibold bg-sky-500 text-slate-950' : 'rounded px-2.5 py-1 font-semibold bg-slate-800 text-slate-300'}>🌊 Pantalla Líquida</button>
+      <button type="button" onClick={() => setRightTab('app')} className={rightTab === 'app' ? 'rounded px-2.5 py-1 font-semibold bg-emerald-400 text-slate-950' : 'rounded px-2.5 py-1 font-semibold bg-slate-800 text-slate-300'}>🚀 App en Vivo</button>
       <button type="button" onClick={() => { const S = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!S) return; const r = new S(); r.lang = 'es-ES'; r.onstart = () => setListening(true); r.onend = () => setListening(false); r.onresult = (e: any) => handleSendInstruction(e.results[0][0].transcript); r.start(); }} className="rounded px-2.5 py-1 font-semibold bg-indigo-600 text-white">{listening ? '🎙️ Escuchando...' : '🎙️ Voz'}</button>
     </div>
-    <span className="text-[11px] font-mono text-sky-300"></span></div>
+    <span className="text-[11px] font-mono text-sky-300">🌌 Campo Unificado: Navier-Stokes + Kelvin-Voigt + Helmholtz + Φ</span></div>
   {rightTab === 'app' ? (
     <iframe title="App Generada" srcDoc={[...messages].reverse().find((m) => m.report?.materializedHtmlPreview)?.report?.materializedHtmlPreview || ''} className="w-full flex-1 border-0 bg-slate-950" />
   ) : (
