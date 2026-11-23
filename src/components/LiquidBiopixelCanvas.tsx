@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -58,102 +58,23 @@ function computeShapePoint(
   outPos: [number, number, number],
   outNorm: [number, number, number],
 ): void {
-  const phi = u * Math.PI * 2;
-
-  if (shape === 'torus') {
-    const R = 1.28;
-    const r = 0.44;
-    const tv = v * Math.PI * 2;
-    const cx = (R + r * Math.cos(tv)) * Math.cos(phi);
-    const cy = r * Math.sin(tv) * 0.92 + 1.08;
-    const cz = (R + r * Math.cos(tv)) * Math.sin(phi);
-    const nx = Math.cos(tv) * Math.cos(phi);
-    const ny = Math.sin(tv);
-    const nz = Math.cos(tv) * Math.sin(phi);
-    outPos[0] = cx;
-    outPos[1] = cy;
-    outPos[2] = cz;
-    outNorm[0] = nx;
-    outNorm[1] = ny;
-    outNorm[2] = nz;
-    return;
-  }
-
-  if (shape === 'crystal') {
-    const tClamp = 0.14 + v * 0.72;
-    const th = tClamp * Math.PI;
-    const facet = 1.0 + 0.14 * Math.abs(Math.cos(phi * 2.5)) * Math.sin(th * 3.0);
-    const rad = 1.18 * facet;
-    const sx = Math.sin(th) * Math.cos(phi);
-    const sy = Math.cos(th);
-    const sz = Math.sin(th) * Math.sin(phi);
-    outPos[0] = sx * rad;
-    outPos[1] = sy * rad + 1.25;
-    outPos[2] = sz * rad;
-    const len = Math.hypot(sx, sy, sz) || 1;
-    outNorm[0] = sx / len;
-    outNorm[1] = sy / len;
-    outNorm[2] = sz / len;
-    return;
-  }
-
-  if (shape === 'orbital_ship') {
-    // Fuselaje central aerodinámico + alas delta + anillo propulsor
-    const along = (v - 0.5) * 2.6; // eje Z longitudinal
-    const wingEnvelope = Math.max(0.18, 1.0 - Math.abs(v - 0.35) * 0.95);
-    const sweptWing = v < 0.58 ? Math.pow(Math.abs(Math.sin(phi)), 0.7) * 1.15 * wingEnvelope : 0;
-    const bodyRx = 0.42 * Math.sin(Math.max(0.1, v) * Math.PI) + sweptWing;
-    const bodyRy = 0.34 * Math.sin(Math.max(0.1, v) * Math.PI) + (Math.cos(phi) > 0.65 && v < 0.45 ? 0.22 : 0);
-    const x = Math.cos(phi) * bodyRx;
-    const y = 1.15 + Math.sin(phi) * bodyRy * 0.65;
-    const z = along;
-    const len = Math.hypot(x, y - 1.15, z * 0.35) || 1;
-    outPos[0] = x;
-    outPos[1] = y;
-    outPos[2] = z;
-    outNorm[0] = x / len;
-    outNorm[1] = (y - 1.15) / len;
-    outNorm[2] = (z * 0.35) / len;
-    return;
-  }
-
-  if (shape === 'quantum_bloch') {
-    // Dos lóbulos cuánticos de spinor SU(2) + interferencia azimutal
-    const tClamp = 0.1 + v * 0.8;
-    const th = tClamp * Math.PI;
-    const lobe = 0.82 + 0.45 * Math.pow(Math.cos(th), 2) + 0.14 * Math.cos(3 * phi) * Math.sin(th);
-    const sx = Math.sin(th) * Math.cos(phi);
-    const sy = Math.cos(th);
-    const sz = Math.sin(th) * Math.sin(phi);
-    outPos[0] = sx * lobe;
-    outPos[1] = sy * lobe + 1.25;
-    outPos[2] = sz * lobe;
-    outNorm[0] = sx;
-    outNorm[1] = sy;
-    outNorm[2] = sz;
-    return;
-  }
-
-  if (shape === 'terrain_fbm') {
-    const gx = (u - 0.5) * 3.1;
-    const gz = (v - 0.5) * 2.8;
-    const h =
-      0.42 * Math.sin(gx * 1.9 + 0.4) * Math.cos(gz * 1.7 - 0.3) +
-      0.21 * Math.sin(gx * 3.7 - gz * 2.9) +
-      0.11 * Math.cos(gx * 6.4 + gz * 5.2);
-    outPos[0] = gx;
-    outPos[1] = 0.88 + h;
-    outPos[2] = gz;
-    outNorm[0] = -0.25 * Math.cos(gx * 1.9);
-    outNorm[1] = 0.94;
-    outNorm[2] = 0.22 * Math.sin(gz * 1.7);
-    const nLen = Math.hypot(outNorm[0], outNorm[1], outNorm[2]) || 1;
-    outNorm[0] /= nLen;
-    outNorm[1] /= nLen;
-    outNorm[2] /= nLen;
-    return;
-  }
-
+  const phi = u * Math.PI * 2; const tv = v * Math.PI * 2; const th = (0.12 + v * 0.76) * Math.PI; const PHI = 1.61803398875;
+  const tx = (1.24 + 0.42 * Math.cos(tv)) * Math.cos(phi), ty = 0.42 * Math.sin(tv) * 0.92 + 1.12, tz = (1.24 + 0.42 * Math.cos(tv)) * Math.sin(phi);
+  const facet = 1.0 + 0.14 * Math.abs(Math.cos(phi * PHI * 1.5)) * Math.sin(th * 3.0);
+  const lobe = 0.85 + 0.42 * Math.pow(Math.cos(th), 2) + 0.14 * Math.cos(3 * phi) * Math.sin(th);
+  const qRad = shape === 'crystal' ? 1.18 * facet : lobe;
+  const qx = Math.sin(th) * Math.cos(phi) * qRad, qy = Math.cos(th) * qRad + 1.22, qz = Math.sin(th) * Math.sin(phi) * qRad;
+  const wingEnv = Math.max(0.18, 1.0 - Math.abs(v - 0.35) * 0.95);
+  const wing = v < 0.58 ? Math.pow(Math.abs(Math.sin(phi)), 0.7) * 1.15 * wingEnv : 0;
+  const sx = Math.cos(phi) * (0.42 * Math.sin(Math.max(0.1, v) * Math.PI) + wing), sy = 1.15 + Math.sin(phi) * 0.24 * Math.sin(Math.max(0.1, v) * Math.PI), sz = (v - 0.5) * 2.5;
+  const gx = (u - 0.5) * 2.9, gz = (v - 0.5) * 2.7;
+  const fbm = 0.36 * Math.sin(gx * 1.9 + 0.4) * Math.cos(gz * 1.7 - 0.3) + 0.18 * Math.sin(gx * 3.7 - gz * 2.9);
+  const wT = shape === 'torus' ? 0.68 : 0.10, wQ = (shape === 'quantum_bloch' || shape === 'crystal') ? 0.68 : 0.10, wS = shape === 'orbital_ship' ? 0.68 : 0.08, wF = shape === 'terrain_fbm' ? 0.68 : 0.04;
+  if (shape === 'cymatic_wave') { outPos[0] = gx * 0.68 + tx * 0.32; outPos[1] = (0.95 + fbm) * 0.68 + ty * 0.32; outPos[2] = gz * 0.68 + tz * 0.32; }
+  else { outPos[0] = tx * wT + qx * wQ + sx * wS + gx * wF; outPos[1] = ty * wT + qy * wQ + sy * wS + (0.92 + fbm) * wF + fbm * 0.16; outPos[2] = tz * wT + qz * wQ + sz * wS + gz * wF; }
+  const nLen = Math.hypot(outPos[0], outPos[1] - 1.1, outPos[2]) || 1;
+  outNorm[0] = outPos[0] / nLen; outNorm[1] = (outPos[1] - 1.1) / nLen; outNorm[2] = outPos[2] / nLen;
+  return;
   // cymatic_wave (cúpula de ondas estacionarias Helmholtz)
   const rRing = 0.35 + v * 1.42;
   const waveY =
