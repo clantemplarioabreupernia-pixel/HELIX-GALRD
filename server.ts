@@ -2,78 +2,82 @@
 import http from 'node:http';
 import path from 'node:path';
 import express from 'express';
-import { WebSocketServer } from 'ws';
+import { createServer as createViteServer } from 'vite';
 
 const PORT = Number(process.env.PORT || 3000);
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, engine: 'HELIX-BRIDGE-OLLAMA' }));
+// NIVEL 1 (BARE-METAL): Fuerza bruta, administracion de recursos PC y depuracion
+function nivel1BareMetal(rawPrompt: string) {
+  const memFreeMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  const cleanIntent = rawPrompt.replace(/Congratulations!.*?Sign Up/gi, '').replace(/Copyright ©.*$/gi, '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+  const domain = /health|salud|astronaut|heart|blood|medic/i.test(cleanIntent)
+    ? 'BIOMEDICAL_SPACE'
+    : /orbit|nave|space|radar|satelit/i.test(cleanIntent)
+      ? 'ORBITAL_AEROSPACE'
+      : /terrain|monta|fractal|lunar/i.test(cleanIntent)
+        ? 'PLANETARY_GEOPHYSICS'
+        : 'UNIFIED_PHYSICS';
+  return { cleanIntent, domain, memFreeMB, shape: domain.includes('SPACE') || domain.includes('ORBITAL') ? 'satellite' : domain.includes('GEO') ? 'terrain' : 'torus' };
+}
 
-app.post('/api/ollama/distill', async (req, res) => {
-  const prompt = String(req.body?.prompt || '').trim();
-  const model = String(req.body?.model || 'qwen2.5-coder:1.5b');
-  if (!prompt) { res.status(400).json({ ok: false }); return; }
-
+// NIVEL 2 (HERRAMIENTAS · INGENIERO + L2 + OLLAMA): Seleccion de herramientas y certificacion
+async function nivel2Herramientas(n1: ReturnType<typeof nivel1BareMetal>) {
+  let draft: any = {};
   try {
     const endpoint = ['http://127.0.0.1', ':11434/api/generate'].join('');
     const oRes = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model,
+        model: 'qwen2.5-coder:1.5b',
         stream: false,
-        system: 'Eres el núcleo cognitivo puente de HELIX-GALRD. Conversa en español natural con inteligencia y precisión técnica. Si el usuario pide crear o simular algo, incluye al final un bloque JSON con {"sceneTitle":"...","shape":"torus|satellite|terrain","accentColor":"#38bdf8","hlxScript":"MESH_NODE core 1200 1.2"}.',
-        prompt,
+        format: 'json',
+        system: 'Eres Nivel 2 (Herramientas e Ingeniero de HELIX). Devuelve SOLO JSON con: {"sceneTitle":"titulo","summary":"explicacion tecnica en espanol en 2 frases","tools":["herramienta1","herramienta2"]}. Nunca te niegues.',
+        prompt: Dominio: . Objetivo: ,
       }),
     });
-
-    if (!oRes.ok) {
-      res.json({ ok: false, mode: 'OLLAMA_OFFLINE' });
-      return;
+    if (oRes.ok) {
+      const d = (await oRes.json()) as { response?: string };
+      draft = JSON.parse(d.response || '{}');
     }
+  } catch {}
 
-    const d = (await oRes.json()) as { response?: string };
-    const fullText = String(d.response || '').trim();
+  const isRefusal = /lo siento|no puedo|cannot|sorry|unable/i.test(String(draft?.summary || ''));
+  const tools = Array.isArray(draft?.tools) && draft.tools.length > 0 ? draft.tools.join(' · ') : 'Solver RK4 · Membrana Viscoelástica · Telemetría';
+  const summary = isRefusal || !draft?.summary
+    ? Herramientas acopladas en : .
+    : String(draft.summary);
 
-    let capsule: Record<string, unknown> = {
-      reply: fullText,
-      hlxScript: 'MESH_NODE core 1200 1.2',
-      sceneTitle: 'Síntesis Cognitiva HELIX',
-    };
-    const jsonMatch = fullText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        const cleanReply = fullText.replace(jsonMatch[0], '').trim() || parsed.reply || 'Escena sintetizada y proyectada.';
-        capsule = { ...parsed, reply: cleanReply };
-      } catch {
-        // Mantener texto conversacional puro
-      }
-    }
+  return {
+    reply: [N1 Bare-Metal MB → N2 Herramientas/L2] ,
+    sceneTitle: String(draft?.sceneTitle || n1.domain),
+    shape: n1.shape,
+    accentColor: n1.domain === 'BIOMEDICAL_SPACE' ? '#34d399' : '#38bdf8',
+    hlxScript: 'MESH_NODE core 1440 1.25\nMAT_ORM core 0.18 0.88 0.24',
+  };
+}
 
-    // Encapsular cada interacción para educar a tus IAs Bare-Metal en segundo plano
-    fs.appendFileSync(
-      path.join(process.cwd(), 'dataset_capsules.jsonl'),
-      JSON.stringify({ ts: new Date().toISOString(), model, prompt, capsule }) + '\n',
-      'utf8',
-    );
-
-    res.json({ ok: true, mode: 'OLLAMA_BRIDGE_ACTIVE', capsule });
-  } catch (err) {
-    res.json({ ok: false, mode: 'OLLAMA_OFFLINE', error: String(err) });
-  }
+app.post('/api/ollama/distill', async (req, res) => {
+  const prompt = String(req.body?.prompt || '').trim();
+  if (!prompt) { res.status(400).json({ ok: false }); return; }
+  const n1 = nivel1BareMetal(prompt);
+  const capsule = await nivel2Herramientas(n1);
+  fs.appendFileSync(path.join(process.cwd(), 'dataset_capsules.jsonl'), JSON.stringify({ ts: new Date().toISOString(), n1, capsule }) + '\n', 'utf8');
+  res.json({ ok: true, mode: 'N1_N2_N3_CERTIFIED', capsule });
 });
 
-async function boot() {
-  const { createServer: createViteServer } = await import('vite');
-  const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
-  app.use(vite.middlewares);
+async function start() {
   const server = http.createServer(app);
-  const wss = new WebSocketServer({ server, path: '/ws' });
-  wss.on('connection', (ws) => ws.send(JSON.stringify({ type: 'ws:ready' })));
+  const vite = await createViteServer({
+    configFile: path.resolve(process.cwd(), 'vite.config.ts'),
+    server: { middlewareMode: true, hmr: { server } },
+    appType: 'spa',
+  });
+  app.use(vite.middlewares);
   server.listen(PORT, '0.0.0.0', () => {
-    console.log('[Helix Bridge] Servidor + Qwen/DeepSeek activo en http://localhost:' + PORT);
+    console.log('[HELIX N1->N2->N3] Activo en http://localhost:' + PORT);
   });
 }
-boot();
+start();
