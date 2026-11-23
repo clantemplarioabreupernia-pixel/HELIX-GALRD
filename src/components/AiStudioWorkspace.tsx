@@ -303,7 +303,9 @@ const [listening, setListening] = useState(false);
       confirmed: !report.clarificationNeeded,
     };
 
+
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    void fetch('/api/ollama/distill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) }).then((r) => r.ok ? r.json() : null).then((d) => { if (d?.ok && d?.capsule?.hlxScript) { driveLiquidScreen(String(d.capsule.hlxScript), shape, '#38bdf8', String(d.capsule.sceneTitle || 'Cápsula Destilada L2'), 'Certificado SMT · Ollama -> Mini-GPT'); } }).catch(() => {});
   };
 
   const handleSelectClarificationOption = (
@@ -751,3 +753,4 @@ const [listening, setListening] = useState(false);
     </div>
   );
 }
+
