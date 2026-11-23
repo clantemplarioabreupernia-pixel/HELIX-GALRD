@@ -1,4 +1,5 @@
-﻿import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+﻿import { buildHumanConversationReply } from '../core/helixConversationalBrain';
+import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Cpu,
@@ -295,7 +296,7 @@ const [listening, setListening] = useState(false);
     const assistantMsg: ChatMessage = {
       id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       role: 'assistant',
-      text: composeConsoleReply(report, shape, !report.clarificationNeeded),
+      text: buildHumanConversationReply(text, MORPH_SHAPE_LABELS[shape], report.activatedEngines.length, /crea|simul|calcul|juego|video|monta|orbit|onda|fluid|esculp|balance|salud|mar/i.test(text)),
       shapeFormed: shape,
       report,
       answersUsed: {},
