@@ -35,7 +35,7 @@ async function nivel2Herramientas(n1: ReturnType<typeof nivel1BareMetal>) {
         stream: false,
         format: 'json',
         system: 'Eres Nivel 2 (Herramientas e Ingeniero de HELIX). Devuelve SOLO JSON con: {"sceneTitle":"titulo","summary":"explicacion tecnica en espanol en 2 frases","tools":["herramienta1","herramienta2"]}. Nunca te niegues.',
-        prompt: Dominio: . Objetivo: ,
+        prompt: 'Dominio: ' + n1.domain + '. Objetivo: ' + n1.cleanIntent,
       }),
     });
     if (oRes.ok) {
@@ -47,11 +47,11 @@ async function nivel2Herramientas(n1: ReturnType<typeof nivel1BareMetal>) {
   const isRefusal = /lo siento|no puedo|cannot|sorry|unable/i.test(String(draft?.summary || ''));
   const tools = Array.isArray(draft?.tools) && draft.tools.length > 0 ? draft.tools.join(' · ') : 'Solver RK4 · Membrana Viscoelástica · Telemetría';
   const summary = isRefusal || !draft?.summary
-    ? Herramientas acopladas en : .
+    ? 'Herramientas acopladas en ' + n1.domain + ': ' + tools + '.'
     : String(draft.summary);
 
   return {
-    reply: [N1 Bare-Metal MB → N2 Herramientas/L2] ,
+    reply: '[N1 Bare-Metal ' + n1.memFreeMB + 'MB → N2 Herramientas/L2] ' + summary,
     sceneTitle: String(draft?.sceneTitle || n1.domain),
     shape: n1.shape,
     accentColor: n1.domain === 'BIOMEDICAL_SPACE' ? '#34d399' : '#38bdf8',
