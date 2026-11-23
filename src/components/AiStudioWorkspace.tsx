@@ -1,4 +1,4 @@
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+﻿import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Cpu,
@@ -207,6 +207,8 @@ export function AiStudioWorkspace() {
 
   const [inputText, setInputText] = useState('');
   const [showDataPanel, setShowDataPanel] = useState(false);
+const [rightTab, setRightTab] = useState<'liquid' | 'app'>('liquid');
+const [listening, setListening] = useState(false);
   const [dataDraft, setDataDraft] = useState<DataInputDraft>(EMPTY_DATA_DRAFT);
 
   // Estado acoplado directamente a la Pantalla Líquida de Biopíxeles
@@ -724,14 +726,25 @@ export function AiStudioWorkspace() {
 
         {/* COLUMNA DERECHA: PANTALLA LÍQUIDA DE BIOPIXELES */}
         <section className="relative h-[48%] min-h-[280px] w-full flex-1 lg:h-full lg:w-[56%]">
-          <LiquidBiopixelCanvas
+          <div className="flex h-full flex-col">
+  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900 px-3 py-2 text-xs">
+    <div className="flex gap-1.5">
+      <button type="button" onClick={() => setRightTab('liquid')} className={rightTab === 'liquid' ? 'rounded px-2.5 py-1 font-semibold bg-sky-500 text-slate-950' : 'rounded px-2.5 py-1 font-semibold bg-slate-800 text-slate-300'}>🌊 Pantalla Líquida</button>
+      <button type="button" onClick={() => setRightTab('app')} className={rightTab === 'app' ? 'rounded px-2.5 py-1 font-semibold bg-emerald-400 text-slate-950' : 'rounded px-2.5 py-1 font-semibold bg-slate-800 text-slate-300'}>🚀 App en Vivo</button>
+      <button type="button" onClick={() => { const S = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition; if (!S) return; const r = new S(); r.lang = 'es-ES'; r.onstart = () => setListening(true); r.onend = () => setListening(false); r.onresult = (e: any) => handleSendInstruction(e.results[0][0].transcript); r.start(); }} className="rounded px-2.5 py-1 font-semibold bg-indigo-600 text-white">{listening ? '🎙️ Escuchando...' : '🎙️ Voz'}</button>
+    </div>
+    <span className="text-[11px] font-mono text-sky-300">🌌 Campo Unificado: Navier-Stokes + Kelvin-Voigt + Helmholtz + Φ</span></div>
+  {rightTab === 'app' ? (
+    <iframe title="App Generada" srcDoc={[...messages].reverse().find((m) => m.report?.materializedHtmlPreview)?.report?.materializedHtmlPreview || ''} className="w-full flex-1 border-0 bg-slate-950" />
+  ) : (
+    <div className="relative flex-1">
+      <LiquidBiopixelCanvas
             hlxScript={currentScript}
             shape={currentShape}
             pulseCounter={pulseCounter}
             titleLabel={screenTitle}
             subtitleLabel={screenSubtitle}
-            accentHex={accentHex}
-          />
+            accentHex={accentHex} /></div>)}</div>
         </section>
       </div>
     </div>
