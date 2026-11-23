@@ -261,7 +261,7 @@ const [listening, setListening] = useState(false);
     setPulseCounter((c) => c + 1);
   };
 
-  const handleSendInstruction = (overrideText?: string) => {
+  const handleSendInstruction = async (overrideText?: string) => {
     const text = (overrideText ?? inputText).trim();
     if (!text) return;
     if (!overrideText) setInputText('');
