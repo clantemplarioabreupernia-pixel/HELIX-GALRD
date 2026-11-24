@@ -185,17 +185,20 @@ function detectPersona(intent: string, requested: PersonaMode): Exclude<PersonaM
 }
 
 function detectCategory(intent: string): EngineeringReport['detectedCategory'] {
-  const low = intent.toLowerCase();
+  const low = intent
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
   if (low.includes('videojuego') || low.includes('juego') || low.includes('nivel') || low.includes('personaje') || low.includes('plataform')) {
     return 'VIDEOJUEGO';
   }
-  if (low.includes('cuantic') || low.includes('cuántic') || low.includes('qubit') || low.includes('bloch') || low.includes('qasm')) {
+  if (low.includes('cuantic') || low.includes('qubit') || low.includes('bloch') || low.includes('qasm')) {
     return 'CUANTICA';
   }
-  if (low.includes('nasa') || low.includes('orbit') || low.includes('espaci') || low.includes('satel') || low.includes('kepler') || low.includes('cohete') || low.includes('planeta')) {
+  if (low.includes('nasa') || low.includes('orbit') || low.includes('espaci') || low.includes('satel') || low.includes('kepler') || low.includes('cohete') || low.includes('planeta') || low.includes('nave')) {
     return 'SIMULACION_ESPACIAL';
   }
-  if (low.includes('videoclip') || low.includes('video') || low.includes('musica') || low.includes('música') || low.includes('voz') || low.includes('cuento') || low.includes('animac')) {
+  if (low.includes('videoclip') || low.includes('video') || low.includes('musica') || low.includes('voz') || low.includes('cuento') || low.includes('animac') || low.includes('onda') || low.includes('hz')) {
     return 'CINEMA_VIDEOCLIP';
   }
   if (low.includes('5g') || low.includes('radar') || low.includes('antena') || low.includes('telecom') || low.includes('fmcw') || low.includes('rf')) {
@@ -556,36 +559,220 @@ function buildStandaloneArtifactHtml(
   intent: string,
   dataInputs: DataFieldEntry[],
   dataOutputs: DataFieldEntry[],
+  category: EngineeringReport['detectedCategory'] = 'HETEROGENEO',
+  params: Record<string, number | string> = {},
 ): string {
-  const rowsHtml = [...dataInputs.map((d) => ({ kind: 'Entrada', ...d })), ...dataOutputs.map((d) => ({ kind: 'Salida', ...d }))]
+  const safeIntent = intent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const rowsHtml = [
+    ...dataInputs.map((d) => ({ kind: 'Entrada', ...d })),
+    ...dataOutputs.map((d) => ({ kind: 'Salida', ...d })),
+  ]
     .map(
       (r) =>
         `<tr><td style="color:#94a3b8">${r.kind}</td><td>${r.label}</td><td style="color:#38bdf8;font-weight:600">${r.value}</td></tr>`,
     )
     .join('');
 
+  const freqSeed = Number(params.freq_hz ?? 528);
+  const altSeed = Math.max(150, Math.round(Number(params.radius_km ?? 6771) - 6371));
+  const gravSeed = Number(params.gravity_ms2 ?? 1.62);
+
+  let interactiveScript = '';
+  let interactiveControls = '';
+  let appBadge = 'Simulación Interactiva en Vivo';
+
+  if (category === 'VIDEOJUEGO') {
+    appBadge = 'Videojuego Interactivo · Controles WASD / Flechas / Clic';
+    interactiveControls =
+      '<div class="bar"><span id="hud">Puntuación: 0 · Escudo: 100%</span><button id="btnReset">Reiniciar Misión</button></div>';
+    interactiveScript = `
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const hud = document.getElementById('hud');
+let ship = { x: 120, y: 150, vy: 0, vx: 0, hp: 100, score: 0 };
+let keys = {};
+let stars = Array.from({length: 55}, () => ({ x: Math.random()*820, y: Math.random()*300, s: 1+Math.random()*2 }));
+let rocks = Array.from({length: 7}, (_, i) => ({ x: 420 + i*95, y: 30 + Math.random()*240, r: 12 + Math.random()*14, sp: 1.8 + Math.random()*1.8 }));
+let lasers = [];
+window.addEventListener('keydown', (e) => { keys[e.key] = true; if (e.key === ' ') lasers.push({ x: ship.x+18, y: ship.y }); });
+window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+cv.addEventListener('pointermove', (e) => {
+  if (e.buttons) {
+    const rc = cv.getBoundingClientRect();
+    ship.x = ((e.clientX - rc.left)/rc.width)*cv.width;
+    ship.y = ((e.clientY - rc.top)/rc.height)*cv.height;
+  }
+});
+cv.addEventListener('pointerdown', () => lasers.push({ x: ship.x+18, y: ship.y }));
+document.getElementById('btnReset').onclick = () => { ship = { x: 120, y: 150, vy: 0, vx: 0, hp: 100, score: 0 }; lasers = []; };
+function loop() {
+  ctx.fillStyle = '#020617';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  for (const st of stars) {
+    st.x -= st.s * 0.9;
+    if (st.x < 0) st.x = cv.width;
+    ctx.fillStyle = 'rgba(186,230,253,0.75)';
+    ctx.fillRect(st.x, st.y, st.s, st.s);
+  }
+  if (keys['ArrowUp'] || keys['w']) ship.vy -= 0.42;
+  if (keys['ArrowDown'] || keys['s']) ship.vy += 0.42;
+  if (keys['ArrowLeft'] || keys['a']) ship.vx -= 0.42;
+  if (keys['ArrowRight'] || keys['d']) ship.vx += 0.42;
+  ship.vx *= 0.92; ship.vy *= 0.92;
+  ship.x = Math.max(20, Math.min(cv.width - 20, ship.x + ship.vx));
+  ship.y = Math.max(20, Math.min(cv.height - 20, ship.y + ship.vy));
+
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+  ctx.fillStyle = '#38bdf8';
+  ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-14, -10); ctx.lineTo(-8, 0); ctx.lineTo(-14, 10); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#f59e0b'; ctx.fillRect(-16, -3, 6, 6);
+  ctx.restore();
+
+  lasers = lasers.filter((l) => l.x < cv.width);
+  ctx.fillStyle = '#22d3ee';
+  for (const l of lasers) { l.x += 9; ctx.fillRect(l.x, l.y - 1.5, 12, 3); }
+
+  for (const r of rocks) {
+    r.x -= r.sp;
+    if (r.x < -30) { r.x = cv.width + 30; r.y = 25 + Math.random()*(cv.height-50); ship.score += 5; }
+    for (const l of lasers) {
+      if (Math.hypot(l.x - r.x, l.y - r.y) < r.r + 6) {
+        r.x = cv.width + 40; r.y = 25 + Math.random()*(cv.height-50); l.x = cv.width + 99; ship.score += 25;
+      }
+    }
+    if (Math.hypot(ship.x - r.x, ship.y - r.y) < r.r + 12) {
+      ship.hp = Math.max(0, ship.hp - 15); r.x = cv.width + 40;
+    }
+    ctx.strokeStyle = '#a78bfa'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
+  }
+  hud.textContent = 'Puntuación: ' + ship.score + ' · Escudo: ' + ship.hp + '% · Gravedad campo: ${gravSeed} m/s²';
+  requestAnimationFrame(loop);
+}
+loop();`;
+  } else if (category === 'SIMULACION_ESPACIAL' || category === 'TELECOM_RF') {
+    appBadge = 'Simulador Orbital y Telemetría en Tiempo Real';
+    interactiveControls =
+      `<div class="bar"><label>Altitud orbital: <input id="altRange" type="range" min="200" max="35786" value="${altSeed}" /> <strong id="altVal">${altSeed} km</strong></label><span id="orbStats"></span></div>`;
+    interactiveScript = `
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const altRange = document.getElementById('altRange');
+const altVal = document.getElementById('altVal');
+const orbStats = document.getElementById('orbStats');
+let ang = 0;
+function loop() {
+  const alt = Number(altRange.value);
+  const rKm = 6371 + alt;
+  const vOrb = Math.sqrt(398600.4418 / rKm) * 1000;
+  const periodMin = (2 * Math.PI * Math.sqrt((rKm*rKm*rKm) / 398600.4418)) / 60;
+  altVal.textContent = alt + ' km';
+  orbStats.textContent = 'v = ' + vOrb.toFixed(1) + ' m/s · T = ' + periodMin.toFixed(1) + ' min';
+  ang += 0.018 * Math.sqrt(6771 / rKm);
+  ctx.fillStyle = '#020617'; ctx.fillRect(0,0,cv.width,cv.height);
+  const cx = cv.width/2, cy = cv.height/2;
+  const radPx = 56 + (Math.min(alt, 35786)/35786) * 76;
+  ctx.strokeStyle = 'rgba(56,189,248,0.35)'; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.arc(cx, cy, radPx, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#1d4ed8'; ctx.beginPath(); ctx.arc(cx, cy, 34, 0, Math.PI*2); ctx.fill();
+  const sx = cx + Math.cos(ang)*radPx, sy = cy + Math.sin(ang)*radPx;
+  ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(52,211,153,0.5)'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(sx,sy); ctx.stroke();
+  requestAnimationFrame(loop);
+}
+loop();`;
+  } else if (category === 'CINEMA_VIDEOCLIP') {
+    appBadge = 'Sintetizador Audiovisual Armónico en Vivo';
+    interactiveControls =
+      `<div class="bar"><label>Frecuencia: <input id="freqRange" type="range" min="110" max="960" value="${freqSeed}" /> <strong id="freqVal">${freqSeed} Hz</strong></label><button id="btnTone">Activar Tono Armónico</button></div>`;
+    interactiveScript = `
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const freqRange = document.getElementById('freqRange');
+const freqVal = document.getElementById('freqVal');
+const btnTone = document.getElementById('btnTone');
+let osc = null, audioCtx = null, t = 0;
+btnTone.onclick = () => {
+  if (osc) { osc.stop(); osc = null; btnTone.textContent = 'Activar Tono Armónico'; return; }
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0.08;
+  osc.frequency.value = Number(freqRange.value);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start();
+  btnTone.textContent = 'Silenciar';
+};
+freqRange.oninput = () => { freqVal.textContent = freqRange.value + ' Hz'; if (osc) osc.frequency.value = Number(freqRange.value); };
+function loop() {
+  const f = Number(freqRange.value);
+  t += 0.03 + (f/528)*0.02;
+  ctx.fillStyle = 'rgba(2,6,23,0.22)'; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  for (let x = 0; x < cv.width; x += 4) {
+    const y = cv.height/2 + Math.sin(x*0.02*(f/440) + t)*55 + Math.cos(x*0.05 - t*1.4)*20;
+    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(loop);
+}
+loop();`;
+  } else {
+    interactiveControls =
+      '<div class="bar"><span>Haz clic sobre el lienzo para inyectar ondas viscoelásticas Kelvin-Voigt</span></div>';
+    interactiveScript = `
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let t = 0, pulse = 1.0;
+cv.addEventListener('pointerdown', () => { pulse = 1.8; });
+function loop() {
+  t += 0.025;
+  pulse = Math.max(0.25, pulse * 0.98);
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.25)';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x < cv.width; x += 6) {
+    const y = cv.height/2 + Math.sin(x * 0.02 + t) * 48 * pulse + Math.cos(x * 0.045 - t * 1.3) * 18;
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  requestAnimationFrame(loop);
+}
+loop();`;
+  }
+
   return `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<title>Resultado Interactivo Helix</title>
+<title>App en Vivo · Helix</title>
 <style>
-  body { font-family: system-ui, sans-serif; background: #070b14; color: #f8fafc; margin: 0; padding: 24px; }
-  .wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 16px; }
-  .panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 18px; }
-  canvas { width: 100%; height: 240px; background: #020617; border-radius: 8px; display: block; }
+  body { font-family: system-ui, sans-serif; background: #070b14; color: #f8fafc; margin: 0; padding: 20px; }
+  .wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 14px; }
+  .panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 16px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 13px; color: #cbd5e1; }
+  button { background: #0284c7; color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #0369a1; }
+  canvas { width: 100%; height: 290px; background: #020617; border-radius: 8px; display: block; cursor: crosshair; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  td { padding: 8px 6px; border-bottom: 1px solid #1e293b; }
+  td { padding: 7px 6px; border-bottom: 1px solid #1e293b; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="panel">
-    <h2 style="margin:0 0 8px">Salida Interactiva Generada</h2>
-    <p style="margin:0;color:#cbd5e1">${intent.replace(/</g, '&lt;')}</p>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#38bdf8;margin-bottom:4px">${appBadge}</div>
+    <h2 style="margin:0 0 6px;font-size:18px">App Interactiva Generada</h2>
+    <p style="margin:0;color:#cbd5e1;font-size:13px">${safeIntent}</p>
   </div>
   <div class="panel">
-    <canvas id="cv" width="820" height="240"></canvas>
+    ${interactiveControls}
+    <canvas id="cv" width="820" height="290"></canvas>
   </div>
   <div class="panel">
     <h3 style="margin:0 0 10px;font-size:14px">Entradas y Salidas Calculadas</h3>
@@ -593,25 +780,7 @@ function buildStandaloneArtifactHtml(
   </div>
 </div>
 <script>
-const cv = document.getElementById('cv');
-const ctx = cv.getContext('2d');
-let t = 0;
-function loop() {
-  t += 0.025;
-  ctx.fillStyle = 'rgba(2, 6, 23, 0.25)';
-  ctx.fillRect(0, 0, cv.width, cv.height);
-  ctx.strokeStyle = '#38bdf8';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  for (let x = 0; x < cv.width; x += 6) {
-    const y = 120 + Math.sin(x * 0.02 + t) * 48 + Math.cos(x * 0.045 - t * 1.3) * 18;
-    if (x === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-  requestAnimationFrame(loop);
-}
-loop();
+${interactiveScript}
 </script>
 </body>
 </html>`;
@@ -688,7 +857,13 @@ export function analyzeIntentAndBuildReport(
     dataInputs,
     dataOutputs,
     reportMarkdown: lines.join('\n'),
-    materializedHtmlPreview: buildStandaloneArtifactHtml(cleanIntent, dataInputs, dataOutputs),
+    materializedHtmlPreview: buildStandaloneArtifactHtml(
+      cleanIntent,
+      dataInputs,
+      dataOutputs,
+      detectedCategory,
+      params,
+    ),
   };
 }
 

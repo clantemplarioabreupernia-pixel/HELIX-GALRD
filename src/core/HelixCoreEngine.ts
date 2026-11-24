@@ -19,11 +19,28 @@ import {
   sha256Hex,
 } from '../utils/helixPcc';
 import {
+  computeCauchySpectralTriple,
   createPauliSoAPhysicsState,
+  evaluateWeberFechnerFrame,
   PauliSoAPhysicsState,
   PauliSoAPhysicsStepReport,
   stepPauliSoAPhysics,
 } from '../utils/helixPhysics';
+import {
+  CauchySpectralTriple,
+  createSiliconBridgeState,
+  getSiliconBridgeTelemetry,
+  HELIX_OPTIC_FRAGMENT_PARS,
+  HELIX_OPTIC_FRAGMENT_SSS_CAUCHY,
+  HELIX_OPTIC_VERTEX_DISPLACE,
+  HELIX_OPTIC_VERTEX_PARS,
+  injectTokenImpulse,
+  SiliconBridgeTelemetrySnapshot,
+  SiliconUniformSnapshot,
+  stepSiliconBridgeFrame,
+  syncScriptToSiliconBridge,
+  TokenPauliBridgeState,
+} from '../utils/helixSiliconBridge';
 import {
   createSoABuffer,
   packToSoABuffer,
@@ -59,6 +76,23 @@ import {
   BASE_HELIX_TOOL_CATALOG,
   HelixRegisteredTool,
 } from './helixToolCatalog159';
+import {
+  createNemesisGovernor,
+  NEMESIS_GAMMA_PRESETS,
+  NEMESIS_THERMAL_CUTOFF,
+  NemesisGovernor,
+  NemesisRelaxationMode,
+  NemesisRelaxationReport,
+  WEBER_PERCEPTUAL_K,
+} from './NemesisGovernor';
+import {
+  appendCertifiedCapsuleToPredictor,
+  CapsulePredictionResult,
+  createCapsulePredictorFromJsonl,
+  predictHelixStructureFromHistory,
+  TrainedCapsulePredictorState,
+} from './helixCapsuleTrainer';
+import { createMiniGPTEngine, MiniGPTEngine } from './MiniGPTEngine';
 
 export interface VerifiedExecutionBundle {
   source: string;
@@ -90,6 +124,65 @@ export interface MatterKernelState {
   soa: SoAHolographicBuffer;
   phys: PauliSoAPhysicsState;
   elapsedSec: number;
+  lastMeanTension?: number;
+}
+
+export interface SiliconPhysicsStepOptions {
+  curlGain?: number;
+  elasticityE?: number;
+  viscosityEta?: number;
+  nemesisMode?: NemesisRelaxationMode;
+  gamma?: number;
+  nemesisCutoff?: number;
+  weberK?: number;
+  governor?: NemesisGovernor;
+}
+
+export interface SiliconPhysicsStepResult {
+  dt: number;
+  elapsedSec: number;
+  soaCapacity: number;
+  soaStrideBytes: 28;
+  soaByteLength: number;
+  physicsReport: PauliSoAPhysicsStepReport;
+  nemesisReport: NemesisRelaxationReport;
+  cauchyTriple: CauchySpectralTriple;
+  weberDecision: 'RENDER_FRAME' | 'SKIP_FRAME';
+  weberDeltaRatio: number;
+}
+
+export interface MultiTargetAssemblyBundle {
+  valid: boolean;
+  programSha256: string;
+  manifestSha256: string;
+  targets: CellTarget[];
+  totalCellsUsed: number;
+  artifacts: Partial<Record<CellTarget, PureAssemblyResult>>;
+}
+
+export interface NativeSiliconBridgeHandle {
+  readonly state: TokenPauliBridgeState;
+  readonly governor: NemesisGovernor;
+  readonly transportUrl: string | null;
+  syncScript: (script: string) => ReturnType<typeof syncScriptToSiliconBridge>;
+  injectImpulse: (glyphOrName?: string, strength?: number) => ReturnType<typeof injectTokenImpulse>;
+  stepFrame: (
+    dtSec?: number,
+    opticEnabled?: boolean,
+  ) => SiliconUniformSnapshot & { nemesisReport: NemesisRelaxationReport };
+  getTelemetry: () => SiliconBridgeTelemetrySnapshot;
+  getSoaMemoryLayout: () => {
+    capacity: number;
+    strideBytes: 28;
+    byteLength: number;
+    planes: ['x', 'y', 'z', 'u', 'v', 'amp', 'phaseQuad'];
+  };
+  getShaderBindings: () => {
+    vertexPars: string;
+    vertexDisplace: string;
+    fragmentPars: string;
+    fragmentSssCauchy: string;
+  };
 }
 
 /**
@@ -99,9 +192,15 @@ export interface MatterKernelState {
  */
 export class HelixCoreEngine {
   private tools: HelixRegisteredTool[];
+  private capsulePredictor: TrainedCapsulePredictorState | null = null;
+  private readonly miniGptEngine: MiniGPTEngine = createMiniGPTEngine();
 
   constructor(initialTools: readonly HelixRegisteredTool[] = BASE_HELIX_TOOL_CATALOG) {
     this.tools = [...initialTools];
+  }
+
+  public getMiniGPTEngine(): MiniGPTEngine {
+    return this.miniGptEngine;
   }
 
   public getRegisteredTools(): HelixRegisteredTool[] {
@@ -211,7 +310,7 @@ export class HelixCoreEngine {
   }
 
   /**
-   * Puerta 3: Paso continuo del núcleo físico Pauli-SoA (28B Zero-GC) + Curl + Némesis.
+   * Puerta 2 (Compatibilidad): Paso continuo del núcleo físico Pauli-SoA (28B Zero-GC) + Curl + Némesis.
    */
   public stepMatterKernel(
     state: MatterKernelState,
@@ -227,7 +326,88 @@ export class HelixCoreEngine {
   }
 
   /**
-   * Puerta 4: Generación IA acotada por autómata gramatical + máscara SMT cero-alucinaciones.
+   * Puerta 2 (10D Silicio): Física continua Pauli-SoA (28 B/celda Zero-GC) + Navier-Stokes Curl Noise
+   * + Kelvin-Voigt + Controlador Némesis de Cauchy (T_cut=0.001f) + Dispersión Cauchy + Weber-Fechner (120 FPS).
+   */
+  public stepSiliconPhysics(
+    state: MatterKernelState,
+    dt = 1 / 120,
+    options: SiliconPhysicsStepOptions = {},
+  ): SiliconPhysicsStepResult {
+    const safeDt = Math.min(0.05, Math.max(1 / 240, dt));
+    state.elapsedSec += safeDt;
+
+    const curlGain = options.curlGain ?? 0.35;
+    const gamma =
+      options.gamma ??
+      (options.nemesisMode && options.nemesisMode !== 'CUSTOM'
+        ? NEMESIS_GAMMA_PRESETS[options.nemesisMode]
+        : NEMESIS_GAMMA_PRESETS.STANDARD);
+
+    const physicsReport = stepPauliSoAPhysics(
+      state.soa,
+      state.phys,
+      state.elapsedSec,
+      safeDt,
+      {
+        curlGain,
+        elasticityE: options.elasticityE ?? 16.0,
+        viscosityEta: options.viscosityEta ?? 5.5,
+        nemesisGamma: gamma,
+      },
+    );
+
+    const governor =
+      options.governor ??
+      createNemesisGovernor({
+        mode: options.nemesisMode,
+        gamma,
+        cutoffThreshold: options.nemesisCutoff ?? NEMESIS_THERMAL_CUTOFF,
+        weberK: options.weberK ?? WEBER_PERCEPTUAL_K,
+      });
+
+    const prevMetric = state.lastMeanTension ?? -1;
+    const nemesisReport = governor.stepSoABuffer(
+      state.soa,
+      state.phys,
+      prevMetric >= 0 ? prevMetric : undefined,
+    );
+
+    let weberDecision: 'RENDER_FRAME' | 'SKIP_FRAME' = 'RENDER_FRAME';
+    let weberDeltaRatio = 1;
+    if (prevMetric >= 0) {
+      const wf = evaluateWeberFechnerFrame(
+        prevMetric,
+        nemesisReport.meanTension,
+        governor.weberK,
+      );
+      weberDecision = wf.decision;
+      weberDeltaRatio = wf.deltaRatio;
+    }
+    if (weberDecision === 'RENDER_FRAME' || state.lastMeanTension === undefined) {
+      state.lastMeanTension = nemesisReport.meanTension;
+    }
+
+    return {
+      dt: safeDt,
+      elapsedSec: state.elapsedSec,
+      soaCapacity: state.soa.capacity,
+      soaStrideBytes: state.soa.strideBytes,
+      soaByteLength: state.soa.backingBuffer.byteLength,
+      physicsReport,
+      nemesisReport: {
+        ...nemesisReport,
+        weberDecision,
+        weberDeltaRatio,
+      },
+      cauchyTriple: computeCauchySpectralTriple(),
+      weberDecision,
+      weberDeltaRatio,
+    };
+  }
+
+  /**
+   * Puerta 3: Generación IA acotada por autómata gramatical + máscara SMT cero-alucinaciones.
    */
   public generateConstrained(
     goalOrScenarioId: string,
@@ -257,13 +437,175 @@ export class HelixCoreEngine {
   }
 
   /**
-   * Puerta 5: Enlazador Puro de células .hlx a código Go / GLSL / JS / HTML.
+   * Puerta 4 (Un solo target, compatibilidad): Enlazador Puro de células .hlx a código Go / GLSL / JS / HTML.
    */
   public assemblePureArtifact(
     bundle: VerifiedExecutionBundle,
     target: CellTarget = 'go',
   ): PureAssemblyResult {
     return assemblePureFromCells(bundle.instructions, DEFAULT_HELIX_CELLS, target);
+  }
+
+  /**
+   * Puerta 4 (Multitarget): Ensamblado determinista desde células .hlx firmadas hacia Go, GLSL, JS y HTML.
+   */
+  public assembleTargetArtifacts(
+    bundle: VerifiedExecutionBundle,
+    targets: CellTarget[] = ['go', 'glsl', 'js', 'html'],
+  ): MultiTargetAssemblyBundle {
+    const artifacts: Partial<Record<CellTarget, PureAssemblyResult>> = {};
+    let allValid = bundle.valid;
+    let firstManifest = '';
+    const uniqueCells = new Set<string>();
+
+    for (const target of targets) {
+      const assembled = assemblePureFromCells(
+        bundle.instructions,
+        DEFAULT_HELIX_CELLS,
+        target,
+      );
+      artifacts[target] = assembled;
+      if (!assembled.valid) allValid = false;
+      if (!firstManifest) firstManifest = assembled.manifestSha256;
+      for (const c of assembled.usedCells) {
+        uniqueCells.add(c.fileName);
+      }
+    }
+
+    return {
+      valid: allValid,
+      programSha256: bundle.programSha256,
+      manifestSha256: firstManifest || bundle.programSha256,
+      targets: [...targets],
+      totalCellsUsed: uniqueCells.size,
+      artifacts,
+    };
+  }
+
+  /**
+   * Puerta 5: Puente Nativo al Silicio sin dependencias de UI (Pauli-SoA 28B + Némesis + Cauchy + GLSL + Blindaje SMT).
+   */
+  public connectNativeSiliconBridge(
+    capacity = 32,
+    initialScript?: string,
+    transportUrl: string | null = null,
+    governorConfig: { mode?: NemesisRelaxationMode; gamma?: number; cutoffThreshold?: number; weberK?: number } = {},
+  ): NativeSiliconBridgeHandle {
+    const state = createSiliconBridgeState(capacity);
+    const governor = createNemesisGovernor({
+      mode: governorConfig.mode ?? 'FAST_RESTORE',
+      gamma: governorConfig.gamma ?? state.nemesisGamma,
+      cutoffThreshold: governorConfig.cutoffThreshold ?? NEMESIS_THERMAL_CUTOFF,
+      weberK: governorConfig.weberK ?? WEBER_PERCEPTUAL_K,
+    });
+
+    if (initialScript && initialScript.trim().length > 0) {
+      syncScriptToSiliconBridge(state, initialScript, INITIAL_COMPOUND_VOCABULARY);
+    }
+
+    return {
+      state,
+      governor,
+      transportUrl,
+      syncScript: (script: string) =>
+        syncScriptToSiliconBridge(state, script, INITIAL_COMPOUND_VOCABULARY),
+      injectImpulse: (glyphOrName = 'ᚩ', strength = 0.95) =>
+        injectTokenImpulse(state, glyphOrName, strength),
+      stepFrame: (dtSec = 1 / 120, opticEnabled = true) => {
+        const snapshot = stepSiliconBridgeFrame(state, dtSec, opticEnabled);
+        const nemesisReport = governor.stepSoABuffer(state.soaBuffer, state.phys);
+        return {
+          ...snapshot,
+          nemesisReport,
+        };
+      },
+      getTelemetry: () => getSiliconBridgeTelemetry(state),
+      getSoaMemoryLayout: () => ({
+        capacity: state.soaBuffer.capacity,
+        strideBytes: state.soaBuffer.strideBytes,
+        byteLength: state.soaBuffer.backingBuffer.byteLength,
+        planes: ['x', 'y', 'z', 'u', 'v', 'amp', 'phaseQuad'],
+      }),
+      getShaderBindings: () => ({
+        vertexPars: HELIX_OPTIC_VERTEX_PARS,
+        vertexDisplace: HELIX_OPTIC_VERTEX_DISPLACE,
+        fragmentPars: HELIX_OPTIC_FRAGMENT_PARS,
+        fragmentSssCauchy: HELIX_OPTIC_FRAGMENT_SSS_CAUCHY,
+      }),
+    };
+  }
+
+  /**
+   * Entrena o actualiza el Mini-GPT local leyendo el historial de cápsulas certificadas (`dataset_capsules.jsonl`).
+   */
+  public trainFromCapsules(
+    rawJsonl: string,
+    steps = 16,
+    existingCheckpointJson?: string,
+  ): TrainedCapsulePredictorState {
+    this.miniGptEngine.loadCapsulesFromJsonl(rawJsonl);
+    this.capsulePredictor = createCapsulePredictorFromJsonl(rawJsonl, {
+      steps,
+      existingCheckpointJson,
+    });
+    this.miniGptEngine.restoreCheckpoint(this.capsulePredictor.checkpointJson);
+    return this.capsulePredictor;
+  }
+
+  public getCapsulePredictorStatus(): {
+    initialized: boolean;
+    acceptedCapsules: number;
+    stepsTrained: number;
+    finalLoss: number;
+    checkpointJson: string | null;
+  } {
+    if (!this.capsulePredictor) {
+      return {
+        initialized: false,
+        acceptedCapsules: 0,
+        stepsTrained: 0,
+        finalLoss: 0,
+        checkpointJson: null,
+      };
+    }
+    return {
+      initialized: true,
+      acceptedCapsules: this.capsulePredictor.acceptedRecords.length,
+      stepsTrained: this.capsulePredictor.model.trainedSteps,
+      finalLoss: this.capsulePredictor.finalLoss,
+      checkpointJson: this.capsulePredictor.checkpointJson,
+    };
+  }
+
+  /**
+   * Predice una estructura HELIX verificada por SMT a partir del historial de cápsulas certificadas.
+   */
+  public predictFromCertifiedHistory(
+    prompt: string,
+    fallbackJsonl = '',
+    stepsIfUninitialized = 12,
+  ): CapsulePredictionResult {
+    if (!this.capsulePredictor) {
+      this.trainFromCapsules(fallbackJsonl, stepsIfUninitialized);
+    }
+    return predictHelixStructureFromHistory(this.capsulePredictor!, prompt);
+  }
+
+  /**
+   * Registra una nueva interacción certificada y ejecuta aprendizaje incremental en el Mini-GPT.
+   */
+  public recordCertifiedCapsule(
+    entry: { prompt: string; reply: string; hlxScript: string; shape?: string; domain?: string },
+    retrainSteps = 3,
+  ): boolean {
+    if (!this.capsulePredictor) {
+      this.trainFromCapsules('', 8);
+    }
+    const updated = appendCertifiedCapsuleToPredictor(this.capsulePredictor!, entry, retrainSteps);
+    if (updated && this.capsulePredictor) {
+      this.miniGptEngine.restoreCheckpoint(this.capsulePredictor.checkpointJson);
+    }
+    return updated;
   }
 
   /**
