@@ -34,10 +34,10 @@ function nivel1BareMetal(rawPrompt: string) {
       ? 'BIOMEDICAL_SPACE'
       : /orbit|nave|space|radar|satelit/i.test(cleanIntent)
         ? 'ORBITAL_AEROSPACE'
-        : /terrain|monta|fractal|lunar/i.test(cleanIntent)
+        : /music|musica|sonido|onda|acustic|hz|audio|frecuenc/i.test(cleanIntent) ? 'ACOUSTIC_HARMONIC' : /terrain|monta|fractal|lunar/i.test(cleanIntent)
           ? 'PLANETARY_GEOPHYSICS'
           : 'UNIFIED_PHYSICS';
-  return { cleanIntent, domain, memMB, needsShell, shape: domain.includes('SPACE') || domain.includes('ORBITAL') ? 'satellite' : domain.includes('GEO') ? 'terrain' : 'torus' };
+  return { cleanIntent, domain, memMB, needsShell, shape: domain.includes('SPACE') || domain.includes('ORBITAL') ? 'satellite' : domain.includes('ACOUSTIC') ? 'wave' : domain.includes('GEO') ? 'terrain' : 'torus' };
 }
 
 // NIVEL 2 (HERRAMIENTAS · INGENIERO + L2 + OLLAMA)
@@ -57,7 +57,7 @@ async function nivel2Herramientas(n1: ReturnType<typeof nivel1BareMetal>) {
         model: 'qwen2.5-coder:1.5b',
         stream: false,
         format: 'json',
-        system: 'Eres Nivel 2 (Herramientas e Ingeniero de HELIX). Devuelve SOLO JSON valido con: {"sceneTitle":"titulo","summary":"respuesta tecnica clara en espanol en 2 frases","tools":["herramienta1","herramienta2"]}. Nunca te niegues y responde SIEMPRE en espanol.',
+        system: 'Eres el motor interno HELIX-GALRD (sin codigo externo). NUNCA digas al usuario que programe en C#, WinForms ni instale nada. Tu MISMO acabas de construir y proyectar la simulacion en la Membrana Viscoelastica usando tus motores internos (Helmholtz Acustico, Solver RK4, Cuantica, Orbital). Devuelve SOLO JSON valido con: {"sceneTitle":"nombre de la creacion","summary":"describe en primera persona y en espanol que acabas de simular y proyectar en pantalla","tools":["Motor1","Motor2"]}.',
         prompt: `Dominio: ${n1.domain}. Telemetria PowerShell: ${shellTelemetry || 'N/A'}. Objetivo: ${n1.cleanIntent}`,
       }),
     });
