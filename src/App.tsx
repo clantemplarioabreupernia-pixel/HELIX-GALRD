@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { ArrowLeft, Settings } from 'lucide-react';
 import { AiProtocolView } from './components/AiProtocolView';
 import {
@@ -10,11 +10,14 @@ import { CoreEngineStudioView } from './components/CoreEngineStudioView';
 import { LiquidMorphShape } from './components/LiquidBiopixelCanvas';
 import { MeshStudio3DView } from './components/MeshStudio3DView';
 import { VmShellView } from './components/VmShellView';
+import { HelixMusicVoiceStudio } from './components/HelixMusicVoiceStudio';
+import { HelixCinemaRecorderView } from './components/HelixCinemaRecorderView';
+import { DEFAULT_HELIX_PRODUCTION, HelixCineProductionScript } from './core/helixProductionScript';
 import { INITIAL_COMPOUND_VOCABULARY } from './data/vocabulary';
 import { DEFAULT_HELIX_CELLS, HelixCell } from './utils/helixCells';
 import { DEFAULT_HELIX_PHYSICS_PROGRAM } from './utils/helixVm';
 
-type LabViewId = 'c' | 'p' | 'cells' | 'vm' | '3d';
+type LabViewId = 'c' | 'p' | 'cells' | 'vm' | '3d' | 'music' | 'cinema';
 
 export default function App() {
   const [labOpen, setLabOpen] = useState<boolean>(false);
@@ -22,6 +25,7 @@ export default function App() {
   const [vocabulary] = useState(INITIAL_COMPOUND_VOCABULARY);
   const [cells, setCells] = useState<HelixCell[]>(() => DEFAULT_HELIX_CELLS);
   const [vmScript, setVmScript] = useState<string>(DEFAULT_HELIX_PHYSICS_PROGRAM);
+  const [productionScript, setProductionScript] = useState<HelixCineProductionScript>(DEFAULT_HELIX_PRODUCTION);
   const [projectedHologram, setProjectedHologram] =
     useState<HologramProjectionPayload | null>(null);
 
@@ -127,6 +131,20 @@ export default function App() {
         <nav className="flex items-center gap-4 overflow-x-auto text-xs font-medium">
           <button
             type="button"
+            onClick={() => setLabView('music')}
+            className={`rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap ${labView === 'music' ? 'bg-amber-500/20 text-amber-300' : 'text-slate-300 hover:bg-white/5'}`}
+          >
+            Estudio Música & Voces
+          </button>
+          <button
+            type="button"
+            onClick={() => setLabView('cinema')}
+            className={`rounded-lg px-2.5 py-1.5 transition-colors whitespace-nowrap ${labView === 'cinema' ? 'bg-rose-500/20 text-rose-300' : 'text-slate-300 hover:bg-white/5'}`}
+          >
+            Cine & Grabación
+          </button>
+          <button
+            type="button"
             onClick={() => setLabView('c')}
             className={`border-b-2 py-1 transition-colors whitespace-nowrap shrink-0 ${
               labView === 'c'
@@ -193,6 +211,18 @@ export default function App() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-auto">
+        {labView === 'music' ? (
+          <HelixMusicVoiceStudio
+            script={productionScript}
+            onChangeScript={setProductionScript}
+            onSendToCinema={(s) => { setProductionScript(s); setLabView('cinema'); }}
+          />
+        ) : labView === 'cinema' ? (
+          <HelixCinemaRecorderView
+            script={productionScript}
+            onBackToComposer={() => setLabView('music')}
+          />
+        ) : null}
         {labView === 'c' && (
           <CoreEngineStudioView
             onOpenInVm={handleOpenInVm}
@@ -246,3 +276,4 @@ export default function App() {
     </div>
   );
 }
+
