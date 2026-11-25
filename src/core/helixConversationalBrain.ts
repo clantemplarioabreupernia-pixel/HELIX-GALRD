@@ -1,4 +1,5 @@
-﻿import { analyzeVocalAndTextProsody } from '../utils/auroraProsody';
+﻿import { parseStoryIntoMusicalScore, StorySceneCue } from './helixStoryScoreEngine';
+import { analyzeVocalAndTextProsody } from '../utils/auroraProsody';
 import { DISCIPLINES_33 } from '../data/disciplines33';
 import { DOMAIN_ENGINE_METADATA } from './helixDomainEngines';
 import type { HelixCoreEngine } from './HelixCoreEngine';
@@ -574,4 +575,31 @@ export function buildHumanConversationReply(
   }
 
   return `${_lead}Te entiendo. Si buscas una capacidad concreta, puedo listarte todas mis herramientas y funciones (${tools.length} en total), explicarte cualquier disciplina o ejecutar una simulación ahora mismo sobre «${shapeLabel}». ¿Qué te gustaría hacer?`;
+}
+
+export interface HumanCineReplyResult {
+  intent: ConversationalIntentKind;
+  replyText: string;
+  spokenSummary: string;
+  cues: StorySceneCue[];
+}
+
+export function buildHumanCineReply(
+  raw: string,
+  shapeLabel: string,
+  engineCount: number,
+  isAction: boolean,
+  context: ConversationTurnContext = {},
+): HumanCineReplyResult {
+  const intent = isAction ? 'creation_or_simulation' : classifyConversationIntent(raw);
+  const replyText = buildHumanConversationReply(raw, shapeLabel, engineCount, isAction, context);
+  const spokenSummary = toSpokenSummary(replyText);
+  const cues = parseStoryIntoMusicalScore(replyText, intent);
+
+  return {
+    intent,
+    replyText,
+    spokenSummary,
+    cues,
+  };
 }

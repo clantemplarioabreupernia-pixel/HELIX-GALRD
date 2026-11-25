@@ -7,6 +7,7 @@ import { Download, ExternalLink, ImagePlus, Mic, MicOff, Send, Volume2, VolumeX,
 import { createHelixCoreEngine, EngineeringReport } from '../core';
 import {
   buildHumanConversationReply,
+  buildHumanCineReply,
   classifyConversationIntent,
   isActionOrCreationIntent,
   toSpokenSummary,
@@ -120,6 +121,7 @@ function inferShapeAndAccent(
 }
 
 export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps = {}) {
+  const stopCineScoreRef = useRef<(() => void) | null>(null);
   const [engine] = useState(() => createHelixCoreEngine());
 
   const [inputText, setInputText] = useState('');
@@ -381,17 +383,13 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
         const isStoryRequest = /\b(cuento|historia|escanea|caperucita|pel[ií]cula|partitura|musicaliza)\b/i.test(text);
     let storyAddendum = '';
     const healthEval = evaluateAstronautMissionHealth(text);
-    if (healthEval.detected) { storyAddendum += '\n\n' + healthEval.summary + '\n' + healthEval.guidance; setAccentHex(healthEval.accentHex); setCurrentShape('quantum_bloch'); }
-    if (isStoryRequest) {
-      const cues = parseStoryIntoMusicalScore(text);
-      storyAddendum = '\n\nPartitura Rúnica P33 (' + cues.length + ' escenas): ' + cues.map(c => '[E' + c.index + ': p=' + c.prime + ' · ' + c.freqHz + 'Hz]').join(' → ');
-      playStoryScoreLive(cues, (cue, cine) => {
-        setPulseCounter((n) => n + 1);
-        setCurrentShape(cue.mood === 'bosque' ? 'terrain_fbm' : cue.mood === 'tension' ? 'sphere' : 'avatar');
-        setAccentHex(cine.shotCode === 0x03 ? '#f43f5e' : cue.mood === 'bosque' ? '#22c55e' : '#38bdf8');
-      });
+    if (healthEval.detected) {
+      storyAddendum += '\n\n' + healthEval.summary + '\n' + healthEval.guidance;
+      setAccentHex(healthEval.accentHex);
+      setCurrentShape('quantum_bloch');
     }
-    const replyText = buildHumanConversationReply(
+
+    const { replyText, cues } = buildHumanCineReply(
       text,
       MORPH_SHAPE_LABELS[inferredShape] ?? 'Rostro Holográfico Humano',
       report.activatedEngines.length,
@@ -402,6 +400,21 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
         history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
       },
     );
+
+    const activeCues = isStoryRequest ? parseStoryIntoMusicalScore(text) : cues;
+    if (isStoryRequest) {
+      storyAddendum += '\n\nPartitura Rúnica P33 (' + activeCues.length + ' escenas): ' + activeCues.map(c => '[E' + c.index + ': p=' + c.prime + ' · ' + c.freqHz + 'Hz]').join(' → ');
+    }
+
+    stopCineScoreRef.current?.();
+    stopCineScoreRef.current = playStoryScoreLive(activeCues, (cue, cine) => {
+      setPulseCounter((n) => n + 1);
+      if (isStoryRequest || cine.shotCode === 0x03) {
+        setCurrentShape(cue.mood === 'bosque' ? 'terrain_fbm' : cue.mood === 'tension' ? 'cymatic_wave' : 'avatar');
+      }
+      setAccentHex(cine.shotCode === 0x03 ? '#f43f5e' : cue.mood === 'bosque' ? '#22c55e' : '#38bdf8');
+    });
+
     const enrichedReply = replyText + storyAddendum; const finalReply = bondStep.bondReplyOverride ?? (bondStep.distilledPrompt ? enrichedReply + "\n\n" + bondStep.distilledPrompt : enrichedReply);
 
     // 2. Destilación N2 + Aduana PCC en servidor en segundo plano
@@ -788,6 +801,10 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
     </div>
   );
 }
+
+
+
+
 
 
 
