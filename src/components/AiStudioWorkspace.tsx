@@ -1,19 +1,20 @@
-﻿import { speakAndPulseHologram } from '../utils/cochlearPulseSynth';
-import { buildHumanConversationReply } from '../core/helixConversationalBrain';
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { Download, ExternalLink, ImagePlus, Mic, MicOff, Send, Volume2, VolumeX, X } from 'lucide-react';
+import { createHelixCoreEngine, EngineeringReport } from '../core';
 import {
-  CheckCircle2,
-  Cpu,
-  Download,
-  RotateCcw,
-  Send,
-  SlidersHorizontal,
-  Sparkles,
-} from 'lucide-react';
+  buildHumanConversationReply,
+  classifyConversationIntent,
+  isActionOrCreationIntent,
+  toSpokenSummary,
+} from '../core/helixConversationalBrain';
 import {
-  createHelixCoreEngine,
-  EngineeringReport,
-} from '../core';
+  getSortedWebSpeechVoices,
+  inferVoiceGenderFromVoice,
+  loadPersistedVoicePrefs,
+  savePersistedVoicePrefs,
+  speakAndPulseHologram,
+  VoiceGender,
+} from '../utils/cochlearPulseSynth';
 import { DEFAULT_HELIX_PHYSICS_PROGRAM } from '../utils/helixVm';
 import {
   LiquidBiopixelCanvas,
@@ -25,45 +26,49 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string;
-  shapeFormed: LiquidMorphShape;
-  report?: EngineeringReport;
-  answersUsed?: Record<string, string>;
-  confirmed?: boolean;
-  userInputsSummary?: { label: string; value: string }[];
+  artifactHtml?: string;
+  artifactTitle?: string;
 }
 
-interface DataInputDraft {
-  altitudeKm: string;
-  velocityMs: string;
-  freqHz: string;
-  gravityMs2: string;
-  massKg: string;
+export interface HologramProjectionPayload {
+  id: number;
+  hlxScript: string;
+  title: string;
+  subtitle?: string;
+  shape?: LiquidMorphShape;
+  accentHex?: string;
 }
 
-const EMPTY_DATA_DRAFT: DataInputDraft = {
-  altitudeKm: '',
-  velocityMs: '',
-  freqHz: '',
-  gravityMs2: '',
-  massKg: '',
-};
+interface AiStudioWorkspaceProps {
+  externalProjection?: HologramProjectionPayload | null;
+}
 
-const STARTER_PROMPTS = [
-  'Quiero crear un videojuego espacial con naves',
-  'Simula una órbita a 850 km con enlace satelital y radar Doppler',
-  'Videoclip con voz reactiva y fluido luminoso',
-  'Combina ondas acústicas a 528 Hz con física cuántica y óptica',
-  'Esculpe montañas fractales con gravedad lunar 1.62 m/s²',
-  'Calcula un balance financiero exacto de 1500 dólares',
-];
+interface BrowserSpeechRecognition {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
 
 function inferShapeAndAccent(
   text: string,
   report?: EngineeringReport,
-  answers: Record<string, string> = {},
 ): { shape: LiquidMorphShape; accentHex: string } {
-  const combined = `${text} ${Object.values(answers).join(' ')}`.toLowerCase();
+  const combined = text.toLowerCase();
 
+  if (
+    combined.includes('rostro') ||
+    combined.includes('cara') ||
+    combined.includes('avatar') ||
+    combined.includes('humano') ||
+    combined.includes('vuelve contigo')
+  ) {
+    return { shape: 'avatar', accentHex: '#38bdf8' };
+  }
   if (combined.includes('cristal') || combined.includes('icosa') || combined.includes('óptic') || combined.includes('optica')) {
     return { shape: 'crystal', accentHex: '#a78bfa' };
   }
@@ -94,657 +99,674 @@ function inferShapeAndAccent(
     combined.includes('satel') ||
     combined.includes('orbit') ||
     combined.includes('órbita') ||
-    combined.includes('nasa') ||
     report?.detectedCategory === 'SIMULACION_ESPACIAL' ||
     report?.detectedCategory === 'VIDEOJUEGO'
   ) {
     return { shape: 'orbital_ship', accentHex: '#38bdf8' };
   }
   if (
-    combined.includes('clip') ||
     combined.includes('música') ||
     combined.includes('musica') ||
-    combined.includes('voz') ||
     combined.includes('onda') ||
-    combined.includes('líquido') ||
-    combined.includes('liquido') ||
-    combined.includes('hz') ||
-    report?.detectedCategory === 'CINEMA_VIDEOCLIP'
+    combined.includes('fluido') ||
+    combined.includes('hz')
   ) {
     return { shape: 'cymatic_wave', accentHex: '#0ea5e9' };
   }
-  return { shape: 'torus', accentHex: '#38bdf8' };
+  return { shape: 'avatar', accentHex: '#38bdf8' };
 }
 
-function downloadHtmlArtifact(filename: string, content: string) {
-  const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function composeConsoleReply(
-  report: EngineeringReport,
-  shape: LiquidMorphShape,
-  confirmed: boolean,
-): string {
-  const shapeName = MORPH_SHAPE_LABELS[shape];
-  const domainCount = report.activatedEngines.length;
-  const coupledCount = report.crossBridges.length;
-
-  if (report.detectedPersona === 'KID_CREATIVE') {
-    if (!confirmed && report.clarificationNeeded) {
-      return `¡Listo para jugar! Ya proyecté una forma "${shapeName}" en la pantalla líquida acoplando ${domainCount} leyes físicas internas. Elige abajo cómo quieres tu mundo para terminarlo:`;
-    }
-    return `¡Creación lista y en movimiento! La pantalla líquida tomó forma de "${shapeName}" combinando ${domainCount} motores de física y sonido sin que tengas que escribir nada de código.`;
-  }
-
-  if (report.detectedPersona === 'CREATOR_MEDIA') {
-    if (!confirmed && report.clarificationNeeded) {
-      return `He enlazado ${domainCount} motores audiovisuales y físicos hacia la figura "${shapeName}" en la pantalla líquida. Ajusta abajo tus preferencias para fijar la escena final:`;
-    }
-    return `Escena generada y verificada en forma de "${shapeName}" con ${coupledCount} acoplamientos internos entre audio, movimiento y materia fluida.`;
-  }
-
-  const recombClause =
-    coupledCount > 0
-      ? ` y acoplé automáticamente ${coupledCount} variables cruzadas entre ecuaciones`
-      : '';
-
-  if (!confirmed && report.clarificationNeeded) {
-    return `Procesé tu petición sobre ${domainCount} dominios matemáticos reales${recombClause}, formando "${shapeName}" en la pantalla líquida. Confirma los parámetros abajo para cerrar la salida:`;
-  }
-
-  return `Cálculo completado e integrado automáticamente en ${domainCount} dominios${recombClause}. La pantalla líquida proyecta "${shapeName}" con coherencia física verificada.`;
-}
-
-function parseExplicitDataDraft(draft: DataInputDraft): {
-  params: Record<string, number | string>;
-  summary: { label: string; value: string }[];
-} {
-  const params: Record<string, number | string> = {};
-  const summary: { label: string; value: string }[] = [];
-
-  const alt = Number(draft.altitudeKm);
-  if (draft.altitudeKm.trim() && Number.isFinite(alt) && alt > 0) {
-    params.radius_km = 6371 + alt;
-    summary.push({ label: 'Altitud', value: `${alt} km` });
-  }
-
-  const vel = Number(draft.velocityMs);
-  if (draft.velocityMs.trim() && Number.isFinite(vel) && vel > 0) {
-    params.velocity_ms = vel;
-    params.target_vel_ms = vel;
-    summary.push({ label: 'Velocidad', value: `${vel} m/s` });
-  }
-
-  const freq = Number(draft.freqHz);
-  if (draft.freqHz.trim() && Number.isFinite(freq) && freq >= 20) {
-    params.freq_hz = freq;
-    summary.push({ label: 'Frecuencia', value: `${freq} Hz` });
-  }
-
-  const grav = Number(draft.gravityMs2);
-  if (draft.gravityMs2.trim() && Number.isFinite(grav) && grav > 0) {
-    params.gravity_ms2 = grav;
-    summary.push({ label: 'Gravedad', value: `${grav} m/s²` });
-  }
-
-  const mass = Number(draft.massKg);
-  if (draft.massKg.trim() && Number.isFinite(mass) && mass > 0) {
-    params.mass_kg = mass;
-    summary.push({ label: 'Masa', value: `${mass} kg` });
-  }
-
-  return { params, summary };
-}
-
-export function AiStudioWorkspace() {
+export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps = {}) {
   const [engine] = useState(() => createHelixCoreEngine());
 
   const [inputText, setInputText] = useState('');
-  const [showDataPanel, setShowDataPanel] = useState(false);
-const [rightTab, setRightTab] = useState<'liquid' | 'app'>('liquid');
-const [listening, setListening] = useState(false);
-  const [dataDraft, setDataDraft] = useState<DataInputDraft>(EMPTY_DATA_DRAFT);
+  const [initialVoicePrefs] = useState(() => loadPersistedVoicePrefs());
+  const [voiceEnabled, setVoiceEnabled] = useState<boolean>(initialVoicePrefs.enabled);
+  const [voiceGender, setVoiceGender] = useState<VoiceGender>(initialVoicePrefs.gender);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>(initialVoicePrefs.voiceURI);
+  const [selectedVoiceName, setSelectedVoiceName] = useState<string>(initialVoicePrefs.voiceName);
+  const [micActive, setMicActive] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [micNotice, setMicNotice] = useState<string | null>(null);
+  const [attachedImageDataUrl, setAttachedImageDataUrl] = useState<string | null>(null);
+  const [attachedImageName, setAttachedImageName] = useState<string | null>(null);
+  const [activeArtifact, setActiveArtifact] = useState<{ html: string; title: string } | null>(null);
 
-  // Estado acoplado directamente a la Pantalla Líquida de Biopíxeles
   const [currentScript, setCurrentScript] = useState<string>(DEFAULT_HELIX_PHYSICS_PROGRAM);
-  const [currentShape, setCurrentShape] = useState<LiquidMorphShape>('torus');
+  const [currentShape, setCurrentShape] = useState<LiquidMorphShape>('avatar');
   const [accentHex, setAccentHex] = useState<string>('#38bdf8');
   const [pulseCounter, setPulseCounter] = useState<number>(1);
-  const [screenTitle, setScreenTitle] = useState<string>('Pantalla Líquida Helix');
-  const [screenSubtitle, setScreenSubtitle] = useState<string>('Lista para formar y calcular desde tu petición');
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const welcomeReport = engine.analyzeIntent(
-      'Equilibrio fluido toroidal con dispersión luminosa',
-      {},
-      'ENGINEER_SCIENTIST',
-      {},
-      false,
-    );
-    return [
-      {
-        id: 'welcome-1',
-        role: 'assistant',
-        text: 'Hola. Soy Helix. Pídeme lo que quieras construir o simular —desde un videojuego hasta una trayectoria espacial o un cruce entre ciencias— sin escribir nada de código. Yo selecciono y combino internamente las ecuaciones necesarias, recibo tus datos de entrada, calculo las salidas verificadas y doy forma viva a tu creación en la pantalla líquida.',
-        shapeFormed: 'torus',
-        report: welcomeReport,
-        confirmed: true,
-      },
-    ];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome-1',
+      role: 'assistant',
+      text: 'Hola, soy Helix. Podemos conversar con total naturalidad, explorar cualquier tema o dar vida a una simulación cuando me lo pidas.',
+    },
+  ]);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speakTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [messages.length, isThinking]);
 
-  const driveLiquidScreen = (
-    hlx: string,
-    shape: LiquidMorphShape,
-    hex: string,
-    title: string,
-    subtitle: string,
+  useEffect(() => {
+    savePersistedVoicePrefs({
+      enabled: voiceEnabled,
+      gender: voiceGender,
+      voiceURI: selectedVoiceURI,
+      voiceName: selectedVoiceName,
+    });
+  }, [voiceEnabled, voiceGender, selectedVoiceURI, selectedVoiceName]);
+
+  useEffect(() => {
+    return () => {
+      if (speakTimerRef.current !== null) {
+        window.clearTimeout(speakTimerRef.current);
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // Ignore stop errors on unmount
+        }
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const syncVoices = () => {
+      try {
+        const list = getSortedWebSpeechVoices(window.speechSynthesis.getVoices());
+        setAvailableVoices(list);
+        if (list.length > 0 && (selectedVoiceURI || selectedVoiceName)) {
+          const matched =
+            list.find((v) => v.voiceURI === selectedVoiceURI) ||
+            list.find((v) => v.name === selectedVoiceName);
+          if (matched && matched.voiceURI !== selectedVoiceURI) {
+            setSelectedVoiceURI(matched.voiceURI);
+          }
+        }
+      } catch {
+        // Ignore browser voice enumeration errors
+      }
+    };
+    syncVoices();
+    window.speechSynthesis.addEventListener?.('voiceschanged', syncVoices);
+    return () => {
+      window.speechSynthesis.removeEventListener?.('voiceschanged', syncVoices);
+    };
+  }, [selectedVoiceURI, selectedVoiceName]);
+
+  const triggerVoiceReply = (
+    text: string,
+    gender: VoiceGender = voiceGender,
+    overrideVoiceURI?: string | null,
   ) => {
-    setCurrentScript(hlx || DEFAULT_HELIX_PHYSICS_PROGRAM);
-    setCurrentShape(shape);
-    setAccentHex(hex);
-    setScreenTitle(title);
-    setScreenSubtitle(subtitle);
+    if (!voiceEnabled || !text.trim()) return;
+    if (speakTimerRef.current !== null) {
+      window.clearTimeout(speakTimerRef.current);
+    }
+    const activeURI =
+      overrideVoiceURI !== undefined ? overrideVoiceURI : selectedVoiceURI || null;
+    setIsSpeaking(true);
+    speakAndPulseHologram(text, gender, {
+      voiceURI: activeURI,
+      onStart: () => setIsSpeaking(true),
+      onBoundary: () => setPulseCounter((c) => c + 1),
+      onEnd: () => setIsSpeaking(false),
+    });
+    const fallbackMs = Math.min(12000, Math.max(2200, text.length * 75));
+    speakTimerRef.current = window.setTimeout(() => {
+      setIsSpeaking(false);
+    }, fallbackMs);
+  };
+
+  const handleSelectVoiceGender = (nextGender: VoiceGender) => {
+    setVoiceGender(nextGender);
+    setSelectedVoiceURI('');
+    setSelectedVoiceName('');
+    if (voiceEnabled) {
+      triggerVoiceReply(
+        nextGender === 'female' ? 'Voz femenina activa.' : 'Voz masculina activa.',
+        nextGender,
+        null,
+      );
+    }
+  };
+
+  const handleSelectVoiceURI = (nextURI: string) => {
+    const chosen = availableVoices.find((v) => v.voiceURI === nextURI);
+    setSelectedVoiceURI(nextURI);
+    setSelectedVoiceName(chosen?.name ?? '');
+
+    const inferred = chosen ? inferVoiceGenderFromVoice(chosen) : null;
+    const nextGender = inferred ?? voiceGender;
+    if (inferred) {
+      setVoiceGender(inferred);
+    }
+
+    if (voiceEnabled) {
+      const sampleText = chosen
+        ? `Hola, ahora te hablo con la voz ${chosen.name}.`
+        : nextGender === 'female'
+          ? 'Voz femenina activa.'
+          : 'Voz masculina activa.';
+      triggerVoiceReply(sampleText, nextGender, nextURI || null);
+    }
+  };
+
+  useEffect(() => {
+    if (!externalProjection || !externalProjection.hlxScript.trim()) return;
+    setCurrentScript(externalProjection.hlxScript);
+    setCurrentShape(externalProjection.shape ?? 'avatar');
+    setAccentHex(externalProjection.accentHex ?? '#38bdf8');
     setPulseCounter((c) => c + 1);
+    const note = `He proyectado «${externalProjection.title}» en la pantalla holográfica.`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `proj_${externalProjection.id}`,
+        role: 'assistant',
+        text: note,
+      },
+    ]);
+    if (voiceEnabled) {
+      triggerVoiceReply(note, voiceGender);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalProjection]);
+
+  const handleAttachImage = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setAttachedImageDataUrl(reader.result);
+        setAttachedImageName(file.name);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleDownloadArtifact = (html: string, title: string) => {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 32) || 'helix_creacion'}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleSendInstruction = async (overrideText?: string) => {
-    const text = (overrideText ?? inputText).trim();
+    const rawTyped = (overrideText ?? inputText).trim();
+    const text = rawTyped || (attachedImageName ? `Mezclar imagen real (${attachedImageName}) con simulación procedural` : '');
     if (!text) return;
     if (!overrideText) setInputText('');
-
-    const { params: explicitParams, summary: userInputsSummary } = parseExplicitDataDraft(dataDraft);
+    const currentImageDataUrl = attachedImageDataUrl;
+    const currentImageName = attachedImageName;
+    setAttachedImageDataUrl(null);
+    setAttachedImageName(null);
+    setMicNotice(null);
 
     const userMsg: ChatMessage = {
       id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       role: 'user',
+      text: currentImageName ? `${text} [${currentImageName}]` : text,
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    setIsThinking(true);
+
+    // 1. Toda la arquitectura interna (Línea Recta, Doble Hélice, 17B QPSK-132, Biblioteca Autodidacta, Recombinador A×B y PCC) opera en silencio en segundo plano
+    const actionIntent = isActionOrCreationIntent(text) || Boolean(currentImageDataUrl);
+    const chatKind = classifyConversationIntent(text);
+    const report = engine.analyzeIntent(text, {}, 'AUTO', {}, true);
+    engine.runAutodidactSynthesis(text, report.recombination);
+
+    const { shape: inferredShape, accentHex: nextHex } = actionIntent
+      ? inferShapeAndAccent(text, report)
+      : { shape: 'avatar' as LiquidMorphShape, accentHex: '#38bdf8' };
+
+    const nextScript =
+      report.recombination?.synthesizedHlx || DEFAULT_HELIX_PHYSICS_PROGRAM;
+
+    setCurrentScript(nextScript);
+    setCurrentShape(inferredShape);
+    setAccentHex(nextHex);
+    setPulseCounter((c) => c + 1);
+
+    // Entrenamiento silencioso local + N2 si hubo recombinación certificada PCC
+    const recomb = report.recombination;
+    if (recomb?.success && recomb.pccVerified && recomb.synthesizedHlx) {
+      engine.recordCertifiedCapsule(
+        {
+          prompt: text,
+          reply: recomb.engineeringSummary,
+          hlxScript: recomb.synthesizedHlx,
+          shape: inferredShape,
+          domain: recomb.disciplines33[0]?.name ?? 'RECOMBINACION_AB',
+        },
+        2,
+      );
+
+      fetch('/api/recombine/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: text,
+          summary: recomb.engineeringSummary,
+          hlxScript: recomb.synthesizedHlx,
+          domain: recomb.disciplines33[0]?.name ?? 'RECOMBINACION_AB',
+          qpsk17Sha256: recomb.holographicCard?.frame.frameSha256 ?? '',
+          disciplineMaskBits33: recomb.disciplineMaskBits33,
+          steps: 2,
+        }),
+      }).catch(() => {});
+    }
+
+    const replyText = buildHumanConversationReply(
       text,
-      shapeFormed: currentShape,
-      userInputsSummary: userInputsSummary.length > 0 ? userInputsSummary : undefined,
-    };
-
-    // Todo sucede automáticamente por petición: introspección, combinación autónoma, verificación y síntesis
-    const report = engine.analyzeIntent(text, {}, 'AUTO', explicitParams, true);
-    const { shape, accentHex: nextHex } = inferShapeAndAccent(text, report);
-    const hlxToRun = report.recombination?.synthesizedHlx || DEFAULT_HELIX_PHYSICS_PROGRAM;
-
-    const firstOutput = report.dataOutputs[0]
-      ? `${report.dataOutputs[0].label}: ${report.dataOutputs[0].value}`
-      : text.slice(0, 64);
-
-    driveLiquidScreen(
-      hlxToRun,
-      shape,
-      nextHex,
-      MORPH_SHAPE_LABELS[shape],
-      firstOutput,
+      MORPH_SHAPE_LABELS[inferredShape] ?? 'Rostro Holográfico Humano',
+      report.activatedEngines.length,
+      actionIntent,
+      {
+        engine,
+        report,
+        history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
+      },
     );
 
-    const assistantMsg: ChatMessage = {
-      id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      role: 'assistant',
-      text: buildHumanConversationReply(text, MORPH_SHAPE_LABELS[shape], report.activatedEngines.length, /crea|simul|calcul|juego|video|monta|orbit|onda|fluid|esculp|balance|salud|mar/i.test(text)),
-      shapeFormed: shape,
-      report,
-      answersUsed: {},
-      confirmed: !report.clarificationNeeded,
-    };
-
-
-    setMessages((prev) => [...prev, userMsg]); try { const r = await fetch('/api/ollama/distill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) }); const d = r.ok ? await r.json() : null; if (d?.ok && d?.capsule?.reply) { if (d.capsule.hlxScript) { driveLiquidScreen(String(d.capsule.hlxScript), (d.capsule.shape || shape) as any, String(d.capsule.accentColor || '#38bdf8'), String(d.capsule.sceneTitle || 'Síntesis HELIX'), 'Qwen 2.5 Coder · Puente Cognitivo'); } setMessages((prev) => [...prev, { ...assistantMsg, text: String(d.capsule.reply), report: undefined, confirmed: true }]); return; } } catch {} setMessages((prev) => [...prev, assistantMsg]);
-    void fetch('/api/ollama/distill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: text }) }).then((r) => r.ok ? r.json() : null).then((d) => { if (d?.ok && d?.capsule?.hlxScript) { driveLiquidScreen(String(d.capsule.hlxScript), shape, '#38bdf8', String(d.capsule.sceneTitle || 'Cápsula Destilada L2'), 'Certificado SMT · Ollama -> Mini-GPT'); } }).catch(() => {});
-  };
-
-  const handleSelectClarificationOption = (
-    msgId: string,
-    questionId: string,
-    optionValue: string,
-  ) => {
-    const { params: explicitParams } = parseExplicitDataDraft(dataDraft);
-
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msgId || !m.report) return m;
-        const nextAnswers = { ...(m.answersUsed ?? {}), [questionId]: optionValue };
-        const updatedReport = engine.analyzeIntent(
-          m.report.intent,
-          nextAnswers,
-          m.report.detectedPersona,
-          explicitParams,
-          true,
-        );
-        const { shape, accentHex: nextHex } = inferShapeAndAccent(
-          m.report.intent,
-          updatedReport,
-          nextAnswers,
-        );
-        const hlx = updatedReport.recombination?.synthesizedHlx || DEFAULT_HELIX_PHYSICS_PROGRAM;
-
-        driveLiquidScreen(
-          hlx,
-          shape,
-          nextHex,
-          MORPH_SHAPE_LABELS[shape],
-          optionValue,
-        );
-
-        const allAnswered = !updatedReport.clarificationNeeded;
-        return {
-          ...m,
-          answersUsed: nextAnswers,
-          report: updatedReport,
-          shapeFormed: shape,
-          confirmed: allAnswered,
-          text: composeConsoleReply(updatedReport, shape, allAnswered),
-        };
-      }),
-    );
-  };
-
-  const handleConfirmAllDefaults = (msgId: string) => {
-    const { params: explicitParams } = parseExplicitDataDraft(dataDraft);
-
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.id !== msgId || !m.report) return m;
-        const filled: Record<string, string> = { ...(m.answersUsed ?? {}) };
-        for (const q of m.report.questions) {
-          if (!filled[q.id]) filled[q.id] = q.defaultOption;
+    // 2. Destilación N2 + Aduana PCC en servidor en segundo plano
+    try {
+      const r = await fetch('/api/ollama/distill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+      });
+      const d = r.ok ? await r.json() : null;
+      if (d?.ok && d?.capsule) {
+        if (d.capsule.hlxScript) {
+          setCurrentScript(String(d.capsule.hlxScript));
         }
-        const updatedReport = engine.analyzeIntent(
-          m.report.intent,
-          filled,
-          m.report.detectedPersona,
-          explicitParams,
-          true,
-        );
-        const { shape, accentHex: nextHex } = inferShapeAndAccent(
-          m.report.intent,
-          updatedReport,
-          filled,
-        );
-        const summaryOut = updatedReport.dataOutputs[0]
-          ? `${updatedReport.dataOutputs[0].label}: ${updatedReport.dataOutputs[0].value}`
-          : 'Configuración fijada';
+        if (actionIntent && d.capsule.shape) {
+          setCurrentShape(d.capsule.shape as LiquidMorphShape);
+        } else if (
+          chatKind === 'greeting' ||
+          chatKind === 'identity' ||
+          chatKind === 'capabilities' ||
+          chatKind === 'gratitude'
+        ) {
+          setCurrentShape('avatar');
+        }
+        if (d.capsule.accentColor) {
+          setAccentHex(String(d.capsule.accentColor));
+        }
+        setPulseCounter((c) => c + 1);
+      }
+    } catch {
+      // Mantiene respuesta conversacional determinista local si el servidor no responde
+    }
 
-        driveLiquidScreen(
-          updatedReport.recombination?.synthesizedHlx || DEFAULT_HELIX_PHYSICS_PROGRAM,
-          shape,
-          nextHex,
-          MORPH_SHAPE_LABELS[shape],
-          summaryOut,
-        );
-        return {
-          ...m,
-          answersUsed: filled,
-          report: updatedReport,
-          shapeFormed: shape,
-          confirmed: true,
-          text: composeConsoleReply(updatedReport, shape, true),
-        };
-      }),
-    );
-  };
+    // Si el usuario adjuntó una imagen real, inyectarla limpiamente en la escena HTML5 autogenerada
+    let finalArtifactHtml = actionIntent ? report.materializedHtmlPreview : undefined;
+    if (finalArtifactHtml && currentImageDataUrl) {
+      const safeJsonUrl = JSON.stringify(currentImageDataUrl);
+      finalArtifactHtml = finalArtifactHtml.replace(
+        '</body>',
+        `<script>(function(){try{var img=new Image();img.onload=function(){if(typeof loadedImg!=="undefined")loadedImg=img;if(typeof bgImg!=="undefined")bgImg=img;if(typeof bg!=="undefined")bg=img;};img.src=${safeJsonUrl};}catch(e){}})();</script></body>`,
+      );
+    }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendInstruction();
+    setIsThinking(false);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        role: 'assistant',
+        text: replyText,
+        artifactHtml: finalArtifactHtml,
+        artifactTitle: actionIntent ? text.slice(0, 48) : undefined,
+      },
+    ]);
+
+    if (voiceEnabled) {
+      triggerVoiceReply(toSpokenSummary(replyText), voiceGender);
     }
   };
 
-  const handleResetSession = () => {
-    setMessages((prev) => prev.slice(0, 1));
-    setDataDraft(EMPTY_DATA_DRAFT);
-    driveLiquidScreen(
-      DEFAULT_HELIX_PHYSICS_PROGRAM,
-      'torus',
-      '#38bdf8',
-      'Pantalla Líquida Helix',
-      'Sesión reiniciada · lista para tu petición',
-    );
+  const handleToggleMic = () => {
+    setMicNotice(null);
+    if (micActive && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // Ignore stop errors
+      }
+      setMicActive(false);
+      return;
+    }
+
+    const win = window as unknown as {
+      SpeechRecognition?: new () => BrowserSpeechRecognition;
+      webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+    };
+    const SpeechRecCtor = win.SpeechRecognition || win.webkitSpeechRecognition;
+
+    if (!SpeechRecCtor) {
+      setMicNotice('Tu navegador no permite dictado por micrófono; puedes escribir aquí.');
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecCtor();
+      recognition.lang = 'es-ES';
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript?.trim() ?? '';
+        setMicActive(false);
+        if (transcript) {
+          void handleSendInstruction(transcript);
+        }
+      };
+      recognition.onerror = () => {
+        setMicActive(false);
+      };
+      recognition.onend = () => {
+        setMicActive(false);
+      };
+
+      recognitionRef.current = recognition;
+      setMicActive(true);
+      recognition.start();
+    } catch {
+      setMicActive(false);
+      setMicNotice('No fue posible iniciar el micrófono.');
+    }
   };
 
+  const handleToggleVoiceOutput = () => {
+    const next = !voiceEnabled;
+    setVoiceEnabled(next);
+    if (!next && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // Ignore synthesis cancel errors
+      }
+      setIsSpeaking(false);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void handleSendInstruction();
+    }
+  };
+
+  const visibleMessages = messages.slice(-4);
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-slate-50 text-slate-900">
-      {/* Barra superior limpia estilo AI Studio */}
-      <header className="flex h-[52px] shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 text-white">
-            <Cpu className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <span className="font-display text-sm font-bold tracking-tight text-slate-900 whitespace-nowrap">
-              Helix Studio
-            </span>
-            <span className="ml-2.5 hidden text-xs text-slate-500 sm:inline">
-              Consola sin código · Entradas y Salidas en Pantalla Líquida
-            </span>
-          </div>
-        </div>
+    <div className="relative h-full w-full overflow-hidden bg-slate-950 text-slate-100">
+      {/* Presencia central viva a pantalla completa: Rostro Holográfico Humano */}
+      <div className="absolute inset-0">
+        <LiquidBiopixelCanvas
+          hlxScript={currentScript}
+          shape={currentShape}
+          pulseCounter={pulseCounter}
+          accentHex={accentHex}
+          energy={isSpeaking ? 0.92 : 0.35}
+          tension={micActive ? 0.72 : 0.35}
+          isSpeaking={isSpeaking}
+          hideOverlay
+        />
+      </div>
 
-        <button
-          type="button"
-          onClick={handleResetSession}
-          title="Reiniciar conversación y pantalla líquida"
-          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap shrink-0"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Nueva sesión
-        </button>
-      </header>
+      {/* Degradado inferior para legibilidad natural del diálogo sin encerrar el rostro */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-80 bg-gradient-to-t from-slate-950/95 via-slate-950/55 to-transparent" />
 
-      {/* Espacio dual AI Studio: Consola Chat (Entradas/Salidas) a la izquierda · Pantalla Líquida a la derecha */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {/* COLUMNA IZQUIERDA: CONSOLA CHAT */}
-        <section className="flex h-[52%] min-h-0 w-full flex-col border-b border-slate-200 bg-white lg:h-full lg:w-[44%] lg:border-b-0 lg:border-r">
-          <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
-            {messages.map((msg) => {
+      {/* Zona inferior minimalista: diálogo humano limpio + barra única */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center px-4 pb-5 sm:px-6 sm:pb-7">
+        <div className="pointer-events-auto flex w-full max-w-2xl flex-col gap-3">
+          {/* Mensajes limpios de conversación natural */}
+          <div className="flex max-h-[42vh] flex-col gap-2 overflow-y-auto px-1">
+            {visibleMessages.map((msg) => {
               const isUser = msg.role === 'user';
-
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
+                  className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} gap-1.5`}
                 >
-                  <div
-                    className={`max-w-[95%] rounded-lg px-4 py-3 text-sm ${
+                  <p
+                    className={`max-w-[92%] whitespace-pre-line rounded-2xl px-4 py-2.5 text-sm leading-relaxed backdrop-blur-md ${
                       isUser
-                        ? 'bg-slate-900 text-white'
-                        : 'w-full border border-slate-200 bg-slate-50 text-slate-900'
+                        ? 'border border-sky-400/20 bg-sky-500/15 text-sky-50'
+                        : 'border border-white/10 bg-slate-950/75 text-slate-100'
                     }`}
                   >
-                    <p className="leading-relaxed">{msg.text}</p>
-
-                    {/* Entradas numéricas enviadas por el usuario */}
-                    {isUser && msg.userInputsSummary && msg.userInputsSummary.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2 border-t border-slate-700 pt-2 text-xs text-sky-200">
-                        {msg.userInputsSummary.map((inp) => (
-                          <span key={inp.label} className="font-mono">
-                            {inp.label}: {inp.value}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Preguntas de entrevista adaptativa dentro de la consola */}
-                    {!isUser && msg.report && msg.report.questions.length > 0 && (
-                      <div className="mt-3 space-y-3 border-t border-slate-200 pt-3">
-                        {msg.report.questions.map((q) => {
-                          const chosen = msg.answersUsed?.[q.id];
-                          return (
-                            <div key={q.id} className="space-y-1.5">
-                              <div className="text-xs font-semibold text-slate-800">
-                                {q.question}
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {q.options.map((opt) => {
-                                  const active = chosen === opt;
-                                  return (
-                                    <button
-                                      key={opt}
-                                      type="button"
-                                      onClick={() =>
-                                        handleSelectClarificationOption(msg.id, q.id, opt)
-                                      }
-                                      className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                                        active
-                                          ? 'border-blue-600 bg-blue-50 text-blue-800'
-                                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                                      }`}
-                                    >
-                                      {opt}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        {!msg.confirmed && (
-                          <button
-                            type="button"
-                            onClick={() => handleConfirmAllDefaults(msg.id)}
-                            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Confirmar y fijar salida en pantalla
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Entradas procesadas y Salidas de datos limpias (cero herramientas/cero código) */}
-                    {!isUser && msg.report && /crea|simul|calcul|juego|video|monta|orbit|onda|fluid|esculp|balance|salud|mar|genera|haz/i.test(msg.report.intent) && (
-                      <div className="mt-3 space-y-2.5 border-t border-slate-200 pt-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <span className="inline-flex items-center gap-1 font-medium text-emerald-700">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            N1 Bare-Metal → N2 Ingeniero/L2 → N3 Panel · Verificado
-                          </span>
-                          <span className="font-mono text-slate-500">
-                            {MORPH_SHAPE_LABELS[msg.shapeFormed]}
-                          </span>
-                        </div>
-
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="rounded border border-slate-200 bg-white p-2.5">
-                            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              Entradas procesadas
-                            </div>
-                            <div className="space-y-1 text-xs">
-                              {msg.report.dataInputs.map((d) => (
-                                <div key={d.label} className="flex justify-between gap-2">
-                                  <span className="text-slate-500">{d.label}</span>
-                                  <span className="font-mono font-medium text-slate-800 tabular-nums">
-                                    {d.value}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="rounded border border-slate-200 bg-white p-2.5">
-                            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                              Salidas del sistema
-                            </div>
-                            <div className="space-y-1 text-xs">
-                              {msg.report.dataOutputs.map((d) => (
-                                <div key={d.label} className="flex justify-between gap-2">
-                                  <span className="text-slate-500">{d.label}</span>
-                                  <span className="font-mono font-semibold text-blue-700 tabular-nums">
-                                    {d.value}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3 pt-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              driveLiquidScreen(
-                                msg.report?.recombination?.synthesizedHlx ||
-                                  DEFAULT_HELIX_PHYSICS_PROGRAM,
-                                msg.shapeFormed,
-                                accentHex,
-                                MORPH_SHAPE_LABELS[msg.shapeFormed],
-                                msg.report?.dataOutputs[0]
-                                  ? `${msg.report.dataOutputs[0].label}: ${msg.report.dataOutputs[0].value}`
-                                  : 'Proyección activa',
-                              )
-                            }
-                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Proyectar de nuevo en pantalla
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              downloadHtmlArtifact(
-                                'resultado-helix.html',
-                                msg.report!.materializedHtmlPreview,
-                              )
-                            }
-                            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-slate-900"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            Descargar salida (HTML)
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    {msg.text}
+                  </p>
+                  {!isUser && msg.artifactHtml && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setActiveArtifact({
+                          html: msg.artifactHtml!,
+                          title: msg.artifactTitle || 'Creación Interactiva',
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-sky-400/30 bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-200 backdrop-blur-md transition-colors hover:bg-sky-500/25 hover:text-white"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>Abrir creación interactiva</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
+            {isThinking && (
+              <div className="flex justify-start">
+                <span className="px-2 text-xs text-slate-400">Escuchando y procesando…</span>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Barra de entradas de datos opcionales + peticiones rápidas + compositor */}
-          <div className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
-            <div className="mb-2.5 flex gap-1.5 overflow-x-auto pb-1">
-              {STARTER_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => handleSendInstruction(prompt)}
-                  className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100 whitespace-nowrap shrink-0"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-
-            {showDataPanel && (
-              <div className="mb-2.5 grid grid-cols-2 gap-2 rounded-md border border-slate-200 bg-slate-50 p-2.5 sm:grid-cols-5">
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">Altitud (km)</span>
-                  <input
-                    type="number"
-                    value={dataDraft.altitudeKm}
-                    onChange={(e) => setDataDraft({ ...dataDraft, altitudeKm: e.target.value })}
-                    placeholder="ej. 850"
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">Velocidad (m/s)</span>
-                  <input
-                    type="number"
-                    value={dataDraft.velocityMs}
-                    onChange={(e) => setDataDraft({ ...dataDraft, velocityMs: e.target.value })}
-                    placeholder="ej. 120"
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">Frecuencia (Hz)</span>
-                  <input
-                    type="number"
-                    value={dataDraft.freqHz}
-                    onChange={(e) => setDataDraft({ ...dataDraft, freqHz: e.target.value })}
-                    placeholder="ej. 528"
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">Gravedad (m/s²)</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={dataDraft.gravityMs2}
-                    onChange={(e) => setDataDraft({ ...dataDraft, gravityMs2: e.target.value })}
-                    placeholder="ej. 9.81"
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">Masa (kg)</span>
-                  <input
-                    type="number"
-                    value={dataDraft.massKg}
-                    onChange={(e) => setDataDraft({ ...dataDraft, massKg: e.target.value })}
-                    placeholder="ej. 25"
-                    className="mt-0.5 w-full rounded border border-slate-200 bg-white px-2 py-1 font-mono text-xs"
-                  />
-                </label>
-              </div>
-            )}
-
-            <div className="flex items-end gap-2">
+          {attachedImageName && (
+            <div className="flex items-center justify-between rounded-xl border border-sky-400/25 bg-slate-900/80 px-3 py-1.5 text-xs text-sky-200 backdrop-blur-md">
+              <span className="truncate">Imagen adjunta para mezcla/análisis: {attachedImageName}</span>
               <button
                 type="button"
-                onClick={() => setShowDataPanel((s) => !s)}
-                title="Adjuntar parámetros numéricos de entrada"
-                className={`inline-flex h-10 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  showDataPanel
-                    ? 'border-blue-600 bg-blue-50 text-blue-800'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                onClick={() => {
+                  setAttachedImageDataUrl(null);
+                  setAttachedImageName(null);
+                }}
+                className="ml-2 text-slate-400 hover:text-white"
+                aria-label="Quitar imagen adjunta"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {micNotice && (
+            <p className="px-2 text-center text-xs text-slate-400">{micNotice}</p>
+          )}
+
+          {/* Cuadro de diálogo minimalista: texto + imagen opcional + micrófono + voz + selector Femenina/Masculina */}
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/80 p-2 backdrop-blur-md sm:flex-nowrap">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAttachImage}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Adjuntar imagen real o captura para mezclar o analizar"
+              aria-label="Adjuntar imagen real"
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                attachedImageName
+                  ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/50'
+                  : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <ImagePlus className="h-4 w-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleMic}
+              title={micActive ? 'Detener micrófono' : 'Hablar por micrófono'}
+              aria-label={micActive ? 'Detener micrófono' : 'Hablar por micrófono'}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                micActive
+                  ? 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/50'
+                  : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {micActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleVoiceOutput}
+              title={voiceEnabled ? 'Silenciar voz de Helix' : 'Activar voz de Helix'}
+              aria-label={voiceEnabled ? 'Silenciar voz de Helix' : 'Activar voz de Helix'}
+              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                voiceEnabled
+                  ? 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                  : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
+
+            {/* Selector discreto Femenina / Masculina + Desplegable minimalista de voces Web Speech API */}
+            <div
+              role="group"
+              aria-label="Selector de voz"
+              className="inline-flex h-10 shrink-0 items-center rounded-xl bg-white/5 p-1 text-xs"
+            >
+              <button
+                type="button"
+                aria-pressed={!selectedVoiceURI && voiceGender === 'female'}
+                onClick={() => handleSelectVoiceGender('female')}
+                className={`h-8 rounded-lg px-2.5 font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  voiceGender === 'female'
+                    ? 'bg-white/15 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Datos</span>
+                Femenina
               </button>
-
-              <textarea
-                rows={2}
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Describe qué quieres crear, simular o combinar (sin código)..."
-                className="flex-1 resize-none rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:outline-none"
-              />
-
               <button
                 type="button"
-                onClick={() => handleSendInstruction()}
-                disabled={!inputText.trim()}
-                className="inline-flex h-10 items-center gap-1.5 rounded-md bg-slate-900 px-4 text-xs font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap shrink-0"
+                aria-pressed={!selectedVoiceURI && voiceGender === 'male'}
+                onClick={() => handleSelectVoiceGender('male')}
+                className={`h-8 rounded-lg px-2.5 font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  voiceGender === 'male'
+                    ? 'bg-white/15 text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                <Send className="h-3.5 w-3.5" />
-                Enviar
+                Masculina
               </button>
             </div>
-          </div>
-        </section>
 
-        {/* COLUMNA DERECHA: PANTALLA LÍQUIDA DE BIOPIXELES */}
-        <section className="relative h-[48%] min-h-[280px] w-full flex-1 lg:h-full lg:w-[56%]">
-          <div className="flex h-full flex-col">
-  {rightTab === 'app' ? (
-    <iframe title="App Generada" srcDoc={[...messages].reverse().find((m) => m.report?.materializedHtmlPreview)?.report?.materializedHtmlPreview || ''} className="w-full flex-1 border-0 bg-slate-950" />
-  ) : (
-    <div className="relative flex-1">
-      <LiquidBiopixelCanvas
-            hlxScript={currentScript}
-            shape={currentShape}
-            pulseCounter={pulseCounter}
-            titleLabel={screenTitle}
-            subtitleLabel={screenSubtitle}
-            accentHex={accentHex} /></div>)}</div>
-        </section>
+            <select
+              aria-label="Selector de Voz Web Speech"
+              title="Elegir voz del motor Web Speech API"
+              value={selectedVoiceURI}
+              onChange={(e) => handleSelectVoiceURI(e.target.value)}
+              className="h-10 max-w-[156px] shrink-0 truncate rounded-xl border border-white/10 bg-white/5 px-2.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 focus:border-sky-400/50 focus:outline-none"
+            >
+              <option value="" className="bg-slate-900 text-slate-100">
+                Voz: {voiceGender === 'female' ? 'Auto Femenina' : 'Auto Masculina'}
+              </option>
+              {availableVoices.map((voice) => (
+                <option
+                  key={voice.voiceURI}
+                  value={voice.voiceURI}
+                  className="bg-slate-900 text-slate-100"
+                >
+                  {voice.name} ({voice.lang})
+                </option>
+              ))}
+            </select>
+
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Conversa con Helix, aprende o pide una simulación..."
+              className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm text-white placeholder:text-slate-400 focus:outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={() => void handleSendInstruction()}
+              disabled={!inputText.trim() && !attachedImageDataUrl}
+              aria-label="Enviar mensaje"
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-sky-500 px-4 text-xs font-semibold text-slate-950 transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap"
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span>Enviar</span>
+            </button>
+          </div>
+        </div>
       </div>
+
+      {activeArtifact && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-md">
+          <div className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+              <span className="truncate text-sm font-semibold text-white">
+                {activeArtifact.title}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadArtifact(activeArtifact.html, activeArtifact.title)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Descargar HTML5</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveArtifact(null)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span>Cerrar</span>
+                </button>
+              </div>
+            </div>
+            <iframe
+              title={activeArtifact.title}
+              srcDoc={activeArtifact.html}
+              sandbox="allow-scripts"
+              className="min-h-0 w-full flex-1 border-0 bg-slate-950"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

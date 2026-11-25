@@ -1,3 +1,4 @@
+import { Discipline33, DISCIPLINES_33 } from '../data/disciplines33';
 import { INITIAL_COMPOUND_VOCABULARY } from '../data/vocabulary';
 import {
   AI_DECODING_SCENARIOS,
@@ -77,6 +78,11 @@ import {
   HelixRegisteredTool,
 } from './helixToolCatalog159';
 import {
+  HolographicAcademicCard,
+  HolographicAcademicLibrary,
+  sharedHolographicAcademicLibrary,
+} from './holographicAcademicLibrary';
+import {
   createNemesisGovernor,
   NEMESIS_GAMMA_PRESETS,
   NEMESIS_THERMAL_CUTOFF,
@@ -92,6 +98,10 @@ import {
   predictHelixStructureFromHistory,
   TrainedCapsulePredictorState,
 } from './helixCapsuleTrainer';
+import {
+  AutodidactCycleOutput,
+  runAutodidactCycle,
+} from './helixAutodidactLoop';
 import { createMiniGPTEngine, MiniGPTEngine } from './MiniGPTEngine';
 
 export interface VerifiedExecutionBundle {
@@ -194,6 +204,8 @@ export class HelixCoreEngine {
   private tools: HelixRegisteredTool[];
   private capsulePredictor: TrainedCapsulePredictorState | null = null;
   private readonly miniGptEngine: MiniGPTEngine = createMiniGPTEngine();
+  private readonly holographicLibrary: HolographicAcademicLibrary =
+    sharedHolographicAcademicLibrary;
 
   constructor(initialTools: readonly HelixRegisteredTool[] = BASE_HELIX_TOOL_CATALOG) {
     this.tools = [...initialTools];
@@ -201,6 +213,18 @@ export class HelixCoreEngine {
 
   public getMiniGPTEngine(): MiniGPTEngine {
     return this.miniGptEngine;
+  }
+
+  public getDisciplines33(): readonly Discipline33[] {
+    return DISCIPLINES_33;
+  }
+
+  public getHolographicLibrary(): HolographicAcademicLibrary {
+    return this.holographicLibrary;
+  }
+
+  public getHolographicCards(): HolographicAcademicCard[] {
+    return this.holographicLibrary.getCards();
   }
 
   public getRegisteredTools(): HelixRegisteredTool[] {
@@ -696,7 +720,8 @@ export class HelixCoreEngine {
   }
 
   /**
-   * Combina/recombina 2 o más herramientas de cualquier dominio, valida con SMT y registra el gen hijo.
+   * Combina/recombina 2 o más herramientas de cualquier dominio, valida con SMT + PCC,
+   * destila una ficha holográfica de 17B, entrena MiniGPTEngine y registra el gen hijo.
    */
   public recombineTools(
     toolIds: string[],
@@ -711,12 +736,66 @@ export class HelixCoreEngine {
       if (!this.tools.some((t) => t.id === res.childTool!.id)) {
         this.tools.unshift(res.childTool);
       }
+      this.holographicLibrary.ingestRecombination({
+        title: res.childTool.title,
+        summary: res.engineeringSummary,
+        tools: res.parentTools,
+        hlxScript: res.synthesizedHlx,
+        godelProduct: res.godelBigInt,
+        pcc: res.pcc,
+      });
+      this.recordCertifiedCapsule(
+        {
+          prompt: `Recombinar ${res.parentTools.map((t) => t.title).join(' x ')}`,
+          reply: res.engineeringSummary,
+          hlxScript: res.synthesizedHlx,
+          shape: 'avatar',
+          domain: res.childTool.domain,
+        },
+        2,
+      );
     }
     return res;
   }
 
+  /**
+   * Ensambla cualquier herramienta recombinada y certificada hacia los 4 targets reales
+   * (Go, GLSL ES 3.00, JS ESM y HTML5).
+   */
+  public exportRecombinationMultiTarget(
+    res: RecombinationResult,
+    targets: CellTarget[] = ['go', 'glsl', 'js', 'html'],
+  ): MultiTargetAssemblyBundle | null {
+    if (!res.synthesizedHlx.trim()) return null;
+    const bundle = this.compileAndVerify(res.synthesizedHlx);
+    return this.assembleTargetArtifacts(bundle, targets);
+  }
+
   public discoverCrossDomainExperiments(): readonly CrossDomainExperiment[] {
     return CURATED_CROSS_EXPERIMENTS;
+  }
+
+  /**
+   * Ejecuta el filtro Línea Recta + Doble Hélice + Consulta/Adquisición Autodidacta en 17 bytes.
+   */
+  public runAutodidactSynthesis(
+    intent: string,
+    existingRecombination?: RecombinationResult | null,
+  ): AutodidactCycleOutput {
+    const out = runAutodidactCycle(intent, this.holographicLibrary, existingRecombination);
+    if (out.newlyLearnedCard) {
+      this.recordCertifiedCapsule(
+        {
+          prompt: out.lineaRecta.distilledCore || intent,
+          reply: out.newlyLearnedCard.summary,
+          hlxScript: out.doubleHelix.synthesizedHlx,
+          shape: 'avatar',
+          domain: out.newlyLearnedCard.disciplines[0]?.name ?? 'AUTODIDACTA_P33',
+        },
+        2,
+      );
+    }
+    return out;
   }
 }
 

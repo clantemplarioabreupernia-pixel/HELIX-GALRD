@@ -98,6 +98,12 @@ function classifyTool(fileName: string, title: string): {
   if (key.includes('qpsk') || key.includes('ws_sync') || key.includes('delta_state') || key.includes('multiplayer')) {
     return { domain: 'Telecomunicaciones y RF', engineId: 'qpsk_telemetry_bus' };
   }
+  if (key.includes('annealing')) {
+    return { domain: 'IA Acotada y Orquestación', engineId: 'annealing_optimizer' };
+  }
+  if (key.includes('hmac') || key.includes('ed25519') || key.includes('merkle_tree_proof') || key.includes('crypto_sha') || key.includes('crypto_audit')) {
+    return { domain: 'Finanzas y Criptografía', engineId: 'crypto_ed25519_merkle' };
+  }
   if (key.includes('ledger') || key.includes('income') || key.includes('cashflow') || key.includes('kpi') || key.includes('escrow') || key.includes('merito') || key.includes('merit') || key.includes('token') || key.includes('supply') || key.includes('merkle') || key.includes('blockchain') || key.includes('cristal') || key.includes('audit') || key.includes('vault') || key.includes('crystal')) {
     return { domain: 'Finanzas y Criptografía', engineId: 'ledger_p33_merkle' };
   }
@@ -107,10 +113,10 @@ function classifyTool(fileName: string, title: string): {
   if (key.includes('rigid') || key.includes('raycast') || key.includes('gizmo') || key.includes('outliner') || key.includes('scene_schema') || key.includes('undo_redo') || key.includes('swarm')) {
     return { domain: 'Videojuegos y Mundos 3D', engineId: 'rigid_collision_3d' };
   }
-  if (key.includes('interval') || key.includes('overlap') || key.includes('gap') || key.includes('frame_containment') || key.includes('counterexample') || key.includes('dual_formal') || key.includes('formal_sat') || key.includes('ast_mesh') || key.includes('pqc') || key.includes('ed25519') || key.includes('hmac') || key.includes('sha_') || key.includes('bio_range') || key.includes('triad') || key.includes('protocol_l2') || key.includes('result_ok')) {
+  if (key.includes('interval') || key.includes('overlap') || key.includes('gap') || key.includes('frame_containment') || key.includes('counterexample') || key.includes('dual_formal') || key.includes('formal_sat') || key.includes('ast_mesh') || key.includes('pqc') || key.includes('sha_') || key.includes('bio_range') || key.includes('triad') || key.includes('protocol_l2') || key.includes('result_ok')) {
     return { domain: 'Verificación Formal y Seguridad', engineId: 'interval_formal_guard' };
   }
-  if (key.includes('omega') || key.includes('architect') || key.includes('adaptive_persona') || key.includes('symbiotic') || key.includes('student') || key.includes('annealing') || key.includes('entropy') || key.includes('shannon') || key.includes('design_') || key.includes('material3') || key.includes('m3_') || key.includes('portfolio')) {
+  if (key.includes('omega') || key.includes('architect') || key.includes('adaptive_persona') || key.includes('symbiotic') || key.includes('student') || key.includes('entropy') || key.includes('shannon') || key.includes('design_') || key.includes('material3') || key.includes('m3_') || key.includes('portfolio')) {
     return { domain: 'IA Acotada y Orquestación', engineId: 'neural_smt_synthesizer' };
   }
   return { domain: 'Kernel, Red y Telemetría', engineId: 'qpsk_telemetry_bus' };
@@ -141,6 +147,15 @@ function classifyCanonicalCell(cell: HelixCell): {
       return { domain: 'Verificación Formal y Seguridad', engineId: 'interval_formal_guard' };
     case 'ws_emit':
       return { domain: 'Telecomunicaciones y RF', engineId: 'qpsk_telemetry_bus' };
+    case 'itu_p676':
+    case 'mmwave_3gpp':
+      return { domain: 'Telecomunicaciones y RF', engineId: 'telecom_5g_sat_rf' };
+    case 'radar_fmcw':
+      return { domain: 'Telecomunicaciones y RF', engineId: 'radar_fmcw_doppler' };
+    case 'anneal_opt':
+      return { domain: 'IA Acotada y Orquestación', engineId: 'annealing_optimizer' };
+    case 'crypto_audit':
+      return { domain: 'Finanzas y Criptografía', engineId: 'crypto_ed25519_merkle' };
     default:
       return { domain: 'Kernel, Red y Telemetría', engineId: 'kinetic_p33_rational' };
   }

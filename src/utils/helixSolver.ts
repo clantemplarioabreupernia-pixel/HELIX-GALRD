@@ -1395,6 +1395,169 @@ export function solveHelixConstraints(
         continue;
       }
 
+      if (op === 'ITU_P676') {
+        const freqTok = inst.args[0] ?? '28';
+        const elevTok = inst.args[1] ?? '35';
+        const altTok = inst.args[5] ?? '0';
+        [freqTok, elevTok, altTok].forEach((t) => {
+          if (isIdentifier(t)) checkVarReadInit(cur, t, inst.lineNumber);
+        });
+        const freqB = resolveInterval(freqTok, cur);
+        const elevB = resolveInterval(elevTok, cur);
+        const altB = resolveInterval(altTok, cur);
+        if (
+          Number.isNaN(freqB.min) ||
+          freqB.min <= 0 ||
+          !Number.isFinite(freqB.max) ||
+          Number.isNaN(elevB.min) ||
+          elevB.min < 5 ||
+          elevB.max > 90 ||
+          Number.isNaN(altB.min) ||
+          altB.min < 0
+        ) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_PHYSICS_STABILITY',
+            detail: `ITU_P676: parámetros fuera de dominio f∈[${freqB.min},${freqB.max}] GHz (>0), elev∈[${elevB.min},${elevB.max}]° ([5..90]), alt>=0 km.`,
+          });
+        } else {
+          cur.vars['itu_slant_db'] = { min: 0, max: 500 };
+          cur.init['itu_slant_db'] = 'INIT';
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
+      if (op === 'MMWAVE_3GPP') {
+        const freqTok = inst.args[0] ?? '28';
+        const distTok = inst.args[1] ?? '250';
+        [freqTok, distTok].forEach((t) => {
+          if (isIdentifier(t)) checkVarReadInit(cur, t, inst.lineNumber);
+        });
+        const freqB = resolveInterval(freqTok, cur);
+        const distB = resolveInterval(distTok, cur);
+        if (
+          Number.isNaN(freqB.min) ||
+          freqB.min <= 0 ||
+          !Number.isFinite(freqB.max) ||
+          Number.isNaN(distB.min) ||
+          distB.min < 1
+        ) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_PHYSICS_STABILITY',
+            detail: `MMWAVE_3GPP: frecuencia f∈[${freqB.min},${freqB.max}] (>0) o distancia d∈[${distB.min},${distB.max}] (<1 m) fuera de rango TR 38.901.`,
+          });
+        } else {
+          cur.vars['mmwave_pl_db'] = { min: 20, max: 300 };
+          cur.init['mmwave_pl_db'] = 'INIT';
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
+      if (op === 'RADAR_FMCW') {
+        const carrierTok = inst.args[0] ?? '77';
+        const bwTok = inst.args[1] ?? '4000';
+        const distTok = inst.args[3] ?? '42';
+        [carrierTok, bwTok, distTok].forEach((t) => {
+          if (isIdentifier(t)) checkVarReadInit(cur, t, inst.lineNumber);
+        });
+        const fcB = resolveInterval(carrierTok, cur);
+        const bwB = resolveInterval(bwTok, cur);
+        const dB = resolveInterval(distTok, cur);
+        if (
+          Number.isNaN(fcB.min) ||
+          fcB.min <= 0 ||
+          Number.isNaN(bwB.min) ||
+          bwB.min < 10 ||
+          Number.isNaN(dB.min) ||
+          dB.min <= 0
+        ) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_PHYSICS_STABILITY',
+            detail: `RADAR_FMCW: requiere f_c>0 GHz, ancho de banda>=10 MHz y distancia>0 m.`,
+          });
+        } else {
+          cur.vars['radar_doppler_hz'] = { min: -500000, max: 500000 };
+          cur.init['radar_doppler_hz'] = 'INIT';
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
+      if (op === 'ANNEAL_OPT') {
+        const tempTok = inst.args[0] ?? '100';
+        const coolTok = inst.args[1] ?? '0.995';
+        const iterTok = inst.args[2] ?? '1000';
+        [tempTok, coolTok, iterTok].forEach((t) => {
+          if (isIdentifier(t)) checkVarReadInit(cur, t, inst.lineNumber);
+        });
+        const tB = resolveInterval(tempTok, cur);
+        const cB = resolveInterval(coolTok, cur);
+        const iB = resolveInterval(iterTok, cur);
+        if (
+          Number.isNaN(tB.min) ||
+          tB.min <= 0 ||
+          Number.isNaN(cB.min) ||
+          cB.min <= 0 ||
+          cB.max >= 1 ||
+          Number.isNaN(iB.min) ||
+          iB.min < 1 ||
+          iB.max > 5000
+        ) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_PHYSICS_STABILITY',
+            detail: `ANNEAL_OPT: T∈[${tB.min},${tB.max}] (>0), cooling∈[${cB.min},${cB.max}] ((0,1)), iteraciones∈[${iB.min},${iB.max}] ([1..5000]).`,
+          });
+        } else {
+          cur.vars['anneal_best_e'] = { min: 0, max: 1000 };
+          cur.init['anneal_best_e'] = 'INIT';
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
+      if (op === 'CRYPTO_AUDIT') {
+        const bitsTok = inst.args[0] ?? '256';
+        const leavesTok = inst.args[1] ?? '4';
+        [bitsTok, leavesTok].forEach((t) => {
+          if (isIdentifier(t)) checkVarReadInit(cur, t, inst.lineNumber);
+        });
+        const bB = resolveInterval(bitsTok, cur);
+        const lB = resolveInterval(leavesTok, cur);
+        if (
+          Number.isNaN(bB.min) ||
+          bB.min < 256 ||
+          Number.isNaN(lB.min) ||
+          lB.min < 1 ||
+          lB.max > 64
+        ) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_CONTRACT_VIOLATION',
+            detail: `CRYPTO_AUDIT: requiere clave >= 256 bits (actual [${bB.min},${bB.max}]) y hojas Merkle en [1..64].`,
+          });
+        } else {
+          cur.vars['crypto_audit_ok'] = { min: 1, max: 1 };
+          cur.init['crypto_audit_ok'] = 'INIT';
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
       if (op === 'LOOP') {
         const endPc = inst.endPc ?? endExclusive - 1;
         const countI = resolveInterval(inst.args[0], cur);

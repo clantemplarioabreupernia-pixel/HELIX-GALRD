@@ -32,6 +32,21 @@ import {
   evaluateGeomSeal,
   GeomSealReport,
 } from './helixGeometry';
+import {
+  buildMerkleTreeSync,
+  calculateMmWavePathLoss,
+  calculateRadarEquation,
+  calculateSatelliteAttenuation,
+  cfar2d,
+  computeRangeDoppler,
+  constantTimeEqualHex,
+  getMerkleProofSync,
+  hmacSha256HexSync,
+  MmWaveScenario,
+  runRastriginAnnealing,
+  simulateBeatSignal,
+  verifyMerkleProofSync,
+} from './helixDomainMath';
 
 export interface MemoryBlock {
   id: string;
@@ -332,6 +347,16 @@ export function compileHelixScript(
       'ᚹᛋ': { opcode: 'WEBER_GUARD', glyphs: 'ᚹᛋ' },
       GEOM_SEAL: { opcode: 'GEOM_SEAL', glyphs: 'ᛟᚹ' },
       'ᛟᚹ': { opcode: 'GEOM_SEAL', glyphs: 'ᛟᚹ' },
+      ITU_P676: { opcode: 'ITU_P676', glyphs: 'ᚩᛟ' },
+      'ᚩᛟ': { opcode: 'ITU_P676', glyphs: 'ᚩᛟ' },
+      MMWAVE_3GPP: { opcode: 'MMWAVE_3GPP', glyphs: 'ᚱᛜ' },
+      'ᚱᛜ': { opcode: 'MMWAVE_3GPP', glyphs: 'ᚱᛜ' },
+      RADAR_FMCW: { opcode: 'RADAR_FMCW', glyphs: 'ᚣᛖ' },
+      'ᚣᛖ': { opcode: 'RADAR_FMCW', glyphs: 'ᚣᛖ' },
+      ANNEAL_OPT: { opcode: 'ANNEAL_OPT', glyphs: 'ᛄᛠ' },
+      'ᛄᛠ': { opcode: 'ANNEAL_OPT', glyphs: 'ᛄᛠ' },
+      CRYPTO_AUDIT: { opcode: 'CRYPTO_AUDIT', glyphs: 'ᛈᛥ' },
+      'ᛈᛥ': { opcode: 'CRYPTO_AUDIT', glyphs: 'ᛈᛥ' },
     };
 
     const vocabMatch = byGlyphs.get(head) ?? byOpcode.get(head.toUpperCase());
@@ -592,7 +617,12 @@ export function verifyHelixProgram(
       op === 'BLOCH_ROT' ||
       op === 'BVN_LATTICE' ||
       op === 'WEBER_GUARD' ||
-      op === 'GEOM_SEAL';
+      op === 'GEOM_SEAL' ||
+      op === 'ITU_P676' ||
+      op === 'MMWAVE_3GPP' ||
+      op === 'RADAR_FMCW' ||
+      op === 'ANNEAL_OPT' ||
+      op === 'CRYPTO_AUDIT';
 
     if (needsBoot && !seenBoot) {
       findings.push({
@@ -607,7 +637,8 @@ export function verifyHelixProgram(
       op === 'FILE_WRITE' ||
       op === 'FILE_DEL' ||
       op === 'SIGKILL' ||
-      op === 'IO_GUARD';
+      op === 'IO_GUARD' ||
+      op === 'CRYPTO_AUDIT';
 
     if (needsAuth && !seenAuth) {
       findings.push({
@@ -703,6 +734,11 @@ function opcodeBytecode(opcode: string): string {
     BVN_LATTICE: 'F4',
     WEBER_GUARD: 'F5',
     GEOM_SEAL: 'F6',
+    ITU_P676: 'F7',
+    MMWAVE_3GPP: 'F8',
+    RADAR_FMCW: 'F9',
+    ANNEAL_OPT: 'FA',
+    CRYPTO_AUDIT: 'FB',
   };
   return table[opcode] ?? 'F0';
 }
@@ -1652,6 +1688,166 @@ export function stepHelixVmWithPc(
         applyGeomSealToSoA(next.soaBuffer, report);
       }
       return ok(`Sello geométrico universal: ${report.reason}.`);
+    }
+
+    case 'ITU_P676': {
+      const freqGHz = resolveNumeric(inst.args[0] ?? '28', next.variables);
+      const elevDeg = resolveNumeric(inst.args[1] ?? '35', next.variables);
+      const pressureHPa = resolveNumeric(inst.args[2] ?? '1013.25', next.variables);
+      const tempC = resolveNumeric(inst.args[3] ?? '15', next.variables);
+      const rho = resolveNumeric(inst.args[4] ?? '7.5', next.variables);
+      const altKm = resolveNumeric(inst.args[5] ?? '0', next.variables);
+      if (
+        [freqGHz, elevDeg, pressureHPa, tempC, rho, altKm].some((v) => !Number.isFinite(v)) ||
+        freqGHz <= 0 ||
+        elevDeg < 5 ||
+        elevDeg > 90 ||
+        altKm < 0
+      ) {
+        return fail('SMT_PHYSICS_STABILITY: ITU_P676 requiere f>0 GHz, elevación [5..90]° y altitud >= 0 km.');
+      }
+      const res = calculateSatelliteAttenuation({
+        frequencyGHz: freqGHz,
+        elevationDeg: elevDeg,
+        surfacePressureHPa: pressureHPa,
+        surfaceTemperatureC: tempC,
+        waterVaporDensityGm3: rho,
+        stationAltitudeKm: altKm,
+      });
+      next.variables['itu_o2_db_km'] = Number(res.oxygenSpecificDbPerKm.toFixed(6));
+      next.variables['itu_h2o_db_km'] = Number(res.waterVaporSpecificDbPerKm.toFixed(6));
+      next.variables['itu_zenith_db'] = Number(res.zenithAttenuationDb.toFixed(5));
+      next.variables['itu_slant_db'] = Number(res.slantAttenuationDb.toFixed(5));
+      return ok(
+        `ITU-R P.676-12 (${freqGHz} GHz @ ${elevDeg}°): γ_O2=${res.oxygenSpecificDbPerKm.toFixed(4)} dB/km, γ_H2O=${res.waterVaporSpecificDbPerKm.toFixed(4)} dB/km, slant=${res.slantAttenuationDb.toFixed(4)} dB.`,
+      );
+    }
+
+    case 'MMWAVE_3GPP': {
+      const freqGHz = resolveNumeric(inst.args[0] ?? '28', next.variables);
+      const distM = resolveNumeric(inst.args[1] ?? '250', next.variables);
+      const scenarioRaw = (inst.args[2] ?? 'UMi-LoS') as MmWaveScenario;
+      const scenario: MmWaveScenario = ['UMi-LoS', 'UMi-NLoS', 'InH-LoS', 'InH-NLoS', 'RMa-LoS'].includes(scenarioRaw)
+        ? scenarioRaw
+        : 'UMi-LoS';
+      const hBs = resolveNumeric(inst.args[3] ?? '10', next.variables);
+      const hUt = resolveNumeric(inst.args[4] ?? '1.5', next.variables);
+      if (!Number.isFinite(freqGHz) || freqGHz <= 0 || !Number.isFinite(distM) || distM < 1) {
+        return fail('SMT_PHYSICS_STABILITY: MMWAVE_3GPP requiere f>0 GHz y d>=1 m.');
+      }
+      const res = calculateMmWavePathLoss({
+        frequencyGHz: freqGHz,
+        distanceM: distM,
+        scenario,
+        bsHeightM: Number.isFinite(hBs) ? hBs : 10,
+        utHeightM: Number.isFinite(hUt) ? hUt : 1.5,
+      });
+      next.variables['mmwave_pl_db'] = Number(res.pathLossDb.toFixed(4));
+      next.variables['mmwave_fspl1m_db'] = Number(res.fspl1mDb.toFixed(4));
+      if (res.breakpointDistanceM !== null) {
+        next.variables['mmwave_bp_m'] = Number(res.breakpointDistanceM.toFixed(3));
+      }
+      return ok(
+        `3GPP TR 38.901 (${scenario}, ${freqGHz} GHz, ${distM} m): PL=${res.pathLossDb.toFixed(2)} dB, σ=${res.appliedSigmaDb.toFixed(2)} dB.`,
+      );
+    }
+
+    case 'RADAR_FMCW': {
+      const carrierGHz = resolveNumeric(inst.args[0] ?? '77', next.variables);
+      const bwMHz = resolveNumeric(inst.args[1] ?? '4000', next.variables);
+      const velMs = resolveNumeric(inst.args[2] ?? '24', next.variables);
+      const distM = resolveNumeric(inst.args[3] ?? '42', next.variables);
+      const rcsM2 = resolveNumeric(inst.args[4] ?? '1.0', next.variables);
+      if (
+        !Number.isFinite(carrierGHz) ||
+        carrierGHz <= 0 ||
+        !Number.isFinite(bwMHz) ||
+        bwMHz < 10 ||
+        !Number.isFinite(distM) ||
+        distM <= 0
+      ) {
+        return fail('SMT_PHYSICS_STABILITY: RADAR_FMCW requiere f_c>0 GHz, B>=10 MHz y rango>0 m.');
+      }
+      const fmcwParams = {
+        carrierGHz,
+        bandwidthHz: bwMHz * 1e6,
+        chirpTimeS: 40e-6,
+        numChirps: 16,
+        numSamplesPerChirp: 64,
+        sampleRateHz: 10e6,
+      };
+      const chirps = simulateBeatSignal(fmcwParams, [
+        { rangeM: distM, velocityMps: Number.isFinite(velMs) ? velMs : 0, rcsM2: Number.isFinite(rcsM2) ? rcsM2 : 1 },
+      ]);
+      const rd = computeRangeDoppler(fmcwParams, chirps);
+      const detections = cfar2d(rd, 1, 3, 1e-4);
+      const eq = calculateRadarEquation({
+        txPowerDbm: 12,
+        txGainDbi: 18,
+        rxGainDbi: 18,
+        frequencyGHz: carrierGHz,
+        targetRcsM2: Number.isFinite(rcsM2) ? rcsM2 : 1,
+        rangeM: distM,
+        systemLossDb: 3,
+        bandwidthHz: 2e5,
+        noiseFigureDb: 6,
+        atmosphericLossDbPerKm: 0.4,
+      });
+      const rangeResM = 299_792_458 / (2 * bwMHz * 1e6);
+      const dopplerHz = (2 * (Number.isFinite(velMs) ? velMs : 0)) / eq.wavelengthM;
+      next.variables['radar_range_res_m'] = Number(rangeResM.toFixed(5));
+      next.variables['radar_doppler_hz'] = Number(dopplerHz.toFixed(2));
+      next.variables['radar_snr_db'] = Number(eq.snrDb.toFixed(2));
+      next.variables['radar_cfar_hits'] = detections.length;
+      return ok(
+        `Radar FMCW ${carrierGHz} GHz: ΔR=${(rangeResM * 100).toFixed(2)} cm, f_D=${dopplerHz.toFixed(1)} Hz, SNR=${eq.snrDb.toFixed(2)} dB, CFAR=${detections.length}.`,
+      );
+    }
+
+    case 'ANNEAL_OPT': {
+      const temp0 = resolveNumeric(inst.args[0] ?? '100', next.variables);
+      const cooling = resolveNumeric(inst.args[1] ?? '0.995', next.variables);
+      const iters = resolveNumeric(inst.args[2] ?? '1000', next.variables);
+      if (
+        !Number.isFinite(temp0) ||
+        temp0 <= 0 ||
+        !Number.isFinite(cooling) ||
+        cooling <= 0 ||
+        cooling >= 1 ||
+        !Number.isFinite(iters) ||
+        iters < 1 ||
+        iters > 5000
+      ) {
+        return fail('SMT_PHYSICS_STABILITY: ANNEAL_OPT requiere T>0, 0<cooling<1 e iteraciones en [1..5000].');
+      }
+      const res = runRastriginAnnealing(temp0, cooling, iters);
+      next.variables['anneal_best_e'] = Number(res.bestEnergy.toFixed(6));
+      next.variables['anneal_best_x'] = Number(res.bestX.toFixed(5));
+      next.variables['anneal_best_y'] = Number(res.bestY.toFixed(5));
+      return ok(
+        `Annealing Rastrigin (${res.stepsExecuted} pasos): E_best=${res.bestEnergy.toFixed(5)} en (${res.bestX.toFixed(3)}, ${res.bestY.toFixed(3)}).`,
+      );
+    }
+
+    case 'CRYPTO_AUDIT': {
+      const keyBits = resolveNumeric(inst.args[0] ?? '256', next.variables);
+      const leafCountRaw = resolveNumeric(inst.args[1] ?? '4', next.variables);
+      const label = inst.args[2] || 'HELIX_AUDIT_SEAL';
+      if (!Number.isFinite(keyBits) || keyBits < 256 || !Number.isFinite(leafCountRaw) || leafCountRaw < 1 || leafCountRaw > 64) {
+        return fail('SMT_CONTRACT_VIOLATION: CRYPTO_AUDIT requiere clave >= 256 bits y hojas Merkle en [1..64].');
+      }
+      const leafCount = Math.floor(leafCountRaw);
+      const leaves = Array.from({ length: leafCount }, (_, i) => `${label}:${i}:${next.clockTicks}`);
+      const tree = buildMerkleTreeSync(leaves);
+      const proof0 = getMerkleProofSync(tree, 0);
+      const merkleOk = verifyMerkleProofSync(leaves[0], proof0, tree.root);
+      const tag = hmacSha256HexSync(`helix:${keyBits}`, `${label}:${tree.root}`);
+      const hmacOk = constantTimeEqualHex(tag, hmacSha256HexSync(`helix:${keyBits}`, `${label}:${tree.root}`));
+      next.variables['crypto_audit_ok'] = merkleOk && hmacOk ? 1 : 0;
+      next.persistedRegisters['CRYPTO_AUDIT_ROOT'] = tree.root;
+      return ok(
+        `Auditoría Cripto P33: HMAC=${hmacOk}, Merkle(${leafCount} hojas)=${merkleOk}, root=${tree.root.slice(0, 12)}….`,
+      );
     }
 
     default:

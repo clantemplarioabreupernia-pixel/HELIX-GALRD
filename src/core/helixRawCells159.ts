@@ -65,7 +65,7 @@ export const RAW_HLX_CELLS_159: readonly RawHlxCellRecord[] = [
     "fileName": "10_annealing_solver.hlx",
     "title": "SIMULATED_ANNEALING_ENGINE",
     "prime": 37,
-    "hlxSource": "# CELULA EXTRAIDA: SIMULATED_ANNEALING_ENGINE (Primo 37 EPC)\nᛇᚢ\nᛗᚦ optimizer_sa\nSET temp_init 1000\nSET cooling_rate 0.95\nLOOP 20\n  SUB temp_init 45\nEND\nᚩᛖ temp_init\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: SIMULATED_ANNEALING_ENGINE (Primo 37 EPC)\nᛇᚢ\nᛗᚦ optimizer_sa\nANNEAL_OPT 100 0.995 1000\nᚩᛖ anneal_best_e\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "100_biome_world_scatter.hlx",
@@ -467,25 +467,25 @@ export const RAW_HLX_CELLS_159: readonly RawHlxCellRecord[] = [
     "fileName": "20_5g_mmwave_pathloss.hlx",
     "title": "5G_MMWAVE_3GPP_TR38901",
     "prime": 59,
-    "hlxSource": "# CELULA EXTRAIDA: 5G_MMWAVE_3GPP_TR38901 (Primo 59 EXT)\nᛇᚢ\nᛗᚦ mmwave_5g\nSET freq_ghz 28\nSET dist_m 250\nSET fspl_1m 61\nᚩᛖ fspl_1m\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: 5G_MMWAVE_3GPP_TR38901 (Primo 59 EXT)\nᛇᚢ\nᛗᚦ mmwave_5g\nMMWAVE_3GPP 28 250 UMi-LoS 10 1.5\nᚩᛖ mmwave_pl_db\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "21_radar_fmcw_77ghz.hlx",
     "title": "RADAR_FMCW_77GHZ_AUTOMOTIVE",
     "prime": 103,
-    "hlxSource": "# CELULA EXTRAIDA: RADAR_FMCW_77GHZ_AUTOMOTIVE (Primo 103 PTR)\nᛇᚢ\nᛗᚦ radar_77ghz\nSET carrier_ghz 77\nSET bandwidth_mhz 4000\nSET num_chirps 128\nᚠᛜ radar_beam cone 280 1.2\nᚣ\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: RADAR_FMCW_77GHZ_AUTOMOTIVE (Primo 103 PTR)\nᛇᚢ\nᛗᚦ radar_77ghz\nRADAR_FMCW 77 4000 24 42 1.0\nᚩᛖ radar_doppler_hz\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "22_fft_cfar_doppler.hlx",
     "title": "FFT_RANGE_DOPPLER_CFAR",
     "prime": 107,
-    "hlxSource": "# CELULA EXTRAIDA: FFT_RANGE_DOPPLER_CFAR (Primo 107 DMN)\nᛇᚢ\nᛗᚦ cfar_detector\nSET samples_chirp 256\nSET cfar_threshold_db 14\nᚠᚷ 128\nLOOP 16\n  ADD cfar_threshold_db 1\nEND\nᚠᛠ\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: FFT_RANGE_DOPPLER_CFAR (Primo 107 DMN)\nᛇᚢ\nᛗᚦ cfar_detector\nRADAR_FMCW 77 4000 18 65 2.5\nᚩᛖ radar_cfar_hits\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "23_satellite_itup676.hlx",
     "title": "SATELLITE_LINK_ITUP676",
     "prime": 89,
-    "hlxSource": "# CELULA EXTRAIDA: SATELLITE_LINK_ITUP676 (Primo 89 FSD)\nᛇᚢ\nᛗᚦ sat_link\nSET elev_deg 35\nSET o2_att_db 2\nSET h2o_att_db 1\nᚩᛢ sat_link_p676 locked\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: SATELLITE_LINK_ITUP676 (Primo 89 FSD)\nᛇᚢ\nᛗᚦ sat_link\nITU_P676 28 35 1013.25 15 7.5 0.0\nᚩᛖ itu_slant_db\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "24_rf_link_budget.hlx",
@@ -503,19 +503,19 @@ export const RAW_HLX_CELLS_159: readonly RawHlxCellRecord[] = [
     "fileName": "26_hmac_const_time.hlx",
     "title": "HMAC_SHA256_CONST_TIME",
     "prime": 5,
-    "hlxSource": "# CELULA EXTRAIDA: HMAC_SHA256_CONST_TIME (Primo 5 ACL)\nᛇᚢ\nᛗᚦ hmac_guard\nSET const_time_cmp 1\nᚦᚩ\nᚩᛖ const_time_cmp\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: HMAC_SHA256_CONST_TIME (Primo 5 ACL)\nᛇᚢ\nᛗᚦ hmac_guard\nCRYPTO_AUDIT 256 4 HMAC_CONST_TIME\nᚩᛖ crypto_audit_ok\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "27_ed25519_signer.hlx",
     "title": "ED25519_DIGITAL_SIGNATURE",
     "prime": 71,
-    "hlxSource": "# CELULA EXTRAIDA: ED25519_DIGITAL_SIGNATURE (Primo 71 UID)\nᛇᚢ\nᛗᚦ ed25519_auth\nSET key_bits 256\nᛈᚫ\nᚩᛢ ed25519_sig verified\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: ED25519_DIGITAL_SIGNATURE (Primo 71 UID)\nᛇᚢ\nᛗᚦ ed25519_auth\nCRYPTO_AUDIT 256 8 ED25519_SEAL\nᚩᛖ crypto_audit_ok\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "28_merkle_tree_proof.hlx",
     "title": "MERKLE_TREE_SHA256_PROOF",
     "prime": 41,
-    "hlxSource": "# CELULA EXTRAIDA: MERKLE_TREE_SHA256_PROOF (Primo 41 ROT)\nᛇᚢ\nᛗᚦ merkle_root\nSET leaves_count 8\nSET tree_depth 3\nLOOP 3\n  ADD tree_depth 1\nEND\nᚩᛖ leaves_count\nᛣᚪ\nᚳᛏ"
+    "hlxSource": "# CELULA EXTRAIDA: MERKLE_TREE_SHA256_PROOF (Primo 41 ROT)\nᛇᚢ\nᛗᚦ merkle_root\nCRYPTO_AUDIT 256 8 MERKLE_PROOF\nᚩᛖ crypto_audit_ok\nᛣᚪ\nᚳᛏ"
   },
   {
     "fileName": "29_blockchain_pow_chain.hlx",

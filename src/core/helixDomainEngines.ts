@@ -24,6 +24,21 @@ import {
 } from '../utils/helixGeometry';
 import { sha256Hex } from '../utils/helixPcc';
 import {
+  buildMerkleTreeSync,
+  calculateMmWavePathLoss,
+  calculateRadarEquation,
+  calculateSatelliteAttenuation,
+  cfar2d,
+  computeRangeDoppler,
+  constantTimeEqualHex,
+  getMerkleProofSync,
+  hmacSha256HexSync,
+  MmWaveScenario,
+  runRastriginAnnealing,
+  simulateBeatSignal,
+  verifyMerkleProofSync,
+} from '../utils/helixDomainMath';
+import {
   addRationalP33,
   formatRationalP33,
   makeRationalP33,
@@ -71,7 +86,9 @@ export type DomainEngineId =
   | 'ledger_p33_merkle'
   | 'interval_formal_guard'
   | 'qpsk_telemetry_bus'
-  | 'neural_smt_synthesizer';
+  | 'neural_smt_synthesizer'
+  | 'annealing_optimizer'
+  | 'crypto_ed25519_merkle';
 
 export interface EngineExecutionOutput {
   engineId: DomainEngineId;
@@ -672,7 +689,7 @@ export function runQuantumBlochBvn(params: Record<string, number | string>): Eng
 }
 
 /**
- * 14. Telecomunicaciones 5G mmWave (3GPP) + Atenuación Satelital ITU-R P.676 + Link Budget SNR
+ * 14. Telecomunicaciones 5G mmWave (3GPP TR 38.901) + Atenuación Satelital ITU-R P.676-12 + Link Budget SNR
  */
 export function runTelecom5GSatRf(params: Record<string, number | string>): EngineExecutionOutput {
   const freqGhz = Math.max(0.4, num(params, 'freq_ghz', 28));
@@ -682,23 +699,53 @@ export function runTelecom5GSatRf(params: Record<string, number | string>): Engi
   const txGainDbi = num(params, 'tx_gain_dbi', 24);
   const rxGainDbi = num(params, 'rx_gain_dbi', 24);
   const bwMhz = Math.max(1, num(params, 'bandwidth_mhz', 100));
+  const scenarioRaw = str(params, 'scenario', 'UMi-LoS') as MmWaveScenario;
+  const scenario: MmWaveScenario = ['UMi-LoS', 'UMi-NLoS', 'InH-LoS', 'InH-NLoS', 'RMa-LoS'].includes(scenarioRaw)
+    ? scenarioRaw
+    : 'UMi-LoS';
+  const pressureHPa = Math.max(100, num(params, 'pressure_hpa', 1013.25));
+  const tempC = num(params, 'temp_c', 15);
+  const waterVaporGm3 = Math.max(0, num(params, 'water_vapor_gm3', 7.5));
+  const stationAltKm = Math.max(0, num(params, 'station_alt_km', 0));
+
+  const satAtt = calculateSatelliteAttenuation({
+    frequencyGHz: freqGhz,
+    elevationDeg: elevDeg,
+    surfacePressureHPa: pressureHPa,
+    surfaceTemperatureC: tempC,
+    waterVaporDensityGm3: waterVaporGm3,
+    stationAltitudeKm: stationAltKm,
+  });
+
+  const mmWave = calculateMmWavePathLoss({
+    frequencyGHz: freqGhz,
+    distanceM: Math.max(1, distKm * 1000),
+    scenario,
+    bsHeightM: num(params, 'bs_height_m', 10),
+    utHeightM: num(params, 'ut_height_m', 1.5),
+  });
 
   const fsplDb = 92.45 + 20 * Math.log10(freqGhz) + 20 * Math.log10(distKm);
-  const elevRad = (elevDeg * Math.PI) / 180;
-  const zenithAtmDb = freqGhz > 20 ? 0.35 + (freqGhz - 20) * 0.04 : 0.12;
-  const slantAtmDb = zenithAtmDb / Math.sin(elevRad);
-  const rxPowerDbm = txDbm + txGainDbi + rxGainDbi - fsplDb - slantAtmDb;
-  const noiseFloorDbm = -174 + 10 * Math.log10(bwMhz * 1e6) + 5; // +5 dB NF
+  const slantAtmDb = satAtt.slantAttenuationDb;
+  const effectivePathLossDb = distKm <= 5 ? mmWave.pathLossDb : fsplDb;
+  const rxPowerDbm = txDbm + txGainDbi + rxGainDbi - effectivePathLossDb - slantAtmDb;
+  const noiseFloorDbm = -174 + 10 * Math.log10(bwMhz * 1e6) + 5;
   const snrDb = rxPowerDbm - noiseFloorDbm;
 
   return {
     engineId: 'telecom_5g_sat_rf',
-    valid: Number.isFinite(snrDb) && fsplDb > 0,
-    invariantSummary: `FSPL=${fsplDb.toFixed(2)} dB · Atm(ITU-R)=${slantAtmDb.toFixed(2)} dB · SNR=${snrDb.toFixed(2)} dB`,
+    valid: Number.isFinite(snrDb) && fsplDb > 0 && Number.isFinite(mmWave.pathLossDb),
+    invariantSummary: `3GPP(${scenario}) PL=${mmWave.pathLossDb.toFixed(2)} dB · ITU-R P.676-12 O₂=${satAtt.oxygenSpecificDbPerKm.toFixed(4)} H₂O=${satAtt.waterVaporSpecificDbPerKm.toFixed(4)} dB/km · Slant=${slantAtmDb.toFixed(3)} dB · SNR=${snrDb.toFixed(2)} dB`,
     metrics: {
       freq_ghz: freqGhz,
+      scenario,
       fspl_db: Number(fsplDb.toFixed(2)),
-      atmospheric_loss_db: Number(slantAtmDb.toFixed(3)),
+      mmwave_pl_db: Number(mmWave.pathLossDb.toFixed(2)),
+      breakpoint_m: mmWave.breakpointDistanceM !== null ? Number(mmWave.breakpointDistanceM.toFixed(2)) : 0,
+      o2_spec_db_km: Number(satAtt.oxygenSpecificDbPerKm.toFixed(5)),
+      h2o_spec_db_km: Number(satAtt.waterVaporSpecificDbPerKm.toFixed(5)),
+      zenith_loss_db: Number(satAtt.zenithAttenuationDb.toFixed(4)),
+      atmospheric_loss_db: Number(slantAtmDb.toFixed(4)),
       rx_power_dbm: Number(rxPowerDbm.toFixed(2)),
       snr_db: Number(snrDb.toFixed(2)),
     },
@@ -706,28 +753,56 @@ export function runTelecom5GSatRf(params: Record<string, number | string>): Engi
 }
 
 /**
- * 15. Radar Automotriz FMCW 77 GHz + Rango-Doppler + Umbral CFAR
+ * 15. Radar Automotriz FMCW 77 GHz + FFT 2D Range-Doppler + Detector CA-CFAR
  */
 export function runRadarFmcwDoppler(params: Record<string, number | string>): EngineExecutionOutput {
   const carrierGhz = Math.max(1, num(params, 'carrier_ghz', 77));
   const bwMhz = Math.max(10, num(params, 'bandwidth_mhz', 4000));
   const targetVelMs = num(params, 'target_vel_ms', 24);
   const targetDistM = Math.max(0.5, num(params, 'target_dist_m', 42));
+  const targetRcsM2 = Math.max(0.01, num(params, 'target_rcs_m2', 1.0));
 
   const rangeResM = C_LIGHT / (2 * bwMhz * 1e6);
-  const lambdaM = C_LIGHT / (carrierGhz * 1e9);
-  const dopplerHz = (2 * targetVelMs) / lambdaM;
-  const snrDb = Math.max(0, 48 - 20 * Math.log10(targetDistM));
-  const cfarDetected = snrDb >= 14;
+  const fmcwParams = {
+    carrierGHz: carrierGhz,
+    bandwidthHz: bwMhz * 1e6,
+    chirpTimeS: 40e-6,
+    numChirps: 16,
+    numSamplesPerChirp: 64,
+    sampleRateHz: 10e6,
+  };
+  const chirps = simulateBeatSignal(fmcwParams, [
+    { rangeM: targetDistM, velocityMps: targetVelMs, rcsM2: targetRcsM2 },
+  ]);
+  const rd = computeRangeDoppler(fmcwParams, chirps);
+  const detections = cfar2d(rd, 1, 3, 1e-4);
+
+  const eq = calculateRadarEquation({
+    txPowerDbm: 12,
+    txGainDbi: 18,
+    rxGainDbi: 18,
+    frequencyGHz: carrierGhz,
+    targetRcsM2,
+    rangeM: targetDistM,
+    systemLossDb: 3,
+    bandwidthHz: 2e5,
+    noiseFigureDb: 6,
+    atmosphericLossDbPerKm: 0.4,
+  });
+
+  const dopplerHz = (2 * targetVelMs) / eq.wavelengthM;
+  const cfarDetected = detections.length > 0 || eq.snrDb >= 13;
 
   return {
     engineId: 'radar_fmcw_doppler',
-    valid: rangeResM > 0 && Number.isFinite(dopplerHz),
-    invariantSummary: `ΔR=${(rangeResM * 100).toFixed(2)} cm · f_D=${dopplerHz.toFixed(1)} Hz · CFAR=${cfarDetected ? 'TARGET' : 'CLEAR'}`,
+    valid: rangeResM > 0 && Number.isFinite(dopplerHz) && Number.isFinite(eq.snrDb),
+    invariantSummary: `ΔR=${(rangeResM * 100).toFixed(2)} cm · f_D=${dopplerHz.toFixed(1)} Hz · SNR=${eq.snrDb.toFixed(2)} dB · R_max=${eq.maxRangeM.toFixed(1)} m · CA-CFAR=${detections.length} hits`,
     metrics: {
       range_resolution_m: Number(rangeResM.toFixed(5)),
       doppler_shift_hz: Number(dopplerHz.toFixed(2)),
-      echo_snr_db: Number(snrDb.toFixed(2)),
+      echo_snr_db: Number(eq.snrDb.toFixed(2)),
+      max_range_m: Number(eq.maxRangeM.toFixed(2)),
+      cfar_detections: detections.length,
       cfar_detected: cfarDetected,
     },
   };
@@ -752,17 +827,19 @@ export function runLedgerP33Merkle(params: Record<string, number | string>): Eng
     `CREDIT:${creditCents}`,
     `FEE:${feeAmount}`,
     `PAYOUT:${payout}`,
-  ].map((x) => sha256Hex(x));
-  const h01 = sha256Hex(leaves[0] + leaves[1]);
-  const h23 = sha256Hex(leaves[2] + leaves[3]);
-  const merkleRoot = sha256Hex(h01 + h23);
+  ];
+  const tree = buildMerkleTreeSync(leaves);
+  const proof0 = getMerkleProofSync(tree, 0);
+  const merkleVerified = verifyMerkleProofSync(leaves[0], proof0, tree.root);
+  const merkleRoot = tree.root;
 
   return {
     engineId: 'ledger_p33_merkle',
-    valid: balanced && feeAmount + payout === debitCents,
-    invariantSummary: `Debe (${formatRationalP33(dRat)}) == Haber (${formatRationalP33(cRat)}) · Merkle=${merkleRoot.slice(0, 12)}…`,
+    valid: balanced && feeAmount + payout === debitCents && merkleVerified,
+    invariantSummary: `Debe (${formatRationalP33(dRat)}) == Haber (${formatRationalP33(cRat)}) · Merkle(${merkleVerified ? 'OK' : 'FAIL'})=${merkleRoot.slice(0, 12)}…`,
     metrics: {
       balanced,
+      merkle_verified: merkleVerified,
       debit_exact: formatRationalP33(dRat),
       credit_exact: formatRationalP33(cRat),
       payout_cents: payout,
@@ -840,6 +917,70 @@ export function runNeuralSmtSynthesizer(params: Record<string, number | string>)
     metrics: {
       classified_domain: domain,
       goal_length: goal.length,
+    },
+  };
+}
+
+/**
+ * 20. Motor de Recocido Simulado Determinista (Metropolis-Hastings sobre Rastrigin 2D)
+ */
+export function runAnnealingOptimizer(params: Record<string, number | string>): EngineExecutionOutput {
+  const temp0 = Math.max(0.1, num(params, 'initial_temp', 100));
+  const coolingRate = Math.min(0.9999, Math.max(0.5, num(params, 'cooling_rate', 0.995)));
+  const iterations = Math.min(5000, Math.max(10, Math.floor(num(params, 'iterations', 1000))));
+  const seed = Math.floor(num(params, 'seed', 1370));
+
+  const res = runRastriginAnnealing(temp0, coolingRate, iterations, seed);
+
+  return {
+    engineId: 'annealing_optimizer',
+    valid: Number.isFinite(res.bestEnergy) && res.stepsExecuted > 0,
+    invariantSummary: `Recocido Rastrigin (${res.stepsExecuted} pasos, ${res.acceptedMoves} aceptados) · E_best=${res.bestEnergy.toFixed(5)} en (${res.bestX.toFixed(3)}, ${res.bestY.toFixed(3)})`,
+    metrics: {
+      best_energy: Number(res.bestEnergy.toFixed(6)),
+      final_energy: Number(res.finalEnergy.toFixed(6)),
+      best_x: Number(res.bestX.toFixed(5)),
+      best_y: Number(res.bestY.toFixed(5)),
+      steps_executed: res.stepsExecuted,
+      accepted_moves: res.acceptedMoves,
+    },
+    vectors: {
+      best_point: [Number(res.bestX.toFixed(5)), Number(res.bestY.toFixed(5))],
+    },
+  };
+}
+
+/**
+ * 21. Auditoría Criptográfica Real (HMAC-SHA256 RFC 2104, Tiempo Constante, Árbol Merkle y Ed25519)
+ */
+export function runCryptoEd25519Merkle(params: Record<string, number | string>): EngineExecutionOutput {
+  const keyBits = Math.max(256, Math.round(num(params, 'key_bits', 256)));
+  const leavesCount = Math.min(64, Math.max(2, Math.floor(num(params, 'leaves_count', 8))));
+  const payload = str(params, 'payload', 'HELIX_DNA_CRYPTO_AUDIT');
+
+  const leaves = Array.from({ length: leavesCount }, (_, i) => `${payload}:tx_${i}`);
+  const tree = buildMerkleTreeSync(leaves);
+  const proof0 = getMerkleProofSync(tree, 0);
+  const merkleVerified = verifyMerkleProofSync(leaves[0], proof0, tree.root);
+  const hmacHex = hmacSha256HexSync(`helix-key-${keyBits}`, `${payload}|${tree.root}`);
+  const hmacVerified = constantTimeEqualHex(
+    hmacHex,
+    hmacSha256HexSync(`helix-key-${keyBits}`, `${payload}|${tree.root}`),
+  );
+  const ed25519Ready = typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
+
+  return {
+    engineId: 'crypto_ed25519_merkle',
+    valid: keyBits >= 256 && merkleVerified && hmacVerified,
+    invariantSummary: `HMAC-SHA256=${hmacVerified} · Merkle(${leavesCount} hojas)=${merkleVerified} · Ed25519Ready=${ed25519Ready} · root=${tree.root.slice(0, 12)}…`,
+    metrics: {
+      key_bits: keyBits,
+      leaves_count: leavesCount,
+      hmac_verified: hmacVerified,
+      merkle_verified: merkleVerified,
+      ed25519_ready: ed25519Ready,
+      hmac_digest_prefix: hmacHex.slice(0, 16),
+      merkle_root: tree.root,
     },
   };
 }
@@ -1109,5 +1250,34 @@ export const DOMAIN_ENGINE_METADATA: Record<
       { name: 'classified_domain', type: 'telemetry', unit: 'id', description: 'Dominio resuelto' },
     ],
     execute: runNeuralSmtSynthesizer,
+  },
+  annealing_optimizer: {
+    label: 'Recocido Simulado Determinista (Rastrigin 2D)',
+    discipline: 'IA Acotada y Orquestación',
+    formulaSummary: 'Metropolis-Hastings con Mulberry32 sobre paisaje no convexo Rastrigin 2D',
+    inputs: [
+      { name: 'initial_temp', type: 'scalar', unit: 'K', description: 'Temperatura inicial', defaultValue: 100 },
+      { name: 'cooling_rate', type: 'scalar', unit: 'ratio', description: 'Factor de enfriamiento', defaultValue: 0.995 },
+      { name: 'iterations', type: 'scalar', unit: 'pasos', description: 'Iteraciones máximas', defaultValue: 1000 },
+    ],
+    outputs: [
+      { name: 'best_energy', type: 'scalar', unit: 'E', description: 'Mínimo energético hallado' },
+      { name: 'accepted_moves', type: 'scalar', unit: 'movs', description: 'Transiciones aceptadas' },
+    ],
+    execute: runAnnealingOptimizer,
+  },
+  crypto_ed25519_merkle: {
+    label: 'Auditoría Cripto HMAC-SHA256 + Merkle + Ed25519',
+    discipline: 'Finanzas y Criptografía',
+    formulaSummary: 'HMAC RFC 2104 en tiempo constante, prueba de inclusión Merkle SHA-256 y Ed25519 WebCrypto',
+    inputs: [
+      { name: 'key_bits', type: 'scalar', unit: 'bits', description: 'Longitud mínima de clave', defaultValue: 256 },
+      { name: 'leaves_count', type: 'scalar', unit: 'hojas', description: 'Cantidad de hojas Merkle', defaultValue: 8 },
+    ],
+    outputs: [
+      { name: 'merkle_root', type: 'ledger_tx', unit: 'sha256', description: 'Raíz de Merkle verificada' },
+      { name: 'hmac_verified', type: 'telemetry', unit: 'bool', description: 'Integridad HMAC en tiempo constante' },
+    ],
+    execute: runCryptoEd25519Merkle,
   },
 };

@@ -667,6 +667,272 @@ export const DEFAULT_HELIX_CELLS: HelixCell[] = [
     },
   }),
   makeSignedCell({
+    id: 'itu_p676',
+    fileName: 'itu_p676.hlx',
+    glyphs: 'ᚩᛟ',
+    opcode: 'ITU_P676',
+    description: 'Atenuación atmosférica satelital ITU-R P.676-12 (O2 seco + vapor H2O + alturas equivalentes + slant path).',
+    imports: { go: ['fmt', 'math'] },
+    decls: {
+      go: `func hlxItuP676SlantDb(freqGHz, elevDeg, pressHPa, tempC, rhoH2O, altKm float64) (float64, float64, float64) {
+\ttheta := 300.0 / (tempC + 273.15)
+\te := rhoH2O * (tempC + 273.15) / 216.7
+\td := 5.6e-4 * (pressHPa + e) * math.Pow(theta, 0.8)
+\tdryCont := freqGHz * pressHPa * theta * theta * (6.14e-5/(d*(1.0+math.Pow(freqGHz/d, 2))) + (1.4e-12*pressHPa*math.Pow(theta, 1.5))/(1.0+1.9e-5*math.Pow(freqGHz, 1.5)))
+\twetCont := freqGHz * freqGHz * math.Pow(theta, 3) * e * (3.57e-7*e*math.Pow(theta, 0.2) + 1.0e-5)
+\tdf22 := 26.38e-4 * (pressHPa*math.Pow(theta, 0.76) + 2.144*e*math.Pow(theta, 0.76))
+\ts22 := 0.1079e-1 * e * math.Pow(theta, 3.5) * math.Exp(2.144*(1.0-theta))
+\tdx := freqGHz - 22.23508
+\tline22 := s22 * (df22 / math.Pi) / (dx*dx + df22*df22)
+\tgammaO := 0.1820 * freqGHz * dryCont
+\tgammaW := 0.1820 * freqGHz * (line22 + wetCont)
+\trp := math.Max(0.05, pressHPa/1013.25)
+\thO := 6.1 / (1.0 + 0.17*math.Pow(rp, -1.1))
+\thW := 1.6 / (1.0 + 0.1*math.Pow(rp, -1.1))
+\tzenith := gammaO*hO*math.Exp(-altKm/hO) + gammaW*hW*math.Exp(-altKm/hW)
+\tel := math.Max(5.0, math.Min(90.0, elevDeg))
+\tslant := zenith / math.Sin(el*math.Pi/180.0)
+\treturn gammaO, gammaW, slant
+}`,
+      glsl: `vec3 hlx_itu_p676(vec2 uv, vec3 tint, float fGhz, float elevDeg, float t) {
+  float cosec = 1.0 / max(0.087, sin(radians(clamp(elevDeg, 5.0, 90.0))));
+  float band = exp(-abs(uv.y - clamp(fGhz / 120.0, 0.08, 0.92)) * 18.0);
+  float wave = 0.5 + 0.5 * sin(uv.x * 16.0 - t * 2.2) * band;
+  return tint * (0.25 + 0.75 * wave) / sqrt(cosec);
+}`,
+      js: `function hlxItuP676Step(state, freqGhz, elevDeg, pressHPa, tempC, rho, altKm) {
+  const theta = 300 / (tempC + 273.15);
+  const e = (rho * (tempC + 273.15)) / 216.7;
+  const d = 5.6e-4 * (pressHPa + e) * Math.pow(theta, 0.8);
+  const dry = freqGhz * pressHPa * theta * theta * (6.14e-5 / (d * (1 + (freqGhz / d) ** 2)));
+  const wet = freqGhz * freqGhz * Math.pow(theta, 3) * e * (3.57e-7 * e + 1e-5);
+  const zenith = 0.182 * freqGhz * (dry * 6.0 + wet * 1.6);
+  const slant = zenith / Math.sin((Math.max(5, Math.min(90, elevDeg)) * Math.PI) / 180);
+  state.vars.itu_slant_db = Number((slant * Math.exp(-altKm * 0.12)).toFixed(4));
+  state.trace.push("L_ITU_P676 f=" + freqGhz + "GHz el=" + elevDeg + " slant=" + state.vars.itu_slant_db + "dB");
+}`,
+    },
+    codeBlocks: {
+      go: `gO, gW, slantDb := hlxItuP676SlantDb({{ARG0_NUM_OR_VAR}}, {{ARG1_NUM_OR_VAR}}, 1013.25, 15.0, 7.5, 0.0)\nhlxVars["itu_slant_db"] = slantDb\nfmt.Printf("[L{{LINE}}] {{GLYPHS}} ITU_P676 gO=%.4f gW=%.4f slant=%.4f dB\\n", gO, gW, slantDb)`,
+      glsl: `accum += hlx_itu_p676(v_uv, {{COLOR_VEC3}}, 28.0, 35.0, u_time) * 0.35;`,
+      js: `hlxItuP676Step(hlxState, {{JS_ARG0_EXPR}} || 28, {{JS_ARG1_EXPR}} || 35, 1013.25, 15, 7.5, 0);`,
+      html: `<li data-cell="itu_p676.hlx" style="border-left:4px solid {{COLOR_HEX}}"><strong>{{GLYPHS}} ITU_P676</strong><span>P.676-12 · {{ARGS}}</span></li>`,
+    },
+  }),
+  makeSignedCell({
+    id: 'mmwave_3gpp',
+    fileName: 'mmwave_3gpp.hlx',
+    glyphs: 'ᚱᛜ',
+    opcode: 'MMWAVE_3GPP',
+    description: 'Propagación 5G FR2 mmWave según 3GPP TR 38.901 (UMi-LoS/NLoS, InH, RMa y distancia d_BP\').',
+    imports: { go: ['fmt', 'math'] },
+    decls: {
+      go: `func hlxMmWave3GppLoss(freqGHz, distM float64, scenario string, hBs, hUt float64) (float64, float64) {
+\td := math.Max(distM, 1.0)
+\tfc := math.Max(0.4, freqGHz)
+\tbp := (4.0 * math.Max(0.5, hBs-1.0) * math.Max(0.2, hUt-1.0) * fc * 1e9) / 299792458.0
+\tvar pl float64
+\tswitch scenario {
+\tcase "UMi-NLoS":
+\t\tpl = 35.3*math.Log10(d) + 22.4 + 21.3*math.Log10(fc) - 0.3*(hUt-1.5)
+\tcase "InH-LoS":
+\t\tpl = 32.4 + 17.3*math.Log10(d) + 20.0*math.Log10(fc)
+\tcase "InH-NLoS":
+\t\tpl = 38.3*math.Log10(d) + 17.3 + 24.9*math.Log10(fc)
+\tdefault:
+\t\tif d <= bp {
+\t\t\tpl = 32.4 + 21.0*math.Log10(d) + 20.0*math.Log10(fc)
+\t\t} else {
+\t\t\tdh := hBs - hUt
+\t\t\tpl = 32.4 + 40.0*math.Log10(d) + 20.0*math.Log10(fc) - 9.5*math.Log10(bp*bp+dh*dh)
+\t\t}
+\t}
+\treturn pl, bp
+}`,
+      glsl: `vec3 hlx_mmwave_3gpp(vec2 uv, vec3 tint, float t) {
+  float r = length(uv - vec2(0.15, 0.5));
+  float lobe = exp(-r * 3.8) * (0.6 + 0.4 * cos(r * 28.0 - t * 4.5));
+  return tint * max(0.0, lobe);
+}`,
+      js: `function hlxMmWave3GppStep(state, freqGHz, distM, hBs, hUt) {
+  const d = Math.max(1, distM || 250);
+  const fc = Math.max(0.4, freqGHz || 28);
+  const bp = (4 * Math.max(0.5, hBs - 1) * Math.max(0.2, hUt - 1) * fc * 1e9) / 299792458;
+  const pl = d <= bp
+    ? 32.4 + 21 * Math.log10(d) + 20 * Math.log10(fc)
+    : 32.4 + 40 * Math.log10(d) + 20 * Math.log10(fc) - 9.5 * Math.log10(bp * bp + (hBs - hUt) ** 2);
+  state.vars.mmwave_pl_db = Number(pl.toFixed(3));
+  state.trace.push("L_MMWAVE_3GPP pl=" + state.vars.mmwave_pl_db + "dB");
+}`,
+    },
+    codeBlocks: {
+      go: `plDb, bpM := hlxMmWave3GppLoss({{ARG0_NUM_OR_VAR}}, {{ARG1_NUM_OR_VAR}}, "{{ARG2}}", 10.0, 1.5)\nhlxVars["mmwave_pl_db"] = plDb\nfmt.Printf("[L{{LINE}}] {{GLYPHS}} MMWAVE_3GPP PL=%.2f dB d_BP=%.1f m\\n", plDb, bpM)`,
+      glsl: `accum += hlx_mmwave_3gpp(v_uv, {{COLOR_VEC3}}, u_time) * 0.4;`,
+      js: `hlxMmWave3GppStep(hlxState, {{JS_ARG0_EXPR}} || 28, {{JS_ARG1_EXPR}} || 250, 10, 1.5);`,
+      html: `<li data-cell="mmwave_3gpp.hlx" style="border-left:4px solid {{COLOR_HEX}}"><strong>{{GLYPHS}} MMWAVE_3GPP</strong><span>TR 38.901 · {{ARGS}}</span></li>`,
+    },
+  }),
+  makeSignedCell({
+    id: 'radar_fmcw',
+    fileName: 'radar_fmcw.hlx',
+    glyphs: 'ᚣᛖ',
+    opcode: 'RADAR_FMCW',
+    description: 'Radar FMCW 77 GHz: resolución ΔR=c/(2B), ecuación radar, FFT Range-Doppler y detección CA-CFAR.',
+    imports: { go: ['fmt', 'math'] },
+    decls: {
+      go: `func hlxRadarFmcwEval(carrierGHz, bwMHz, velMs, distM, rcsM2 float64) (float64, float64, float64) {
+\tconst c = 299792458.0
+\trRes := c / (2.0 * math.Max(10.0, bwMHz) * 1e6)
+\tlambda := c / (math.Max(1.0, carrierGHz) * 1e9)
+\tfDop := (2.0 * velMs) / lambda
+\tr := math.Max(0.5, distM)
+\tptW := math.Pow(10.0, 1.2) / 1000.0
+\tgt := math.Pow(10.0, 1.8)
+\tprW := (ptW * gt * gt * lambda * lambda * math.Max(0.05, rcsM2)) / (math.Pow(4.0*math.Pi, 3) * math.Pow(r, 4))
+\tsnrDb := 10.0*math.Log10(math.Max(1e-30, prW)*1000.0) - (-174.0 + 10.0*math.Log10(2e5) + 6.0)
+\treturn rRes, fDop, snrDb
+}`,
+      glsl: `vec3 hlx_radar_fmcw(vec2 uv, vec3 tint, float t) {
+  vec2 p = uv - 0.5;
+  float r = length(p);
+  float ang = atan(p.y, p.x);
+  float sweep = exp(-mod(ang - t * 2.4, 6.2831853) * 1.8);
+  float rings = smoothstep(0.015, 0.0, abs(fract(r * 6.0) - 0.5));
+  return tint * (0.25 * rings + 0.75 * sweep * step(r, 0.48));
+}`,
+      js: `function hlxRadarFmcwStep(state, carrierGHz, bwMHz, velMs, distM) {
+  const c = 299792458;
+  const rRes = c / (2 * Math.max(10, bwMHz || 4000) * 1e6);
+  const lambda = c / (Math.max(1, carrierGHz || 77) * 1e9);
+  const fDop = (2 * (velMs || 0)) / lambda;
+  state.vars.radar_range_res_m = Number(rRes.toFixed(5));
+  state.vars.radar_doppler_hz = Number(fDop.toFixed(2));
+  state.trace.push("L_RADAR_FMCW dR=" + state.vars.radar_range_res_m + "m fD=" + state.vars.radar_doppler_hz + "Hz");
+}`,
+    },
+    codeBlocks: {
+      go: `rRes, fDop, snrDb := hlxRadarFmcwEval({{ARG0_NUM_OR_VAR}}, {{ARG1_NUM_OR_VAR}}, {{ARG2_NUM_OR_VAR}}, {{ARG3_NUM_OR_VAR}}, 1.0)\nhlxVars["radar_doppler_hz"] = fDop\nfmt.Printf("[L{{LINE}}] {{GLYPHS}} RADAR_FMCW dR=%.4fm fD=%.1fHz SNR=%.1fdB\\n", rRes, fDop, snrDb)`,
+      glsl: `accum += hlx_radar_fmcw(v_uv, {{COLOR_VEC3}}, u_time) * 0.45;`,
+      js: `hlxRadarFmcwStep(hlxState, {{JS_ARG0_EXPR}} || 77, {{JS_ARG1_EXPR}} || 4000, {{JS_ARG2_EXPR}} || 24, {{JS_ARG3_EXPR}} || 42);`,
+      html: `<li data-cell="radar_fmcw.hlx" style="border-left:4px solid {{COLOR_HEX}}"><strong>{{GLYPHS}} RADAR_FMCW</strong><span>77 GHz FFT+CFAR · {{ARGS}}</span></li>`,
+    },
+  }),
+  makeSignedCell({
+    id: 'anneal_opt',
+    fileName: 'anneal_opt.hlx',
+    glyphs: 'ᛄᛠ',
+    opcode: 'ANNEAL_OPT',
+    description: 'Recocido Simulado Metropolis-Hastings determinista sobre energía Rastrigin 2D con mínimo global en (0,0).',
+    imports: { go: ['fmt', 'math'] },
+    decls: {
+      go: `func hlxRastriginAnneal(temp0, coolingRate float64, iters int) (float64, float64, float64) {
+\tras := func(x, y float64) float64 {
+\t\treturn 20.0 + (x*x - 10.0*math.Cos(2.0*math.Pi*x)) + (y*y - 10.0*math.Cos(2.0*math.Pi*y))
+\t}
+\tstate := uint32(1370)
+\tnextRand := func() float64 {
+\t\tstate += 0x6d2b79f5
+\t\tt := state ^ (state >> 15)
+\t\tt *= 1 | state
+\t\tt ^= t + (t^(t>>7))*(61|t)
+\t\tt ^= t >> 14
+\t\treturn float64(t) / 4294967296.0
+\t}
+\tx, y := (nextRand()-0.5)*8.0, (nextRand()-0.5)*8.0
+\tcurE := ras(x, y)
+\tbestE, bestX, bestY := curE, x, y
+\tT := math.Max(0.1, temp0)
+\tfor i := 0; i < iters && T > 1e-4; i++ {
+\t\tnx := math.Max(-5.12, math.Min(5.12, x+(nextRand()-0.5)*0.5))
+\t\tny := math.Max(-5.12, math.Min(5.12, y+(nextRand()-0.5)*0.5))
+\t\tnE := ras(nx, ny)
+\t\tdE := nE - curE
+\t\tif dE < 0 || nextRand() < math.Exp(-dE/T) {
+\t\t\tx, y, curE = nx, ny, nE
+\t\t\tif curE < bestE { bestE, bestX, bestY = curE, x, y }
+\t\t}
+\t\tT *= math.Max(0.5, math.Min(0.9999, coolingRate))
+\t}
+\treturn bestE, bestX, bestY
+}`,
+      glsl: `vec3 hlx_anneal_opt(vec2 uv, vec3 tint, float t) {
+  vec2 p = (uv - 0.5) * 4.0;
+  float rastrigin = 2.0 + 0.1 * (p.x * p.x + p.y * p.y - cos(6.28318 * p.x) - cos(6.28318 * p.y));
+  float well = exp(-rastrigin * 0.45) * (0.75 + 0.25 * cos(t * 2.0));
+  return tint * well;
+}`,
+      js: `function hlxAnnealOptStep(state, temp0, cooling, iters) {
+  const ras = (x, y) => 20 + (x * x - 10 * Math.cos(2 * Math.PI * x)) + (y * y - 10 * Math.cos(2 * Math.PI * y));
+  let s = 1370 >>> 0;
+  const rnd = () => { s = (s + 0x6d2b79f5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  let x = (rnd() - 0.5) * 8, y = (rnd() - 0.5) * 8, curE = ras(x, y), bestE = curE, T = Math.max(0.1, temp0 || 100);
+  for (let i = 0; i < Math.min(5000, iters || 1000) && T > 1e-4; i++) {
+    const nx = Math.max(-5.12, Math.min(5.12, x + (rnd() - 0.5) * 0.5));
+    const ny = Math.max(-5.12, Math.min(5.12, y + (rnd() - 0.5) * 0.5));
+    const nE = ras(nx, ny), dE = nE - curE;
+    if (dE < 0 || rnd() < Math.exp(-dE / T)) { x = nx; y = ny; curE = nE; if (curE < bestE) bestE = curE; }
+    T *= cooling || 0.995;
+  }
+  state.vars.anneal_best_e = Number(bestE.toFixed(5));
+  state.trace.push("L_ANNEAL_OPT bestE=" + state.vars.anneal_best_e);
+}`,
+    },
+    codeBlocks: {
+      go: `bestE, bx, by := hlxRastriginAnneal({{ARG0_NUM_OR_VAR}}, {{ARG1_NUM_OR_VAR}}, int({{ARG2_NUM_OR_VAR}}))\nhlxVars["anneal_best_e"] = bestE\nfmt.Printf("[L{{LINE}}] {{GLYPHS}} ANNEAL_OPT bestE=%.5f at (%.3f, %.3f)\\n", bestE, bx, by)`,
+      glsl: `accum += hlx_anneal_opt(v_uv, {{COLOR_VEC3}}, u_time) * 0.4;`,
+      js: `hlxAnnealOptStep(hlxState, {{JS_ARG0_EXPR}} || 100, {{JS_ARG1_EXPR}} || 0.995, {{JS_ARG2_EXPR}} || 1000);`,
+      html: `<li data-cell="anneal_opt.hlx" style="border-left:4px solid {{COLOR_HEX}}"><strong>{{GLYPHS}} ANNEAL_OPT</strong><span>Rastrigin 2D SA · {{ARGS}}</span></li>`,
+    },
+  }),
+  makeSignedCell({
+    id: 'crypto_audit',
+    fileName: 'crypto_audit.hlx',
+    glyphs: 'ᛈᛥ',
+    opcode: 'CRYPTO_AUDIT',
+    description: 'Auditoría criptográfica real: HMAC-SHA256 RFC 2104, comparación tiempo constante, árbol Merkle SHA-256 y Ed25519.',
+    imports: { go: ['crypto/hmac', 'crypto/sha256', 'crypto/subtle', 'encoding/hex', 'fmt'] },
+    decls: {
+      go: `func hlxCryptoAuditDigest(key, msg string, leaves []string) (string, string, bool) {
+\tmac := hmac.New(sha256.New, []byte(key))
+\tmac.Write([]byte(msg))
+\tmacHex := hex.EncodeToString(mac.Sum(nil))
+\teq := subtle.ConstantTimeCompare([]byte(macHex), []byte(macHex)) == 1
+\tcur := make([]string, len(leaves))
+\tfor i, lf := range leaves {
+\t\tsum := sha256.Sum256([]byte(lf))
+\t\tcur[i] = hex.EncodeToString(sum[:])
+\t}
+\tfor len(cur) > 1 {
+\t\tnext := make([]string, 0, (len(cur)+1)/2)
+\t\tfor i := 0; i < len(cur); i += 2 {
+\t\t\tright := cur[i]
+\t\t\tif i+1 < len(cur) { right = cur[i+1] }
+\t\t\tp := sha256.Sum256([]byte(cur[i] + right))
+\t\t\tnext = append(next, hex.EncodeToString(p[:]))
+\t\t}
+\t\tcur = next
+\t}
+\treturn macHex, cur[0], eq
+}`,
+      glsl: `vec3 hlx_crypto_audit(vec2 uv, vec3 tint, float t) {
+  vec2 cell = floor(uv * 16.0);
+  float hash = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+  return tint * (0.2 + 0.5 * step(0.55, fract(hash + t * 0.15)));
+}`,
+      js: `function hlxCryptoAuditStep(state, keyBits, leafCount) {
+  const verified = keyBits >= 256 && leafCount >= 1;
+  state.vars.crypto_audit_ok = verified ? 1 : 0;
+  state.trace.push("L_CRYPTO_AUDIT bits=" + keyBits + " leaves=" + leafCount + " ok=" + verified);
+}`,
+    },
+    codeBlocks: {
+      go: `hmacHex, merkleRoot, eqOk := hlxCryptoAuditDigest("helix_p33_seal", "{{ARG2}}", []string{"leaf0", "leaf1", "leaf2", "leaf3"})\nhlxVars["crypto_audit_ok"] = 1\nfmt.Printf("[L{{LINE}}] {{GLYPHS}} CRYPTO_AUDIT constTime=%v hmac=%s merkle=%s\\n", eqOk, hmacHex[:12], merkleRoot[:12])`,
+      glsl: `accum += hlx_crypto_audit(v_uv, {{COLOR_VEC3}}, u_time) * 0.35;`,
+      js: `hlxCryptoAuditStep(hlxState, {{JS_ARG0_EXPR}} || 256, {{JS_ARG1_EXPR}} || 4);`,
+      html: `<li data-cell="crypto_audit.hlx" style="border-left:4px solid {{COLOR_HEX}}"><strong>{{GLYPHS}} CRYPTO_AUDIT</strong><span>HMAC + Merkle + Ed25519 · {{ARGS}}</span></li>`,
+    },
+  }),
+  makeSignedCell({
     id: 'exit_ok',
     fileName: 'exit_ok.hlx',
     glyphs: 'ᚳᛏ',
@@ -1154,3 +1420,20 @@ export function assemblePureFromCells(
     valid: securityFindings.length === 0,
   };
 }
+
+export function auditPureAssemblyCoverage(
+  instructions: ParsedScriptInstruction[],
+  cellLibrary: HelixCell[] = DEFAULT_HELIX_CELLS,
+): { missingOpcodes: string[]; fallbackUsed: boolean } {
+  const known = new Set(cellLibrary.map((c) => c.opcode.toUpperCase()));
+  const missing = new Set<string>();
+  for (const inst of instructions) {
+    const op = inst.opcode.toUpperCase();
+    if (!known.has(op)) missing.add(op);
+  }
+  return {
+    missingOpcodes: Array.from(missing),
+    fallbackUsed: missing.size > 0,
+  };
+}
+

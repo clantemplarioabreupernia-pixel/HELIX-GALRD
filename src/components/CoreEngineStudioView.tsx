@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import {
   ArrowRight,
+  BookOpen,
+  Brain,
   Check,
   Code2,
   Copy,
   Cpu,
   Download,
   ExternalLink,
+  Eye,
   FlaskConical,
   GitMerge,
   Layers,
@@ -19,28 +22,41 @@ import {
 } from 'lucide-react';
 import {
   createHelixCoreEngine,
+  decodeAcademicCard17B,
   DecompositionResult,
+  DISCIPLINES_33,
   DOMAIN_ENGINE_METADATA,
   EngineExecutionOutput,
   EngineeringReport,
   HelixRegisteredTool,
   HelixToolDomain,
+  HolographicAcademicCard,
+  MultiTargetAssemblyBundle,
   PersonaMode,
   RecombinationResult,
   ToolOrigin,
 } from '../core';
+import { CellTarget } from '../utils/helixCells';
 import {
   DEFAULT_HELIX_3D_PROGRAM,
   DEFAULT_HELIX_CONTRACT_PROGRAM,
   DEFAULT_HELIX_PHYSICS_PROGRAM,
 } from '../utils/helixVm';
+import { LiquidMorphShape } from './LiquidBiopixelCanvas';
 
 interface CoreEngineStudioViewProps {
   onOpenInVm: (script: string) => void;
   onOpenIn3DStudio: (script: string) => void;
+  onProjectToHologram?: (payload: {
+    hlxScript: string;
+    title: string;
+    subtitle?: string;
+    shape?: LiquidMorphShape;
+    accentHex?: string;
+  }) => void;
 }
 
-type StudioTab = 'architect' | 'recombine' | 'decompose' | 'catalog';
+type StudioTab = 'architect' | 'recombine' | 'decompose' | 'catalog' | 'library17b';
 
 const INTENT_PRESETS: { label: string; persona: PersonaMode; intent: string }[] = [
   {
@@ -91,6 +107,7 @@ function originLabel(origin: ToolOrigin): string {
 export function CoreEngineStudioView({
   onOpenInVm,
   onOpenIn3DStudio,
+  onProjectToHologram,
 }: CoreEngineStudioViewProps) {
   const [engine] = useState(() => createHelixCoreEngine());
   const [catalogVersion, setCatalogVersion] = useState(0);
@@ -103,12 +120,16 @@ export function CoreEngineStudioView({
   const [interviewAnswers, setInterviewAnswers] = useState<Record<string, string>>({});
   const [showMaterializedPreview, setShowMaterializedPreview] = useState<boolean>(false);
 
-  // Estado Tab 2: Recombinación A × B
+  // Estado Tab 2: Recombinación A × B + 33 Disciplinas + Multi-Target + Mini-GPT N2
   const [toolAId, setToolAId] = useState<string>('123_orbital_mechanics_kepler');
   const [toolBId, setToolBId] = useState<string>('23_satellite_itup676');
   const [toolCId, setToolCId] = useState<string>('21_radar_fmcw_77ghz');
+  const [selectedDiscBit, setSelectedDiscBit] = useState<number | null>(null);
+  const [exportTarget, setExportTarget] = useState<CellTarget>('go');
   const [recombRadiusKm, setRecombRadiusKm] = useState<string>('6771');
   const [recombBandMid, setRecombBandMid] = useState<string>('0.65');
+  const [miniGptTrainMsg, setMiniGptTrainMsg] = useState<string | null>(null);
+  const [miniGptTraining, setMiniGptTraining] = useState<boolean>(false);
   const [recombResult, setRecombResult] = useState<RecombinationResult | null>(() =>
     engine.recombineTools(
       ['123_orbital_mechanics_kepler', '23_satellite_itup676', '21_radar_fmcw_77ghz'],
@@ -135,10 +156,45 @@ export function CoreEngineStudioView({
     engine.invokeTool('123_orbital_mechanics_kepler'),
   );
 
+  // Estado Tab 5: 33 Disciplinas & Biblioteca Holográfica 17B
+  const [libraryQuery, setLibraryQuery] = useState<string>('');
+  const [libraryDiscFilter, setLibraryDiscFilter] = useState<number | 'ALL'>('ALL');
+
   const tools = useMemo(() => {
     void catalogVersion;
     return engine.getRegisteredTools();
   }, [engine, catalogVersion]);
+
+  const holographicCards: HolographicAcademicCard[] = useMemo(() => {
+    void catalogVersion;
+    return engine.getHolographicCards();
+  }, [engine, catalogVersion]);
+
+  const filteredHolographicCards = useMemo(() => {
+    const q = libraryQuery.trim().toLowerCase();
+    return holographicCards.filter((card) => {
+      if (libraryDiscFilter !== 'ALL' && !card.activeBitIndices.includes(libraryDiscFilter)) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        card.title.toLowerCase().includes(q) ||
+        card.summary.toLowerCase().includes(q) ||
+        card.frame.frameSha256.toLowerCase().includes(q) ||
+        card.disciplines.some((d) => d.name.toLowerCase().includes(q) || d.faculty.toLowerCase().includes(q))
+      );
+    });
+  }, [holographicCards, libraryQuery, libraryDiscFilter]);
+
+  const recombMultiTarget: MultiTargetAssemblyBundle | null = useMemo(() => {
+    if (!recombResult?.synthesizedHlx) return null;
+    return engine.exportRecombinationMultiTarget(recombResult, ['go', 'glsl', 'js', 'html']);
+  }, [engine, recombResult]);
+
+  const decodedRecombCard = useMemo(() => {
+    if (!recombResult?.holographicCard) return null;
+    return decodeAcademicCard17B(recombResult.holographicCard);
+  }, [recombResult]);
 
   const curatedExperiments = useMemo(() => engine.discoverCrossDomainExperiments(), [engine]);
 
@@ -227,7 +283,80 @@ export function CoreEngineStudioView({
     };
     const res = engine.recombineTools(chosen, params, true);
     setRecombResult(res);
+    setMiniGptTrainMsg(null);
     setCatalogVersion((v) => v + 1);
+  };
+
+  const handleTrainMiniGptFromRecombination = async (res: RecombinationResult | null) => {
+    if (!res?.synthesizedHlx || !res.success) return;
+    setMiniGptTraining(true);
+    setMiniGptTrainMsg(null);
+    const promptLabel = `Recombinar ${res.parentTools.map((t) => t.title).join(' × ')}`;
+    engine.recordCertifiedCapsule(
+      {
+        prompt: promptLabel,
+        reply: res.engineeringSummary,
+        hlxScript: res.synthesizedHlx,
+        shape: 'avatar',
+        domain: res.childTool?.domain ?? 'RECOMBINACION_AB',
+      },
+      4,
+    );
+    try {
+      const r = await fetch('/api/recombine/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: promptLabel,
+          summary: res.engineeringSummary,
+          hlxScript: res.synthesizedHlx,
+          domain: res.childTool?.domain ?? 'RECOMBINACION_AB',
+          qpsk17Sha256: res.holographicCard?.frame.frameSha256 ?? '',
+          disciplineMaskBits33: res.disciplineMaskBits33,
+          steps: 4,
+        }),
+      });
+      const d = await r.json();
+      if (r.ok && d?.ok) {
+        setMiniGptTrainMsg(
+          `Mini-GPT entrenado (${d.status?.acceptedCapsulesCount ?? '?'} cápsulas · ${d.status?.stepsTrained ?? '?'} pasos · loss=${Number(d.status?.finalLoss ?? 0).toFixed(4)})`,
+        );
+      } else {
+        setMiniGptTrainMsg(d?.error || 'Rechazado por aduana N2.');
+      }
+    } catch {
+      const localSt = engine.getCapsulePredictorStatus();
+      setMiniGptTrainMsg(
+        `Entrenado en memoria local (${localSt.acceptedCapsules} cápsulas · ${localSt.stepsTrained} pasos)`,
+      );
+    } finally {
+      setMiniGptTraining(false);
+    }
+  };
+
+  const handleProjectSynthesisToHologram = (
+    hlxScript: string,
+    title: string,
+    pccSha?: string,
+    frameSha?: string,
+  ) => {
+    const badge = [
+      pccSha ? `PCC ${pccSha.slice(0, 8)}` : null,
+      frameSha ? `17B ${frameSha.slice(0, 8)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    if (onProjectToHologram) {
+      onProjectToHologram({
+        hlxScript,
+        title,
+        subtitle: badge || 'Proyección Holográfica HELIX',
+        shape: 'avatar',
+        accentHex: '#38bdf8',
+      });
+    } else {
+      onOpenIn3DStudio(hlxScript);
+    }
   };
 
   const handleRunDecomposition = () => {
@@ -321,6 +450,11 @@ export function CoreEngineStudioView({
             { id: 'recombine', label: 'Recombinación A × B', icon: GitMerge },
             { id: 'decompose', label: 'Desarmador atómico', icon: Scissors },
             { id: 'catalog', label: `Catálogo vivo (${tools.length})`, icon: Layers },
+            {
+              id: 'library17b',
+              label: `33 Disciplinas & Biblioteca 17B (${holographicCards.length})`,
+              icon: BookOpen,
+            },
           ] as const
         ).map((tab) => {
           const Icon = tab.icon;
@@ -751,6 +885,59 @@ export function CoreEngineStudioView({
                   Combinar y Sellar Herramienta Hija
                 </button>
               </div>
+              {/* Selector rápido de las 33 Disciplinas P33 (Canal 0) */}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-700">
+                    Mapeo directo con las 33 Disciplinas P33 (clic para asignar Célula A/B)
+                  </span>
+                  {selectedDiscBit !== null && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDiscBit(null)}
+                      className="text-xs font-medium text-blue-700 hover:underline"
+                    >
+                      Limpiar selección de disciplina
+                    </button>
+                  )}
+                </div>
+                <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                  {DISCIPLINES_33.map((disc) => {
+                    const active = selectedDiscBit === disc.bitIndex;
+                    return (
+                      <button
+                        key={disc.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDiscBit(disc.bitIndex);
+                          const matching = tools.filter(
+                            (t) =>
+                              t.engineId === disc.primaryEngineId ||
+                              t.domain === disc.domainMatch,
+                          );
+                          if (matching.length > 0) {
+                            if (matching[0].id !== toolAId) {
+                              setToolBId(matching[0].id);
+                            } else if (matching[1]) {
+                              setToolBId(matching[1].id);
+                            }
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-medium transition-colors ${
+                          active
+                            ? 'border-blue-600 bg-blue-50 text-blue-800'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="font-mono text-sky-700">{disc.glyph}</span>
+                        <span>
+                          {disc.index}. {disc.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
             {recombResult && (
@@ -759,17 +946,115 @@ export function CoreEngineStudioView({
                   <div className="text-xs font-medium text-slate-800">
                     {recombResult.engineeringSummary}
                   </div>
-                  {recombResult.childTool && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {recombResult.childTool && (
+                      <button
+                        type="button"
+                        onClick={() => setToolAId(recombResult.childTool!.id)}
+                        className="text-xs font-medium text-blue-700 hover:underline whitespace-nowrap shrink-0"
+                      >
+                        Usar hija ({recombResult.childTool.fileName}) como Célula A
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => {
-                        setToolAId(recombResult.childTool!.id);
-                      }}
-                      className="text-xs font-medium text-blue-700 hover:underline whitespace-nowrap shrink-0"
+                      disabled={miniGptTraining || !recombResult.success}
+                      onClick={() => handleTrainMiniGptFromRecombination(recombResult)}
+                      className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50 whitespace-nowrap shrink-0"
                     >
-                      Usar hija ({recombResult.childTool.fileName}) como Célula A
+                      <Brain className="h-3.5 w-3.5" />
+                      {miniGptTraining ? 'Entrenando...' : 'Entrenar Mini-GPT (N2)'}
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleProjectSynthesisToHologram(
+                          recombResult.synthesizedHlx,
+                          recombResult.childTool?.title ?? 'Recombinación A × B',
+                          recombResult.pcc?.certificateSha256,
+                          recombResult.holographicCard?.frame.frameSha256,
+                        )
+                      }
+                      className="inline-flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 whitespace-nowrap shrink-0"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Proyectar en Rostro Holográfico
+                    </button>
+                  </div>
+                </div>
+
+                {miniGptTrainMsg && (
+                  <div className="bg-violet-50 px-5 py-2 font-mono text-xs text-violet-800">
+                    {miniGptTrainMsg}
+                  </div>
+                )}
+
+                {/* Certificación PCC + Ficha Holográfica 17B + Disciplinas Canal 0 */}
+                <div className="grid gap-4 p-5 lg:grid-cols-2">
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3.5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800">
+                        <ShieldCheck className="h-4 w-4" />
+                        ProofCarryingCertificate (helixPcc.ts)
+                      </span>
+                      <span className="font-mono text-xs font-bold text-emerald-700">
+                        {recombResult.pcc?.status ?? 'MISSING'} ·{' '}
+                        {recombResult.pccVerified ? 'VERIFICADO' : 'NO VÁLIDO'}
+                      </span>
+                    </div>
+                    {recombResult.pcc && (
+                      <div className="space-y-0.5 font-mono text-[11px] text-slate-700">
+                        <div className="truncate">
+                          Cert SHA-256: {recombResult.pcc.certificateSha256}
+                        </div>
+                        <div className="truncate">
+                          Program SHA-256: {recombResult.pcc.programSha256}
+                        </div>
+                        <div>
+                          Heap máx: {recombResult.pcc.provedSummary.maxHeapBytes}/
+                          {recombResult.pcc.provedSummary.heapCapacityBytes} B · Checks descargados:{' '}
+                          {recombResult.pcc.provedSummary.dischargedRuntimeChecks}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-md border border-sky-200 bg-sky-50/50 p-3.5 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-900">
+                        <BookOpen className="h-4 w-4" />
+                        Ficha Biblioteca Holográfica (17 Bytes · QPSK-132)
+                      </span>
+                      <span className="font-mono text-xs font-bold text-sky-800">
+                        {recombResult.holographicCard
+                          ? `${recombResult.holographicCard.byteLength} B · ${recombResult.holographicCard.z4SymbolCount} Z4`
+                          : 'Sin destilación'}
+                      </span>
+                    </div>
+                    {recombResult.holographicCard && (
+                      <div className="space-y-1 font-mono text-[11px] text-slate-700">
+                        <div className="truncate">
+                          Frame SHA-256: {recombResult.holographicCard.frame.frameSha256}
+                        </div>
+                        <div className="truncate">
+                          Máscara 33b (Canal 0): {recombResult.disciplineMaskBits33}
+                        </div>
+                        <div className="text-slate-800">
+                          Disciplinas ({recombResult.disciplines33.length}):{' '}
+                          {recombResult.disciplines33
+                            .map((d) => `${d.glyph} ${d.name}`)
+                            .join(' | ')}
+                        </div>
+                        {decodedRecombCard && (
+                          <div className="text-emerald-700">
+                            Decodificación inversa 17B:{' '}
+                            {decodedRecombCard.validIntegrity ? 'ÍNTEGRA' : 'ALTERADA'} (
+                            {decodedRecombCard.recoveredDisciplines.length} disciplinas recuperadas)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid gap-6 p-5 lg:grid-cols-2">
@@ -784,11 +1069,16 @@ export function CoreEngineStudioView({
                           className="rounded border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800"
                         >
                           {b.fromToolId}.{b.fromPort} → {b.toToolId}.{b.toPort} [{b.transformRule}] ={' '}
-                          <span className="font-semibold text-blue-700">{String(b.transferredValue)}</span>
+                          <span className="font-semibold text-blue-700">
+                            {String(b.transferredValue)}
+                          </span>
                         </div>
                       ))}
                       {recombResult.stepOutputs.map((out, idx) => (
-                        <div key={`${out.engineId}-${idx}`} className="rounded border border-slate-200 px-3 py-2.5 text-xs">
+                        <div
+                          key={`${out.engineId}-${idx}`}
+                          className="rounded border border-slate-200 px-3 py-2.5 text-xs"
+                        >
                           <div className="font-semibold text-slate-900">
                             Paso {idx + 1} · {recombResult.parentTools[idx]?.fileName} [{out.engineId}]
                           </div>
@@ -799,23 +1089,114 @@ export function CoreEngineStudioView({
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                         Célula Hija Generada · SMT {recombResult.smtReport.status}
                       </h3>
-                      <button
-                        type="button"
-                        onClick={() => onOpenInVm(recombResult.synthesizedHlx)}
-                        className="text-xs font-medium text-blue-700 hover:underline"
-                      >
-                        Ejecutar en VM
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => onOpenInVm(recombResult.synthesizedHlx)}
+                          className="text-xs font-medium text-blue-700 hover:underline"
+                        >
+                          Ejecutar en VM
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenIn3DStudio(recombResult.synthesizedHlx)}
+                          className="text-xs font-medium text-slate-700 hover:underline"
+                        >
+                          Estudio 3D
+                        </button>
+                      </div>
                     </div>
                     <pre className="max-h-72 overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800">
                       {recombResult.synthesizedHlx}
                     </pre>
                   </div>
                 </div>
+
+                {/* Exportación Multi-Target Go / GLSL ES 3.00 / JS / HTML5 */}
+                {recombMultiTarget && (
+                  <div className="space-y-3 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Exportación Multi-Target Certificada (Go / GLSL / JS / HTML5)
+                        </h3>
+                        <p className="font-mono text-[11px] text-slate-500">
+                          Manifest SHA-256: {recombMultiTarget.manifestSha256} ·{' '}
+                          {recombMultiTarget.totalCellsUsed} células .hlx enlazadas
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(['go', 'glsl', 'js', 'html'] as const).map((tgt) => (
+                          <button
+                            key={tgt}
+                            type="button"
+                            onClick={() => setExportTarget(tgt)}
+                            className={`rounded border px-2.5 py-1 font-mono text-xs font-medium ${
+                              exportTarget === tgt
+                                ? 'border-slate-900 bg-slate-900 text-white'
+                                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {tgt === 'glsl' ? 'GLSL ES 3.00' : tgt.toUpperCase()}
+                          </button>
+                        ))}
+                        {recombMultiTarget.artifacts[exportTarget] && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCopy(
+                                  `recomb-${exportTarget}`,
+                                  recombMultiTarget.artifacts[exportTarget]!.code,
+                                )
+                              }
+                              className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                              {copiedKey === `recomb-${exportTarget}` ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                              Copiar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const ext =
+                                  exportTarget === 'go'
+                                    ? 'go'
+                                    : exportTarget === 'glsl'
+                                      ? 'frag'
+                                      : exportTarget === 'js'
+                                        ? 'mjs'
+                                        : 'html';
+                                const baseName = recombResult.childTool?.id ?? 'helix_recomb';
+                                downloadFile(
+                                  `${baseName}.${ext}`,
+                                  recombMultiTarget.artifacts[exportTarget]!.code,
+                                );
+                              }}
+                              className="inline-flex items-center gap-1 rounded bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Descargar .{exportTarget}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {recombMultiTarget.artifacts[exportTarget] && (
+                      <pre className="max-h-64 overflow-auto rounded-md border border-slate-200 bg-slate-950 p-3 font-mono text-xs text-slate-100">
+                        {recombMultiTarget.artifacts[exportTarget]!.code}
+                      </pre>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -1167,6 +1548,160 @@ export function CoreEngineStudioView({
                   {selectedTool.hlxSource}
                 </pre>
               </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* TAB 5: 33 DISCIPLINAS P33 Y BIBLIOTECA CIENTÍFICA HOLOGRÁFICA DE 17 BYTES */}
+      {activeTab === 'library17b' && (
+        <div className="space-y-6">
+          <section className="rounded-lg border border-slate-200 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="font-display text-sm font-semibold text-slate-900">
+                  Las 33 Disciplinas Académicas P33 (Canal 0 · Primos 2..137 · Cubo Z4)
+                </h2>
+                <p className="text-xs text-slate-600">
+                  Biyección exacta entre cada runa/primo y su disciplina académica para destilar fichas QPSK-132 de 17 bytes.
+                </p>
+              </div>
+              {libraryDiscFilter !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setLibraryDiscFilter('ALL')}
+                  className="rounded border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                >
+                  Mostrar todas las disciplinas
+                </button>
+              )}
+            </div>
+            <div className="grid gap-2.5 p-5 sm:grid-cols-2 lg:grid-cols-3">
+              {DISCIPLINES_33.map((disc) => {
+                const selected = libraryDiscFilter === disc.bitIndex;
+                return (
+                  <button
+                    key={disc.id}
+                    type="button"
+                    onClick={() =>
+                      setLibraryDiscFilter(selected ? 'ALL' : disc.bitIndex)
+                    }
+                    className={`rounded-md border p-3 text-left transition-colors ${
+                      selected
+                        ? 'border-blue-600 bg-blue-50'
+                        : 'border-slate-200 bg-slate-50/70 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 font-mono text-xs">
+                      <span className="font-bold text-sky-700">
+                        {disc.glyph} · Bit {disc.bitIndex} · p={disc.prime}
+                      </span>
+                      <span className="text-slate-500">{disc.frequencyHz.toFixed(1)} Hz</span>
+                    </div>
+                    <div className="mt-1 text-xs font-semibold text-slate-900">
+                      {disc.name}
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      {disc.faculty} · Motor: {disc.primaryEngineId}
+                    </div>
+                    <div className="mt-1 truncate font-mono text-[11px] text-slate-500">
+                      {disc.canonicalEquation}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <h2 className="font-display text-sm font-semibold text-slate-900">
+                  Biblioteca Científica Holográfica de 17 Bytes ({filteredHolographicCards.length} fichas ·{' '}
+                  {filteredHolographicCards.length * 17} Bytes totales)
+                </h2>
+                <p className="text-xs text-slate-600">
+                  Cada ficha comprime 4 canales × 33 bits (66 símbolos Z4 = 17 B) con proyección Pauli-SoA 28 B/celda y firma PCC.
+                </p>
+              </div>
+              <div className="relative w-full sm:w-72">
+                <Search className="pointer-events-none absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  value={libraryQuery}
+                  onChange={(e) => setLibraryQuery(e.target.value)}
+                  placeholder="Filtrar fichas 17B..."
+                  className="w-full rounded-md border border-slate-200 py-1.5 pl-8 pr-3 text-xs text-slate-900 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-200">
+              {filteredHolographicCards.map((card) => {
+                const decoded = decodeAcademicCard17B(card);
+                return (
+                  <div key={card.id} className="space-y-2 px-5 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+                          <span className="font-bold text-slate-900">
+                            {card.byteLength} B / {card.z4SymbolCount} Z4
+                          </span>
+                          <span className="text-sky-700">
+                            SHA: {card.frame.frameSha256.slice(0, 14)}…
+                          </span>
+                          <span className="text-emerald-700">
+                            {decoded.validIntegrity ? 'ROUND-TRIP OK' : 'ERROR'}
+                          </span>
+                          <span className="text-slate-500">
+                            {card.sourceKind === 'autopoietic_recombination'
+                              ? 'Síntesis A × B'
+                              : 'Canónica P33'}
+                          </span>
+                        </div>
+                        <h3 className="mt-1 text-sm font-semibold text-slate-900">
+                          {card.title}
+                        </h3>
+                        <p className="text-xs text-slate-600">{card.summary}</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleProjectSynthesisToHologram(
+                              card.hlxScript,
+                              card.title,
+                              card.pccCertificateSha256,
+                              card.frame.frameSha256,
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded bg-sky-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-700 whitespace-nowrap"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Proyectar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenInVm(card.hlxScript)}
+                          className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 whitespace-nowrap"
+                        >
+                          <Code2 className="h-3.5 w-3.5" />
+                          VM
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-1 font-mono text-[11px] text-slate-600 sm:grid-cols-2">
+                      <div className="truncate">Canal 0 (33b): {card.primeMaskBits33}</div>
+                      <div className="truncate">
+                        PCC: {card.pccCertificateSha256.slice(0, 20)}… · SoA 28B:{' '}
+                        {card.soaDigestSha256.slice(0, 12)}…
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </section>
         </div>

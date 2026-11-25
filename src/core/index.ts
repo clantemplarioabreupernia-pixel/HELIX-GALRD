@@ -8,3 +8,8 @@ export * from './helixPlanner';
 export * from './helixConversationalBrain';
 export * from './helixCapsuleTrainer';
 export * from './helixKinematics12';
+export * from './helixDoubleHelix';
+export * from './helixAutodidactLoop';
+export * from './holographicAcademicLibrary';
+export * from '../data/disciplines33';
+

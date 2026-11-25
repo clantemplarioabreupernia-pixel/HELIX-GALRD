@@ -1,4 +1,5 @@
 import { sha256Hex } from '../utils/helixPcc';
+import { applyLineaRectaFilter } from './helixAutodidactLoop';
 import {
   DOMAIN_ENGINE_METADATA,
   DomainEngineId,
@@ -57,17 +58,17 @@ const DOMAIN_SIGNAL_RULES: {
   {
     engineId: 'orbital_kepler_verlet',
     preferredToolId: '123_orbital_mechanics_kepler',
-    triggers: ['orbit', 'órbita', 'nasa', 'satel', 'kepler', 'cohete', 'nave', 'espaci', 'planeta', 'gravit'],
+    triggers: ['orbit', 'órbita', 'nasa', 'satel', 'kepler', 'cohete', 'nave', 'espaci', 'planeta', 'gravit', 'luna', 'marte', 'martes', 'astronaut', 'supervivencia', 'aeroespacial'],
   },
   {
     engineId: 'radar_fmcw_doppler',
     preferredToolId: '21_radar_fmcw_77ghz',
-    triggers: ['radar', 'doppler', 'fmcw', '77 ghz', 'deteccion', 'detección', 'eco'],
+    triggers: ['radar', 'doppler', 'fmcw', '77 ghz', 'deteccion', 'detección', 'eco', 'aviacion', 'aviación', 'marina', 'ejercito', 'ejército', 'vuelo'],
   },
   {
     engineId: 'telecom_5g_sat_rf',
     preferredToolId: '23_satellite_itup676',
-    triggers: ['5g', 'antena', 'telecom', 'enlace', 'señal', 'senal', 'itu', 'rf', 'ghz', 'satelital'],
+    triggers: ['5g', 'antena', 'telecom', 'enlace', 'señal', 'senal', 'itu', 'rf', 'ghz', 'satelital', 'radio', 'mision', 'misión'],
   },
   {
     engineId: 'quantum_bloch_bvn',
@@ -82,42 +83,42 @@ const DOMAIN_SIGNAL_RULES: {
   {
     engineId: 'pauli_viscoelastic_soa',
     preferredToolId: '02_physics_cauchy_nemesis',
-    triggers: ['fluido', 'líquido', 'liquido', 'navier', 'visco', 'materia', 'agua', 'oceano', 'océano', 'onda'],
+    triggers: ['fluido', 'líquido', 'liquido', 'navier', 'visco', 'materia', 'agua', 'oceano', 'océano', 'onda', 'biomed', 'ultrasonido'],
   },
   {
     engineId: 'cauchy_optical_sss',
     preferredToolId: 'canon_sss_optics',
-    triggers: ['luz', 'óptica', 'optica', 'cristal', 'refrac', 'brillo', 'espectr', 'color', 'laser', 'láser'],
+    triggers: ['luz', 'óptica', 'optica', 'cristal', 'refrac', 'brillo', 'espectr', 'color', 'laser', 'láser', 'imagen', 'foto', 'mezcla', 'radiacion', 'radiación'],
   },
   {
     engineId: 'cauchy_tensor_von_mises',
     preferredToolId: '46_cauchy_tensor6_solver',
-    triggers: ['esfuerzo', 'tensión', 'tension', 'estructura', 'mises', 'puente', 'material', 'resistencia', 'presion', 'presión'],
+    triggers: ['esfuerzo', 'tensión', 'tension', 'estructura', 'mises', 'puente', 'material', 'resistencia', 'presion', 'presión', 'hueso', 'osea', 'ósea', 'cardio', 'hospital'],
   },
   {
     engineId: 'terrain_fbm_mulberry',
     preferredToolId: '97_terrain_fbm_heightmap',
-    triggers: ['terreno', 'montaña', 'montana', 'relieve', 'bioma', 'mapa', 'isla', 'paisaje', 'mundo'],
+    triggers: ['terreno', 'montaña', 'montana', 'relieve', 'bioma', 'mapa', 'isla', 'paisaje', 'mundo', 'lunar', 'marciano'],
   },
   {
     engineId: 'rigid_collision_3d',
     preferredToolId: '98_rigid_body_collisions',
-    triggers: ['colision', 'colisión', 'rebote', 'caida', 'caída', 'gravedad', 'salto', 'juego', 'videojuego'],
+    triggers: ['colision', 'colisión', 'rebote', 'caida', 'caída', 'gravedad', 'salto', 'juego', 'videojuego', 'ejercicio'],
   },
   {
     engineId: 'lipsync_3band_dsp',
     preferredToolId: '71_audio_fft_bands',
-    triggers: ['voz', 'habla', 'lipsync', 'labios', 'avatar', 'canto', 'cantar', 'boca'],
+    triggers: ['voz', 'habla', 'lipsync', 'labios', 'avatar', 'canto', 'cantar', 'boca', 'animo', 'ánimo'],
   },
   {
     engineId: 'audio_p33_cymatic',
     preferredToolId: '03_audio_p33_cymatic',
-    triggers: ['música', 'musica', 'audio', 'sonido', 'hz', 'frecuencia', 'acústic', 'acustic', 'cimátic', 'cimatic', 'ritmo'],
+    triggers: ['música', 'musica', 'audio', 'sonido', 'hz', 'frecuencia', 'acústic', 'acustic', 'cimátic', 'cimatic', 'ritmo', 'coclear'],
   },
   {
     engineId: 'sintergia_cinema_spline',
     preferredToolId: '72_storyboard_hybrid_capture',
-    triggers: ['videoclip', 'video', 'cine', 'pelicula', 'película', 'escena', 'camara', 'cámara', 'historia', 'animac'],
+    triggers: ['videoclip', 'video', 'cine', 'pelicula', 'película', 'escena', 'camara', 'cámara', 'historia', 'animac', 'imagen', 'mezcla', 'catedratico', 'catedrático'],
   },
   {
     engineId: 'ledger_p33_merkle',
@@ -129,6 +130,26 @@ const DOMAIN_SIGNAL_RULES: {
     preferredToolId: 'canon_geom_seal',
     triggers: ['toroide', 'icosa', 'geometr', 'cristal', 'esfera', 'forma', 'topolog', 'simetr'],
   },
+  {
+    engineId: 'annealing_optimizer',
+    preferredToolId: '10_annealing_solver',
+    triggers: ['recocido', 'annealing', 'optimiz', 'rastrigin', 'metropolis', 'minim', 'supervivencia', 'ruta'],
+  },
+  {
+    engineId: 'crypto_ed25519_merkle',
+    preferredToolId: '27_ed25519_signer',
+    triggers: ['ed25519', 'hmac', 'merkle', 'firma', 'cifrad', 'hash', 'sha256', 'auditor'],
+  },
+  {
+    engineId: 'interval_formal_guard',
+    preferredToolId: '14_interval_bounds',
+    triggers: ['salud', 'monitoreo', 'monitor', 'signos', 'vital', 'biomed', 'astronaut', 'glucosa', 'temperatura', 'sueno', 'sueño', 'hospital', 'medic', 'supervivencia', 'umbral'],
+  },
+  {
+    engineId: 'qpsk_telemetry_bus',
+    preferredToolId: '17_qpsk_telemetry',
+    triggers: ['telemetria', 'telemetría', 'sensor', 'monitoreo', 'monitor', 'astronaut', 'luna', 'marte', 'aviacion', 'marina', 'transmision'],
+  },
 ];
 
 // Orden natural de tubería de datos para maximizar acoplamientos automáticos entre motores
@@ -139,6 +160,7 @@ const PIPELINE_ENGINE_ORDER: Record<DomainEngineId, number> = {
   audio_p33_cymatic: 18,
   quantum_statevector_qasm: 22,
   quantum_bloch_bvn: 26,
+  annealing_optimizer: 28,
   cauchy_tensor_von_mises: 32,
   pauli_viscoelastic_soa: 38,
   cauchy_optical_sss: 42,
@@ -149,6 +171,7 @@ const PIPELINE_ENGINE_ORDER: Record<DomainEngineId, number> = {
   sintergia_cinema_spline: 65,
   geom_seal_topology: 70,
   ledger_p33_merkle: 80,
+  crypto_ed25519_merkle: 82,
   interval_formal_guard: 85,
   qpsk_telemetry_bus: 90,
   neural_smt_synthesizer: 95,
@@ -398,20 +421,25 @@ function buildParamsFromAnswers(
   explicitDataInputs: Record<string, number | string> = {},
 ): Record<string, number | string> {
   const combined = `${intent} ${Object.values(answers).join(' ')}`.toLowerCase();
+  const lr = applyLineaRectaFilter(combined);
+  const planet = lr.planetaryFrame;
   const params: Record<string, number | string> = {
-    narrative: intent,
+    narrative: lr.distilledCore || intent,
+    mu_km3_s2: planet.muKm3s2,
+    gravity_ms2: planet.gravityMs2,
+    pressure_hpa: planet.surfacePressureHPa,
   };
 
-  // Altitud orbital en km
+  // Altitud orbital en km adaptada al cuerpo planetario (Tierra, Luna o Marte)
   const kmMatch = extractFirstNumberNear(combined, /(\d+(?:[.,]\d+)?)\s*km\b/i);
   if (kmMatch !== null && kmMatch > 0) {
-    params.radius_km = kmMatch > 6371 ? kmMatch : 6371 + kmMatch;
+    params.radius_km = kmMatch > planet.meanRadiusKm ? kmMatch : planet.meanRadiusKm + kmMatch;
   } else if (combined.includes('geo') || combined.includes('35786')) {
     params.radius_km = 6371 + 35786;
   } else if (combined.includes('meo') || combined.includes('20200')) {
     params.radius_km = 6371 + 20200;
   } else {
-    params.radius_km = 6371 + 400;
+    params.radius_km = planet.meanRadiusKm + (planet.id === 'EARTH' ? 400 : 120);
   }
 
   // Frecuencia acústica Hz o RF GHz
@@ -505,6 +533,12 @@ const OUTPUT_METRIC_LABELS: Record<string, [string, string]> = {
   energy_final_j: ['Energía residual', 'J'],
   balanced: ['Balance contable verificado', ''],
   payout_cents: ['Liquidación neta', 'centavos'],
+  mmwave_pl_db: ['Pérdida 3GPP mmWave', 'dB'],
+  o2_spec_db_km: ['Atenuación O₂ ITU-R', 'dB/km'],
+  h2o_spec_db_km: ['Atenuación H₂O ITU-R', 'dB/km'],
+  best_energy: ['Energía mínima Rastrigin', ''],
+  merkle_verified: ['Prueba Merkle verificada', ''],
+  hmac_verified: ['Integridad HMAC-SHA256', ''],
 };
 
 function formatHumanInputsAndOutputs(
@@ -561,8 +595,28 @@ function buildStandaloneArtifactHtml(
   dataOutputs: DataFieldEntry[],
   category: EngineeringReport['detectedCategory'] = 'HETEROGENEO',
   params: Record<string, number | string> = {},
+  activatedEngines: EngineeringReport['activatedEngines'] = [],
 ): string {
   const safeIntent = intent.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lr = applyLineaRectaFilter(intent);
+  const planet = lr.planetaryFrame;
+  const engineIds = new Set(activatedEngines.map((e) => e.engineId));
+  const hasTelemetryGuard =
+    engineIds.has('interval_formal_guard') ||
+    engineIds.has('qpsk_telemetry_bus') ||
+    /\b(salud|monitor|astronaut|biomed|hospital|signos|vital|supervivencia|presion|glucosa|ritmo)\b/i.test(intent);
+  const hasMediaHybrid =
+    category === 'CINEMA_VIDEOCLIP' ||
+    engineIds.has('sintergia_cinema_spline') ||
+    engineIds.has('cauchy_optical_sss') ||
+    /\b(imagen|foto|mezcla|video|videoclip|ultrasonido|visual|escaner|escáner)\b/i.test(intent);
+  const hasOrbitOrRf =
+    category === 'SIMULACION_ESPACIAL' ||
+    category === 'TELECOM_RF' ||
+    engineIds.has('orbital_kepler_verlet') ||
+    engineIds.has('radar_fmcw_doppler') ||
+    engineIds.has('telecom_5g_sat_rf');
+
   const rowsHtml = [
     ...dataInputs.map((d) => ({ kind: 'Entrada', ...d })),
     ...dataOutputs.map((d) => ({ kind: 'Salida', ...d })),
@@ -574,15 +628,96 @@ function buildStandaloneArtifactHtml(
     .join('');
 
   const freqSeed = Number(params.freq_hz ?? 528);
-  const altSeed = Math.max(150, Math.round(Number(params.radius_km ?? 6771) - 6371));
-  const gravSeed = Number(params.gravity_ms2 ?? 1.62);
+  const altSeed = Math.max(80, Math.round(Number(params.radius_km ?? planet.meanRadiusKm + 120) - planet.meanRadiusKm));
+  const gravSeed = Number(params.gravity_ms2 ?? planet.gravityMs2);
+  const muSeed = Number(params.mu_km3_s2 ?? planet.muKm3s2);
+  const radiusSeed = planet.meanRadiusKm;
 
   let interactiveScript = '';
   let interactiveControls = '';
-  let appBadge = 'Simulación Interactiva en Vivo';
+  let appBadge = `Síntesis Autónoma · ${planet.label}`;
 
-  if (category === 'VIDEOJUEGO') {
-    appBadge = 'Videojuego Interactivo · Controles WASD / Flechas / Clic';
+  if (hasTelemetryGuard && !hasMediaHybrid) {
+    appBadge = `Monitor Telemetrico y Supervivencia (${planet.label}) · Intervalos Formales + QPSK-17B`;
+    interactiveControls = `
+      <div class="bar">
+        <label>Entorno:
+          <select id="envSel">
+            <option value="EARTH" ${planet.id === 'EARTH' ? 'selected' : ''}>Tierra (9.81 m/s²)</option>
+            <option value="MOON" ${planet.id === 'MOON' ? 'selected' : ''}>Luna (1.62 m/s²)</option>
+            <option value="MARS" ${planet.id === 'MARS' ? 'selected' : ''}>Marte (3.72 m/s²)</option>
+            <option value="ORBIT_ZERO_G" ${planet.id === 'ORBIT_ZERO_G' ? 'selected' : ''}>Órbita (0.01 m/s²)</option>
+          </select>
+        </label>
+        <label>FC (bpm): <input id="hrInp" type="number" min="40" max="200" value="74" style="width:64px"/></label>
+        <label>Glucosa (mg/dL): <input id="gluInp" type="number" min="45" max="320" value="96" style="width:64px"/></label>
+        <label>Temp (°C): <input id="tmpInp" type="number" step="0.1" min="34" max="41" value="36.7" style="width:64px"/></label>
+        <label>Imagen/Sensor: <input id="imgInp" type="file" accept="image/*" style="max-width:165px"/></label>
+        <button id="btnLog">Registrar Chequeo (+10 pts)</button>
+      </div>
+      <div class="bar" id="statusBar" style="color:#34d399;font-weight:600">Estado nominal verificado · Misión: 100 pts</div>
+    `;
+    interactiveScript = `
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const envSel = document.getElementById('envSel');
+const hrInp = document.getElementById('hrInp');
+const gluInp = document.getElementById('gluInp');
+const tmpInp = document.getElementById('tmpInp');
+const imgInp = document.getElementById('imgInp');
+const statusBar = document.getElementById('statusBar');
+const btnLog = document.getElementById('btnLog');
+const GRAV = { EARTH: 9.81, MOON: 1.62, MARS: 3.72, ORBIT_ZERO_G: 0.01 };
+let missionPts = 100, t = 0, history = Array.from({length: 60}, () => 74), bgImg = null;
+imgInp.onchange = (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { const im = new Image(); im.onload = () => { bgImg = im; }; im.src = String(r.result); };
+  r.readAsDataURL(f);
+};
+btnLog.onclick = () => { missionPts += 10; };
+function evaluateHealth() {
+  const hr = Number(hrInp.value || 74);
+  const glu = Number(gluInp.value || 96);
+  const tmp = Number(tmpInp.value || 36.7);
+  const g = GRAV[envSel.value] || 9.81;
+  const warnings = [];
+  if (hr < 50 || hr > 125) warnings.push('Frecuencia cardíaca fuera de intervalo [50..125 bpm]');
+  if (glu < 70 || glu > 150) warnings.push('Glucemia fuera de intervalo [70..150 mg/dL]');
+  if (tmp < 35.8 || tmp > 37.8) warnings.push('Temperatura fuera de banda nominal [35.8..37.8 °C]');
+  if (g < 2.0) warnings.push('Protocolo óseo/cardiovascular activo por baja gravedad (' + g + ' m/s²)');
+  return { hr, glu, tmp, g, warnings, color: warnings.length === 0 ? '#34d399' : warnings.length === 1 ? '#fbbf24' : '#f87171' };
+}
+function loop() {
+  t += 0.05;
+  const st = evaluateHealth();
+  history.push(st.hr + Math.sin(t * 2.2) * 2.5);
+  if (history.length > 90) history.shift();
+  statusBar.style.color = st.color;
+  statusBar.textContent = (st.warnings.length ? st.warnings.join(' · ') : 'Signos dentro de bandas seguras') + ' · Adherencia: ' + missionPts + ' pts';
+  ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (bgImg) { ctx.globalAlpha = 0.28; ctx.drawImage(bgImg, 0, 0, cv.width, cv.height); ctx.globalAlpha = 1.0; }
+  // Silueta interactiva de monitoreo nodal (cabeza/tórax/extremidades)
+  ctx.strokeStyle = st.color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(130, 70, 22, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeRect(102, 98, 56, 86);
+  ctx.beginPath(); ctx.moveTo(116, 184); ctx.lineTo(116, 255); ctx.moveTo(144, 184); ctx.lineTo(144, 255); ctx.stroke();
+  // Pulso cardiaco / señal biométrica sobre el canal derecho
+  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i < history.length; i++) {
+    const x = 230 + (i / 90) * (cv.width - 260);
+    const y = 165 - ((history[i] - 40) / 140) * 110;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#e2e8f0'; ctx.font = '13px system-ui';
+  ctx.fillText('FC: ' + st.hr + ' bpm | Glucosa: ' + st.glu + ' mg/dL | Temp: ' + st.tmp + ' °C | g=' + st.g + ' m/s²', 230, 34);
+  requestAnimationFrame(loop);
+}
+loop();`;
+  } else if (category === 'VIDEOJUEGO') {
+    appBadge = `Videojuego Interactivo (${planet.label}) · Controles WASD / Flechas / Clic`;
     interactiveControls =
       '<div class="bar"><span id="hud">Puntuación: 0 · Escudo: 100%</span><button id="btnReset">Reiniciar Misión</button></div>';
     interactiveScript = `
@@ -651,10 +786,10 @@ function loop() {
   requestAnimationFrame(loop);
 }
 loop();`;
-  } else if (category === 'SIMULACION_ESPACIAL' || category === 'TELECOM_RF') {
-    appBadge = 'Simulador Orbital y Telemetría en Tiempo Real';
+  } else if (hasOrbitOrRf) {
+    appBadge = `Simulador Orbital, Radar y RF (${planet.label}) en Tiempo Real`;
     interactiveControls =
-      `<div class="bar"><label>Altitud orbital: <input id="altRange" type="range" min="200" max="35786" value="${altSeed}" /> <strong id="altVal">${altSeed} km</strong></label><span id="orbStats"></span></div>`;
+      `<div class="bar"><label>Altitud orbital: <input id="altRange" type="range" min="80" max="35786" value="${altSeed}" /> <strong id="altVal">${altSeed} km</strong></label><span id="orbStats"></span></div>`;
     interactiveScript = `
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
@@ -664,35 +799,45 @@ const orbStats = document.getElementById('orbStats');
 let ang = 0;
 function loop() {
   const alt = Number(altRange.value);
-  const rKm = 6371 + alt;
-  const vOrb = Math.sqrt(398600.4418 / rKm) * 1000;
-  const periodMin = (2 * Math.PI * Math.sqrt((rKm*rKm*rKm) / 398600.4418)) / 60;
+  const rKm = ${radiusSeed} + alt;
+  const vOrb = Math.sqrt(${muSeed} / rKm) * 1000;
+  const periodMin = (2 * Math.PI * Math.sqrt((rKm*rKm*rKm) / ${muSeed})) / 60;
   altVal.textContent = alt + ' km';
   orbStats.textContent = 'v = ' + vOrb.toFixed(1) + ' m/s · T = ' + periodMin.toFixed(1) + ' min';
-  ang += 0.018 * Math.sqrt(6771 / rKm);
+  ang += 0.018 * Math.sqrt((${radiusSeed} + 400) / rKm);
   ctx.fillStyle = '#020617'; ctx.fillRect(0,0,cv.width,cv.height);
   const cx = cv.width/2, cy = cv.height/2;
   const radPx = 56 + (Math.min(alt, 35786)/35786) * 76;
   ctx.strokeStyle = 'rgba(56,189,248,0.35)'; ctx.setLineDash([4,4]);
   ctx.beginPath(); ctx.arc(cx, cy, radPx, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle = '#1d4ed8'; ctx.beginPath(); ctx.arc(cx, cy, 34, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '${planet.id === 'MARS' ? '#c2410c' : planet.id === 'MOON' ? '#94a3b8' : '#1d4ed8'}';
+  ctx.beginPath(); ctx.arc(cx, cy, 34, 0, Math.PI*2); ctx.fill();
   const sx = cx + Math.cos(ang)*radPx, sy = cy + Math.sin(ang)*radPx;
   ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle = 'rgba(52,211,153,0.5)'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(sx,sy); ctx.stroke();
   requestAnimationFrame(loop);
 }
 loop();`;
-  } else if (category === 'CINEMA_VIDEOCLIP') {
-    appBadge = 'Sintetizador Audiovisual Armónico en Vivo';
+  } else if (hasMediaHybrid) {
+    appBadge = 'Mezclador Híbrido Imagen Real + Ondas Procedurales + Audio Armónico';
     interactiveControls =
-      `<div class="bar"><label>Frecuencia: <input id="freqRange" type="range" min="110" max="960" value="${freqSeed}" /> <strong id="freqVal">${freqSeed} Hz</strong></label><button id="btnTone">Activar Tono Armónico</button></div>`;
+      `<div class="bar"><label>Imagen real: <input id="imgMix" type="file" accept="image/*" /></label><label>Frecuencia: <input id="freqRange" type="range" min="110" max="960" value="${freqSeed}" /> <strong id="freqVal">${freqSeed} Hz</strong></label><label>Dispersión: <input id="mixRange" type="range" min="0" max="100" value="55" /></label><button id="btnTone">Activar Tono Armónico</button></div>`;
     interactiveScript = `
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
+const imgMix = document.getElementById('imgMix');
 const freqRange = document.getElementById('freqRange');
+const mixRange = document.getElementById('mixRange');
 const freqVal = document.getElementById('freqVal');
 const btnTone = document.getElementById('btnTone');
-let osc = null, audioCtx = null, t = 0;
+let osc = null, audioCtx = null, t = 0, loadedImg = null;
+imgMix.onchange = (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { const im = new Image(); im.onload = () => { loadedImg = im; }; im.src = String(rd.result); };
+  rd.readAsDataURL(f);
+};
 btnTone.onclick = () => {
   if (osc) { osc.stop(); osc = null; btnTone.textContent = 'Activar Tono Armónico'; return; }
   audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -707,31 +852,49 @@ btnTone.onclick = () => {
 freqRange.oninput = () => { freqVal.textContent = freqRange.value + ' Hz'; if (osc) osc.frequency.value = Number(freqRange.value); };
 function loop() {
   const f = Number(freqRange.value);
+  const alphaMix = Number(mixRange.value) / 100;
   t += 0.03 + (f/528)*0.02;
-  ctx.fillStyle = 'rgba(2,6,23,0.22)'; ctx.fillRect(0,0,cv.width,cv.height);
-  ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  for (let x = 0; x < cv.width; x += 4) {
-    const y = cv.height/2 + Math.sin(x*0.02*(f/440) + t)*55 + Math.cos(x*0.05 - t*1.4)*20;
-    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  ctx.fillStyle = 'rgba(2,6,23,0.28)'; ctx.fillRect(0,0,cv.width,cv.height);
+  if (loadedImg) {
+    ctx.globalAlpha = 0.35 + (1 - alphaMix) * 0.55;
+    ctx.drawImage(loadedImg, 0, 0, cv.width, cv.height);
+    ctx.globalAlpha = 1.0;
   }
-  ctx.stroke();
+  const cols = ['#ef4444', '#34d399', '#38bdf8'];
+  for (let c = 0; c < 3; c++) {
+    ctx.strokeStyle = cols[c]; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x = 0; x < cv.width; x += 4) {
+      const y = cv.height/2 + Math.sin(x*0.02*(f/440) + t + c*0.4)*55*alphaMix + Math.cos(x*0.05 - t*1.4)*20;
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
   requestAnimationFrame(loop);
 }
 loop();`;
   } else {
     interactiveControls =
-      '<div class="bar"><span>Haz clic sobre el lienzo para inyectar ondas viscoelásticas Kelvin-Voigt</span></div>';
+      '<div class="bar"><label>Cargar imagen/sensor opcional: <input id="imgOpt" type="file" accept="image/*"/></label><span>Haz clic sobre el lienzo para inyectar pulsos Kelvin-Voigt</span></div>';
     interactiveScript = `
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
-let t = 0, pulse = 1.0;
+const imgOpt = document.getElementById('imgOpt');
+let t = 0, pulse = 1.0, bg = null;
+imgOpt.onchange = (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { const im = new Image(); im.onload = () => { bg = im; }; im.src = String(rd.result); };
+  rd.readAsDataURL(f);
+};
 cv.addEventListener('pointerdown', () => { pulse = 1.8; });
 function loop() {
   t += 0.025;
   pulse = Math.max(0.25, pulse * 0.98);
   ctx.fillStyle = 'rgba(2, 6, 23, 0.25)';
   ctx.fillRect(0, 0, cv.width, cv.height);
+  if (bg) { ctx.globalAlpha = 0.25; ctx.drawImage(bg, 0, 0, cv.width, cv.height); ctx.globalAlpha = 1.0; }
   ctx.strokeStyle = '#38bdf8';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -750,13 +913,14 @@ loop();`;
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<title>App en Vivo · Helix</title>
+<title>Creación Autónoma · Helix</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #070b14; color: #f8fafc; margin: 0; padding: 20px; }
-  .wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 14px; }
+  .wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 14px; }
   .panel { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 16px; }
   .bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 13px; color: #cbd5e1; }
-  button { background: #0284c7; color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+  button, select, input[type="number"] { background: #0f172a; color: #f8fafc; border: 1px solid #334155; border-radius: 6px; padding: 5px 10px; font-size: 12px; }
+  button { background: #0284c7; border-color: #0284c7; font-weight: 600; cursor: pointer; }
   button:hover { background: #0369a1; }
   canvas { width: 100%; height: 290px; background: #020617; border-radius: 8px; display: block; cursor: crosshair; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -767,15 +931,15 @@ loop();`;
 <div class="wrap">
   <div class="panel">
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#38bdf8;margin-bottom:4px">${appBadge}</div>
-    <h2 style="margin:0 0 6px;font-size:18px">App Interactiva Generada</h2>
+    <h2 style="margin:0 0 6px;font-size:18px">Síntesis Interactiva Autogenerada</h2>
     <p style="margin:0;color:#cbd5e1;font-size:13px">${safeIntent}</p>
   </div>
   <div class="panel">
     ${interactiveControls}
-    <canvas id="cv" width="820" height="290"></canvas>
+    <canvas id="cv" width="840" height="290"></canvas>
   </div>
   <div class="panel">
-    <h3 style="margin:0 0 10px;font-size:14px">Entradas y Salidas Calculadas</h3>
+    <h3 style="margin:0 0 10px;font-size:14px">Entradas y Salidas Verificadas</h3>
     <table>${rowsHtml}</table>
   </div>
 </div>
@@ -863,6 +1027,7 @@ export function analyzeIntentAndBuildReport(
       dataOutputs,
       detectedCategory,
       params,
+      activatedEngines,
     ),
   };
 }

@@ -1,8 +1,10 @@
-﻿import { INITIAL_COMPOUND_VOCABULARY } from '../data/vocabulary';
+import { Discipline33, resolveDisciplinesForTools } from '../data/disciplines33';
+import { INITIAL_COMPOUND_VOCABULARY } from '../data/vocabulary';
 import {
   buildProofCarryingCertificate,
   ProofCarryingCertificate,
   sha256Hex,
+  verifyProofCarryingCertificate,
 } from '../utils/helixPcc';
 import {
   compileHelixScript,
@@ -16,6 +18,10 @@ import {
   EngineExecutionOutput,
   PortSpec,
 } from './helixDomainEngines';
+import {
+  distillAcademicCapsule17B,
+  HolographicAcademicCard,
+} from './holographicAcademicLibrary';
 import { HelixRegisteredTool, HelixToolDomain } from './helixToolCatalog159';
 
 export interface DecomposedAtom {
@@ -58,6 +64,10 @@ export interface RecombinationResult {
   synthesizedHlx: string;
   smtReport: ProgramVerificationReport;
   pcc: ProofCarryingCertificate | null;
+  pccVerified: boolean;
+  disciplines33: Discipline33[];
+  disciplineMaskBits33: string;
+  holographicCard: HolographicAcademicCard | null;
   godelBigInt: string;
   engineeringSummary: string;
 }
@@ -79,6 +89,10 @@ function inferAtomEngine(opcode: string): DomainEngineId {
   if (op === 'CAM_6DOF') return 'sintergia_cinema_spline';
   if (op === 'WEBER_GUARD' || op === 'AUTH_CHECK' || op === 'REQUIRES' || op === 'ENSURES') return 'interval_formal_guard';
   if (op === 'WS_EMIT') return 'qpsk_telemetry_bus';
+  if (op === 'ITU_P676' || op === 'MMWAVE_3GPP') return 'telecom_5g_sat_rf';
+  if (op === 'RADAR_FMCW') return 'radar_fmcw_doppler';
+  if (op === 'ANNEAL_OPT') return 'annealing_optimizer';
+  if (op === 'CRYPTO_AUDIT') return 'crypto_ed25519_merkle';
   return 'kinetic_p33_rational';
 }
 
@@ -378,13 +392,83 @@ function bridgeOutputToInput(
         transformRule: 'quantum_entropy_to_mulberry32_seed',
         transferredValue: val,
       });
+    } else if (inPort.name === 'tension' && typeof m.energy_drift_pct === 'number') {
+      const val = Number(Math.min(1, Math.max(0.05, m.energy_drift_pct * 20 + 0.12)).toFixed(4));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'energy_drift_pct',
+        toToolId: toTool.id,
+        toPort: 'tension',
+        transformRule: 'orbital_drift_to_telemetry_modulation',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'tension' && typeof m.best_energy === 'number') {
+      const val = Number(Math.min(1, Math.max(0.05, 1 / (1 + m.best_energy))).toFixed(4));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'best_energy',
+        toToolId: toTool.id,
+        toPort: 'tension',
+        transformRule: 'annealing_convergence_to_optical_tension',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'a_end' && typeof m.safety_factor === 'number') {
+      const val = Math.max(50, Math.round(m.safety_factor * 100));
+      mappedParams[inPort.name] = val;
+      mappedParams['b_start'] = val;
+      mappedParams['b_end'] = val + 300;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'safety_factor',
+        toToolId: toTool.id,
+        toPort: 'a_end',
+        transformRule: 'structural_safety_factor_to_formal_guard_interval',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'a_end' && typeof m.snr_db === 'number') {
+      const val = Math.max(40, Math.round(Math.abs(m.snr_db) * 10));
+      mappedParams[inPort.name] = val;
+      mappedParams['b_start'] = val;
+      mappedParams['b_end'] = val + 250;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'snr_db',
+        toToolId: toTool.id,
+        toPort: 'a_end',
+        transformRule: 'rf_snr_margin_to_formal_guard_interval',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'leaves_count' && typeof m.qubits === 'number') {
+      const val = Math.min(64, Math.max(2, 1 << Math.min(5, Math.round(m.qubits))));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'qubits',
+        toToolId: toTool.id,
+        toPort: 'leaves_count',
+        transformRule: 'hilbert_basis_dim_to_merkle_leaves',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'gamma' && typeof m.safety_factor === 'number') {
+      const val = Number(Math.min(0.4, Math.max(0.01, 0.15 / Math.max(0.5, m.safety_factor))).toFixed(4));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'safety_factor',
+        toToolId: toTool.id,
+        toPort: 'gamma',
+        transformRule: 'structural_margin_to_nemesis_damping',
+        transferredValue: val,
+      });
     } else {
       // Compatibilidad estricta por unidad fisica/financiera (cero cruces heuristicos ciegos)
       const matchingEntry = Object.entries(m).find(([k, v]) => {
         if (typeof v !== 'number' || !Number.isFinite(v)) return false;
         const sameName = k === inPort.name;
         const bothVelocity = k.includes('vel') && inPort.name.includes('vel');
-        const bothFreq = k.includes('freq') && inPort.name.includes('freq');
+        const bothFreq = k.includes('freq') && inPort.name.includes('freq') && !k.includes('ghz') && !inPort.name.includes('ghz');
         const bothCurrency = k.includes('cents') && inPort.name.includes('cents');
         return sameName || bothVelocity || bothFreq || bothCurrency;
       });
@@ -429,6 +513,18 @@ function buildCombinedHlxScript(
     } else if (out.engineId === 'quantum_bloch_bvn' || out.engineId === 'quantum_statevector_qasm') {
       lines.push('BLOCH_ROT 0 1 0 1.2 1');
       lines.push('BVN_LATTICE 1.5708 0 3.1416 q_nondist');
+    } else if (out.engineId === 'telecom_5g_sat_rf') {
+      const fGhz = Number(out.metrics.freq_ghz ?? 28);
+      lines.push(`ITU_P676 ${fGhz} 35 1013.25 15 7.5 0.0`);
+      lines.push(`MMWAVE_3GPP ${fGhz} 250 UMi-LoS 10 1.5`);
+    } else if (out.engineId === 'radar_fmcw_doppler') {
+      const fD = Number(out.metrics.doppler_shift_hz ?? 0);
+      const vEst = Math.round(Math.max(-100, Math.min(100, (fD * 299792458) / (2 * 77e9))));
+      lines.push(`RADAR_FMCW 77 4000 ${Number.isFinite(vEst) ? vEst : 24} 42 1.0`);
+    } else if (out.engineId === 'annealing_optimizer') {
+      lines.push('ANNEAL_OPT 100 0.995 1000');
+    } else if (out.engineId === 'crypto_ed25519_merkle' || out.engineId === 'ledger_p33_merkle') {
+      lines.push('CRYPTO_AUDIT 256 8 RECOMB_SEAL');
     } else if (out.engineId === 'geom_seal_topology') {
       hasGeomSeal = true;
     } else if (out.engineId === 'audio_p33_cymatic' && typeof out.metrics.cymatic_freq_hz === 'number') {
@@ -472,6 +568,10 @@ export function recombineHelixTools(
       synthesizedHlx: '',
       smtReport: verifyHelixProgram([]),
       pcc: null,
+      pccVerified: false,
+      disciplines33: [],
+      disciplineMaskBits33: '0'.repeat(33),
+      holographicCard: null,
       godelBigInt: '1',
       engineeringSummary: 'Se requieren al menos 2 herramientas para ejecutar una recombinación.',
     };
@@ -509,23 +609,27 @@ export function recombineHelixTools(
   const vmHasRejection = vmRun.finalState.logs.some((l) => l.status === 'RECHAZADO');
   const vmCompleted = vmRun.finalPc === compiled.length && !vmRun.finalState.halted && !vmHasRejection;
   const smtValid = smtReport.status === 'VERIFICADO' && vmCompleted;
-  const success = allMathValid && smtValid;
 
-  const pcc = buildProofCarryingCertificate(
-    compiled.map((i) => ({ opcode: i.opcode, args: i.args })),
-    {
-      status: smtValid ? 'PROVED_SAFE' : 'VIOLATION_FOUND',
-      maxHeapBytes: vmRun.finalState.usedMemoryBytes,
-      heapCapacityBytes: vmRun.finalState.totalMemoryBytes,
-      dischargedRuntimeChecks: smtReport.symbolic?.dischargedRuntimeChecks ?? (smtReport.findings.length === 0 ? compiled.length : 0),
-      octagonInvariants: smtReport.symbolic?.octagonInvariants ?? [],
-      blockStates: vmRun.finalState.memoryBlocks.map((b) => ({
-        id: b.id,
-        size: b.size,
-        state: b.status,
-      })),
-    },
-  );
+  const pccInstructions = compiled.map((i) => ({ opcode: i.opcode, args: i.args }));
+  const pcc = buildProofCarryingCertificate(pccInstructions, {
+    status: smtValid ? 'PROVED_SAFE' : 'VIOLATION_FOUND',
+    maxHeapBytes: vmRun.finalState.usedMemoryBytes,
+    heapCapacityBytes: vmRun.finalState.totalMemoryBytes,
+    dischargedRuntimeChecks:
+      smtReport.symbolic?.dischargedRuntimeChecks ?? (smtReport.findings.length === 0 ? compiled.length : 0),
+    octagonInvariants: smtReport.symbolic?.octagonInvariants ?? [],
+    blockStates: vmRun.finalState.memoryBlocks.map((b) => ({
+      id: b.id,
+      size: b.size,
+      state: b.status,
+    })),
+  });
+  const pccCheck = verifyProofCarryingCertificate(pccInstructions, pcc);
+  const pccVerified = pccCheck.valid;
+  const success = allMathValid && smtValid && pccVerified;
+
+  const { disciplines: disciplines33, maskBits33: disciplineMaskBits33 } =
+    resolveDisciplinesForTools(tools);
 
   const childId = `recomb_${tools.map((t) => t.id.slice(0, 12)).join('_x_')}`;
   const childSha = sha256Hex(`${childId}|${godelBig.toString()}|${synthesizedHlx}`);
@@ -556,13 +660,32 @@ export function recombineHelixTools(
         },
         hlxSource: synthesizedHlx,
         parents: tools.map((t) => t.id),
-        keywords: Array.from(new Set(tools.flatMap((t) => t.keywords))).slice(0, 16),
+        keywords: Array.from(
+          new Set([
+            ...tools.flatMap((t) => t.keywords),
+            ...disciplines33.flatMap((d) => d.keywords),
+          ]),
+        ).slice(0, 20),
       }
     : null;
 
+  const holographicCard: HolographicAcademicCard | null =
+    success && childTool
+      ? distillAcademicCapsule17B({
+          title: childTool.title,
+          summary: `${childTool.formulaSummary} · Disciplinas P33: ${disciplines33.map((d) => d.name).join(' + ')}`,
+          sourceKind: 'autopoietic_recombination',
+          tools,
+          explicitDisciplines: disciplines33,
+          hlxScript: synthesizedHlx,
+          godelProduct: godelBig.toString(),
+          pcc,
+        })
+      : null;
+
   const engineeringSummary = success
-    ? `Recombinación PROVEN_SAT: ${tools.length} células acopladas mediante ${bridges.length} puentes tipados, Gödel=${godelBig.toString()}, PCC=${pcc.certificateSha256.slice(0, 12)}…`
-    : `Recombinación rechazada (allMathValid=${allMathValid}, smtStatus=${smtReport.status}).`;
+    ? `Recombinación PROVEN_SAT: ${tools.length} células acopladas mediante ${bridges.length} puentes tipados, ${disciplines33.length} disciplinas P33, Gödel=${godelBig.toString()}, PCC=${pcc.certificateSha256.slice(0, 12)}…, QPSK-17B=${holographicCard?.frame.frameSha256.slice(0, 10) ?? 'n/a'}`
+    : `Recombinación rechazada (allMathValid=${allMathValid}, smtStatus=${smtReport.status}, pccVerified=${pccVerified}).`;
 
   return {
     success,
@@ -573,6 +696,10 @@ export function recombineHelixTools(
     synthesizedHlx,
     smtReport,
     pcc,
+    pccVerified,
+    disciplines33,
+    disciplineMaskBits33,
+    holographicCard,
     godelBigInt: godelBig.toString(),
     engineeringSummary,
   };

@@ -1,8 +1,16 @@
+import { DISCIPLINES_33 } from '../data/disciplines33';
+import { DOMAIN_ENGINE_METADATA } from './helixDomainEngines';
+import type { HelixCoreEngine } from './HelixCoreEngine';
 import type { EngineeringReport } from './helixPlanner';
+import { BASE_HELIX_TOOL_CATALOG, HelixRegisteredTool } from './helixToolCatalog159';
 
 export type ConversationalIntentKind =
   | 'greeting'
   | 'identity'
+  | 'tools_inventory'
+  | 'disciplines_inventory'
+  | 'engines_inventory'
+  | 'architecture_explain'
   | 'capabilities'
   | 'learning'
   | 'gratitude'
@@ -10,8 +18,15 @@ export type ConversationalIntentKind =
   | 'creation_or_simulation'
   | 'open_chat';
 
+export interface ChatTurnSummary {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
 export interface ConversationTurnContext {
+  engine?: HelixCoreEngine;
   report?: EngineeringReport;
+  history?: ChatTurnSummary[];
   previousIntent?: string;
   userName?: string;
   turnCount?: number;
@@ -19,84 +34,381 @@ export interface ConversationTurnContext {
 }
 
 const ACTION_CREATION_RE =
-  /\b(crea|crear|creame|créame|simul|calcul|diseñ|disen|construy|genera|haz|hagam|esculp|proyecta|cambia|cambialo|cámbialo|ajusta|ponle|agrega|añade|combina|mezcla|mueve|anima|dibuja|modela|transforma|deforma|videojuego|juego|nave|espaci|gravedad|asteroide|enemigo|obst[aá]culo|velocidad|r[aá]pido|lento|color|brillo|órbita|orbita|cohete|satelit|planeta|radar|montaña|montana|terreno|fluido|onda|cuántic|cuantic|videoclip|música|musica|balance|financier|saldo)\b/i;
+  /\b(crea|crear|creame|créame|simul|calcul|diseñ|disen|construy|genera|haz|hagam|esculp|proyecta|cambia|cambialo|cámbialo|ajusta|ponle|agrega|añade|combina|mezcla|mueve|anima|dibuja|modela|transforma|deforma|ejecuta|prueba|videojuego|juego|nave|espaci|gravedad|asteroide|enemigo|obst[aá]culo|velocidad|color|brillo|órbita|orbita|cohete|satelit|planeta|luna|marte|martes|radar|montaña|montana|terreno|fluido|onda|cuántic|cuantic|videoclip|música|musica|balance|financier|saldo|salud|monitoreo|monitor|astronaut|supervivencia|hospital|aviacion|aviación|marina|ejercito|ejército|imagen|foto|laboratorio)\b/i;
 
 const PHYSICAL_VALUE_RE =
-  /\b\d+(?:[.,]\d+)?\s*(?:km|m\/s|hz|ghz|mpa|kg|fps|qubits?|\$|usd)\b/i;
+  /\b\d+(?:[.,]\d+)?\s*(?:km|m\/s|hz|ghz|mpa|kg|fps|qubits?|bpm|lpm|mg\/dl|mmhg|°c|\$|usd)\b/i;
 
-const PURE_CHAT_OVERRIDE_RE =
-  /^(hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|hey|saludos|qu[eé]\s+tal|c[oó]mo\s+est[aá]s|c[oó]mo\s+te\s+llamas|cu[aá]l\s+es\s+tu\s+nombre|qui[eé]n\s+eres|qu[eé]\s+eres|qu[eé]\s+puedes\s+hacer|para\s+qu[eé]\s+sirves|gracias|muchas\s+gracias|ok|vale|listo|genial|perfecto|hello|hi|who\s+are\s+you|what\s+is\s+your\s+name)\b/i;
+const INVENTORY_VERB_RE =
+  /\b(lista|listar|listame|enumera|enumerar|muestra|muestrame|dime|dame|cuales|que|todas|todos|catalogo|inventario)\b/;
+
+const TOOLS_NOUN_RE =
+  /\b(herramienta|herramientas|erramienta|erramientas|funcion|funciones|funsion|funsiones|modulo|modulos|capacidad|capacidades|comando|comandos|utilidad|utilidades)\b/;
+
+function normalizeEs(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\berramienta(s)?\b/g, 'herramienta$1')
+    .replace(/\bfunsion(es)?\b/g, 'funcion$1')
+    .replace(/\bdesiplina(s)?\b/g, 'disciplina$1')
+    .replace(/\bcuantiqu(a|o)\b/g, 'cuantic$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /**
  * Determina si el mensaje del usuario pide crear, simular, calcular o transformar
- * la pantalla líquida, o si es una conversación humana directa.
+ * la pantalla líquida, o si es una conversación/consulta directa.
  */
 export function isActionOrCreationIntent(raw: string): boolean {
-  const t = raw.trim();
-  if (!t) return false;
-  if (PHYSICAL_VALUE_RE.test(t) || ACTION_CREATION_RE.test(t)) {
-    // Aun si empieza con "hola", si pide crear/simular algo concreto ("hola, quiero crear una nave") es acción
-    return true;
-  }
-  if (PURE_CHAT_OVERRIDE_RE.test(t)) {
+  const norm = normalizeEs(raw);
+  if (!norm) return false;
+
+  // Preguntas de inventario o explicación ("puedes listar...", "qué herramientas...", "qué es...")
+  // deben responderse informativamente sin disparar modo creación genérico.
+  if (
+    (INVENTORY_VERB_RE.test(norm) &&
+      (TOOLS_NOUN_RE.test(norm) ||
+        /\b(disciplina|disciplinas|motor|motores|area|areas|ciencia|ciencias)\b/.test(norm))) ||
+    /^(como|que|cual|cuales|quien|para\s+que|puedes\s+(explicar|listar|mostrar|decir)|explica|explicame)\b/.test(
+      norm,
+    )
+  ) {
     return false;
+  }
+
+  if (PHYSICAL_VALUE_RE.test(raw) || ACTION_CREATION_RE.test(raw)) {
+    return true;
   }
   return false;
 }
 
 export function classifyConversationIntent(raw: string): ConversationalIntentKind {
-  const t = raw.trim().toLowerCase();
-  if (!t) return 'open_chat';
+  const norm = normalizeEs(raw);
+  if (!norm) return 'open_chat';
 
   if (
-    /c[oó]mo\s+te\s+llamas|cu[aá]l\s+es\s+tu\s+nombre|tu\s+nombre|qui[eé]n\s+eres|qu[eé]\s+eres|who\s+are\s+you|what\s+is\s+your\s+name/i.test(
-      t,
+    /\b(como te llamas|cual es tu nombre|tu nombre|quien eres|que eres|who are you|what is your name)\b/.test(
+      norm,
     )
   ) {
     return 'identity';
   }
+
   if (
-    /^(hola|buenas|buenos\s+d[ií]as|buenas\s+tardes|buenas\s+noches|hey|saludos|qu[eé]\s+tal|c[oó]mo\s+est[aá]s|hello|hi)\b/i.test(
-      t,
+    /\b(disciplina|disciplinas|materia|materias|facultad|facultades)\b/.test(norm) &&
+    /\b(lista|listar|cuales|todas|que|muestra|ver|33|tienes|conoces)\b/.test(norm)
+  ) {
+    return 'disciplines_inventory';
+  }
+
+  if (
+    /\b(motor|motores|ecuacion|ecuaciones)\b/.test(norm) &&
+    /\b(lista|listar|cuales|todos|que|muestra|ver|tienes|usas|matematico|matematicos)\b/.test(norm)
+  ) {
+    return 'engines_inventory';
+  }
+
+  if (
+    TOOLS_NOUN_RE.test(norm) &&
+    (INVENTORY_VERB_RE.test(norm) || /\b(tienes|disponibles|haces|ofreces)\b/.test(norm))
+  ) {
+    return 'tools_inventory';
+  }
+
+  if (
+    /\b(doble helice|recombinador|biblioteca|17\s*bytes|17b|qpsk|aduana|pcc|minigpt|mini-gpt|exocortex|pantalla liquida)\b/.test(
+      norm,
     ) &&
-    !ACTION_CREATION_RE.test(t)
+    /\b(que es|como funciona|explica|explicame|para que sirve|detalle)\b/.test(norm)
+  ) {
+    return 'architecture_explain';
+  }
+
+  if (
+    /^(hola|buenas|buenos dias|buenas tardes|buenas noches|hey|saludos|que tal|como estas|hello|hi)\b/.test(
+      norm,
+    ) &&
+    !ACTION_CREATION_RE.test(raw) &&
+    !TOOLS_NOUN_RE.test(norm)
   ) {
     return 'greeting';
   }
+
   if (
-    /qu[eé]\s+puedes\s+hacer|c[oó]mo\s+funciona|para\s+qu[eé]\s+sirves|ayuda|what\s+can\s+you\s+do/i.test(
-      t,
+    /\b(que puedes hacer|como funciona|para que sirves|ayuda|what can you do|que sabes hacer)\b/.test(
+      norm,
     )
   ) {
     return 'capabilities';
   }
-  if (/aprender|enseñ|ensena|explic|por\s+qu[eé]|por\s+que|learn|teach|explain/i.test(t)) {
+
+  if (/\b(aprender|ensena|ensenar|explica|explicame|por que)\b/.test(norm)) {
     return 'learning';
   }
-  if (/^(gracias|muchas\s+gracias|genial|excelente|s[uú]per|me\s+encanta|perfecto|thanks)/i.test(t)) {
+
+  if (/^(gracias|muchas gracias|genial|excelente|super|me encanta|perfecto|thanks)\b/.test(norm)) {
     return 'gratitude';
   }
-  if (isActionOrCreationIntent(t)) {
+
+  if (isActionOrCreationIntent(raw)) {
     return 'creation_or_simulation';
   }
-  if (/opinas|crees|ves|parece|entiendes|verdad|cierto/i.test(t)) {
+
+  if (/\b(opinas|crees|ves|parece|entiendes|verdad|cierto)\b/.test(norm)) {
     return 'feedback';
   }
+
   return 'open_chat';
+}
+
+function getLiveTools(context: ConversationTurnContext): HelixRegisteredTool[] {
+  if (context.engine) {
+    return context.engine.getRegisteredTools();
+  }
+  return [...BASE_HELIX_TOOL_CATALOG];
+}
+
+function extractDomainFilterFromQuery(
+  raw: string,
+  tools: HelixRegisteredTool[],
+): string | null {
+  const norm = normalizeEs(raw);
+  const domains = Array.from(new Set(tools.map((t) => t.domain)));
+
+  for (const domain of domains) {
+    const dNorm = normalizeEs(domain);
+    const words = dNorm.split(/\s+/).filter((w) => w.length >= 4 && w !== 'para');
+    if (words.some((w) => norm.includes(w))) {
+      return domain;
+    }
+  }
+
+  if (/\b(dinero|banco|economi|contab|cripto|merkle|pago|saldo)\b/.test(norm)) {
+    return 'Finanzas y Criptografía';
+  }
+  if (/\b(espaci|orbit|cohete|satel|kepler|gravit|planeta|astro)\b/.test(norm)) {
+    return 'Espacio y Gravitación';
+  }
+  if (/\b(5g|radar|telecom|antena|fmcw|satelit|rf|senal)\b/.test(norm)) {
+    return 'Telecomunicaciones y RF';
+  }
+  if (/\b(cuantic|qubit|bloch|qasm|entrelaz)\b/.test(norm)) {
+    return 'Computación Cuántica';
+  }
+  if (/\b(audio|voz|musica|sonido|cine|video|camara|cimatic)\b/.test(norm)) {
+    return 'Cinematografía y Audio';
+  }
+  if (/\b(fluido|optica|luz|tensor|cauchy|materia|biopixel)\b/.test(norm)) {
+    return 'Materia Digital y Fluidos';
+  }
+  if (/\b(juego|videojuego|terreno|montana|colision|mundo)\b/.test(norm)) {
+    return 'Videojuegos y Mundos 3D';
+  }
+  if (/\b(seguridad|formal|smt|contrato|verificacion)\b/.test(norm)) {
+    return 'Verificación Formal y Seguridad';
+  }
+  if (/\b(topologia|geometria|toroide|euler|fibonacci)\b/.test(norm)) {
+    return 'Topología y Cimática';
+  }
+  if (/\b(ia|inteligencia|optimiz|recocido|minigpt|orquestacion)\b/.test(norm)) {
+    return 'IA Acotada y Orquestación';
+  }
+
+  return null;
+}
+
+function searchMatchingKnowledge(
+  raw: string,
+  tools: HelixRegisteredTool[],
+): {
+  matchedTools: HelixRegisteredTool[];
+  matchedDisciplines: typeof DISCIPLINES_33[number][];
+  matchedEngines: [string, (typeof DOMAIN_ENGINE_METADATA)[keyof typeof DOMAIN_ENGINE_METADATA]][];
+} {
+  const stopWords = new Set([
+    'para',
+    'como',
+    'cual',
+    'cuales',
+    'puedes',
+    'quiero',
+    'tienes',
+    'sobre',
+    'todas',
+    'todos',
+    'lista',
+    'listar',
+    'dime',
+    'explica',
+    'muestra',
+    'herramientas',
+    'funciones',
+    'helix',
+    'esta',
+    'este',
+    'esto',
+    'hacer',
+    'algo',
+  ]);
+  const tokens = normalizeEs(raw)
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !stopWords.has(w));
+
+  if (tokens.length === 0) {
+    return { matchedTools: [], matchedDisciplines: [], matchedEngines: [] };
+  }
+
+  const matchedTools = tools
+    .map((tool) => {
+      const hay = normalizeEs(
+        `${tool.title} ${tool.domain} ${tool.formulaSummary} ${tool.keywords.join(' ')}`,
+      );
+      const score = tokens.reduce((acc, tok) => (hay.includes(tok) ? acc + 1 : acc), 0);
+      return { tool, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8)
+    .map((x) => x.tool);
+
+  const matchedDisciplines = DISCIPLINES_33.map((d) => {
+    const hay = normalizeEs(`${d.name} ${d.faculty} ${d.canonicalEquation} ${d.keywords.join(' ')}`);
+    const score = tokens.reduce((acc, tok) => (hay.includes(tok) ? acc + 1 : acc), 0);
+    return { d, score };
+  })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((x) => x.d);
+
+  const matchedEngines = Object.entries(DOMAIN_ENGINE_METADATA)
+    .map(([id, meta]) => {
+      const hay = normalizeEs(`${meta.label} ${meta.discipline} ${meta.formulaSummary}`);
+      const score = tokens.reduce((acc, tok) => (hay.includes(tok) ? acc + 1 : acc), 0);
+      return { pair: [id, meta] as [string, typeof meta], score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map((x) => x.pair);
+
+  return { matchedTools, matchedDisciplines, matchedEngines };
+}
+
+function formatDomainToolList(domain: string, tools: HelixRegisteredTool[]): string {
+  const domainTools = tools.filter((t) => t.domain === domain);
+  const preview = domainTools.slice(0, 12);
+  const lines = preview.map((t, i) => `${i + 1}. ${t.title} — ${t.formulaSummary}`);
+  const remaining = domainTools.length - preview.length;
+  const tail =
+    remaining > 0
+      ? `\n...y ${remaining} herramientas adicionales en esta área. Dime cuál quieres probar o combinar.`
+      : '\nDime cuál de estas herramientas quieres ejecutar, explicar o combinar.';
+
+  return `En ${domain} cuento con ${domainTools.length} herramientas activas:\n${lines.join('\n')}${tail}`;
+}
+
+function formatFullInventory(context: ConversationTurnContext): string {
+  const tools = getLiveTools(context);
+  const disciplines = context.engine ? context.engine.getDisciplines33() : DISCIPLINES_33;
+  const enginesCount = Object.keys(DOMAIN_ENGINE_METADATA).length;
+
+  const requestedDomain = context.previousIntent
+    ? extractDomainFilterFromQuery(context.previousIntent, tools)
+    : null;
+  if (requestedDomain) {
+    return formatDomainToolList(requestedDomain, tools);
+  }
+
+  const byDomain = new Map<string, HelixRegisteredTool[]>();
+  for (const t of tools) {
+    const arr = byDomain.get(t.domain) ?? [];
+    arr.push(t);
+    byDomain.set(t.domain, arr);
+  }
+
+  const domainLines = Array.from(byDomain.entries()).map(([domain, list]) => {
+    const examples = list
+      .slice(0, 3)
+      .map((t) => t.title)
+      .join(', ');
+    return `• ${domain} (${list.length}): ${examples}`;
+  });
+
+  return [
+    `Tengo integradas ${tools.length} herramientas ejecutables, ${enginesCount} motores matemáticos verificados y ${disciplines.length} disciplinas académicas.`,
+    '',
+    'Mis funciones principales:',
+    '1. Conversar contigo y proyectar simulaciones en vivo sobre el Rostro Holográfico y la pantalla líquida.',
+    '2. Calcular y simular física orbital, fluidos, óptica, electrónica RF, cuántica, audio y finanzas exactas.',
+    '3. Combinar y recombinar herramientas (Recombinador A×B) con verificación formal automática.',
+    '4. Aprender de cada sesión verificada y guardar fichas científicas compactas.',
+    '',
+    'Áreas y herramientas disponibles:',
+    ...domainLines,
+    '',
+    'Pídeme el detalle de cualquier área (por ejemplo: "herramientas de Finanzas", "herramientas de Espacio") o dime qué quieres simular o combinar.',
+  ].join('\n');
+}
+
+function formatDisciplinesInventory(context: ConversationTurnContext): string {
+  const disciplines = context.engine ? context.engine.getDisciplines33() : DISCIPLINES_33;
+  const byFaculty = new Map<string, string[]>();
+  for (const d of disciplines) {
+    const arr = byFaculty.get(d.faculty) ?? [];
+    arr.push(d.name);
+    byFaculty.set(d.faculty, arr);
+  }
+  const lines = Array.from(byFaculty.entries()).map(
+    ([faculty, names]) => `• ${faculty}: ${names.join(', ')}`,
+  );
+  return [
+    `Trabajo sobre ${disciplines.length} disciplinas científicas y universitarias conectadas a mis motores:`,
+    ...lines,
+    '',
+    'Si quieres explorar las ecuaciones de alguna disciplina o combinar dos de ellas, solo dímelo.',
+  ].join('\n');
+}
+
+function formatEnginesInventory(): string {
+  const entries = Object.values(DOMAIN_ENGINE_METADATA);
+  const lines = entries.map((m, idx) => `${idx + 1}. ${m.label} (${m.discipline})`);
+  return [
+    `Cuento con ${entries.length} motores matemáticos reales en ejecución:`,
+    ...lines,
+    '',
+    'Pídeme simular cualquiera de ellos con tus propios datos (altitud, frecuencia, monto o velocidad) y te muestro los resultados.',
+  ].join('\n');
 }
 
 function summarizeTopOutputs(report?: EngineeringReport): string {
   if (!report || report.dataOutputs.length === 0) return '';
   const top = report.dataOutputs
-    .slice(0, 2)
-    .map((d) => `${d.label.toLowerCase()} de ${d.value}`)
-    .join(' y ');
-  return top ? ` (por ejemplo, ${top})` : '';
+    .slice(0, 3)
+    .map((d) => `${d.label}: ${d.value}`)
+    .join(' · ');
+  return top ? ` (${top})` : '';
 }
 
 /**
- * Motor conversacional humano de Helix: responde con calidez, contexto y
- * preguntas interactivas, sin mostrar código ni nombres internos de herramientas.
+ * Extrae una versión breve y hablada (sin listados largos) para la síntesis Web Speech.
+ */
+export function toSpokenSummary(replyText: string): string {
+  const firstPara = replyText
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(' ');
+  return firstPara.slice(0, 240);
+}
+
+/**
+ * Motor conversacional humano de Helix conectado directamente al catálogo vivo,
+ * las 33 disciplinas, los 21 motores matemáticos y el historial reciente.
  */
 export function buildHumanConversationReply(
   raw: string,
@@ -105,92 +417,152 @@ export function buildHumanConversationReply(
   isAction: boolean,
   context: ConversationTurnContext = {},
 ): string {
-  const t = raw.trim().toLowerCase();
-  const en = /\b(hello|hi|what|who|how|learn|teach|create|thanks|your name|spaceship|game)\b/i.test(t) &&
-    !/\b(hola|quiero|como|cómo|crear|naves|juego|pantalla|gracias)\b/i.test(t);
+  const norm = normalizeEs(raw);
+  const tools = getLiveTools(context);
+  const en =
+    /\b(hello|hi|what|who|how|learn|teach|create|thanks|your name|spaceship|game|tools|list)\b/.test(
+      norm,
+    ) && !/\b(hola|quiero|como|crear|naves|juego|pantalla|gracias|herramienta|funcion|lista)\b/.test(norm);
 
   const kind = isAction ? 'creation_or_simulation' : classifyConversationIntent(raw);
   const report = context.report;
   const outputHint = summarizeTopOutputs(report);
 
+  // 1. Consulta filtrada por dominio específico ("muéstrame las de finanzas", "herramientas de espacio")
+  const explicitDomain = extractDomainFilterFromQuery(raw, tools);
+  if (
+    explicitDomain &&
+    (kind === 'tools_inventory' ||
+      kind === 'capabilities' ||
+      kind === 'learning' ||
+      INVENTORY_VERB_RE.test(norm) ||
+      TOOLS_NOUN_RE.test(norm))
+  ) {
+    return formatDomainToolList(explicitDomain, tools);
+  }
+
+  if (kind === 'tools_inventory') {
+    return formatFullInventory({ ...context, previousIntent: raw });
+  }
+
+  if (kind === 'disciplines_inventory') {
+    return formatDisciplinesInventory(context);
+  }
+
+  if (kind === 'engines_inventory') {
+    return formatEnginesInventory();
+  }
+
+  if (kind === 'architecture_explain') {
+    return 'Mi núcleo conecta el diálogo humano con un motor determinista de cálculo: cada petición selecciona las herramientas necesarias entre las 11 áreas científicas, acopla sus variables automáticamente en la Doble Hélice, verifica formalmente la seguridad de la solución y destila el aprendizaje en fichas compactas de 17 bytes mientras lo proyecta en la pantalla líquida. Si quieres inspeccionar o combinar módulos manualmente, también cuentas con el botón Laboratorio arriba a la derecha.';
+  }
+
   if (kind === 'identity') {
-    const alsoGreeting = /\b(hola|buenas|hey|hello|hi)\b/i.test(t);
+    const alsoGreeting = /\b(hola|buenas|hey|hello|hi)\b/.test(norm);
     if (en) {
-      return `${alsoGreeting ? 'Hello! ' : ''}My name is Helix. I am your creative and scientific companion: you can chat with me naturally, ask questions, or tell me what to build or simulate on the liquid screen without writing any code. What would you like to talk about or create today?`;
+      return `${alsoGreeting ? 'Hello! ' : ''}My name is Helix. I combine ${tools.length} verified tools across ${DISCIPLINES_33.length} disciplines so we can talk naturally, explore knowledge, or run live simulations on the liquid screen. What would you like to explore?`;
     }
-    return `${alsoGreeting ? '¡Hola! ' : ''}Me llamo Helix. Soy tu compañero creativo y científico: puedes conversar conmigo con naturalidad, preguntarme cualquier duda o pedirme que dé forma a mundos, simulaciones y escenas vivas en la pantalla líquida sin escribir código. ¿Cómo te llamas o qué tienes en mente hoy?`;
+    return `${alsoGreeting ? '¡Hola! ' : ''}Me llamo Helix. Integro ${tools.length} herramientas reales y ${DISCIPLINES_33.length} disciplinas científicas para conversar contigo, explicarte cualquier tema o ejecutar simulaciones y cálculos en vivo en la pantalla líquida. ¿Qué te gustaría explorar hoy?`;
   }
 
   if (kind === 'greeting') {
     if (en) {
-      return 'Hello! Nice to talk with you. How are you doing today? Tell me what you have in mind — we can chat, explore an idea, or sculpt something live on the screen.';
+      return 'Hello! Good to see you. Ask me about any of my tools, start a simulation, or let us talk through any idea.';
     }
-    return '¡Hola! Qué gusto saludarte. ¿Cómo estás hoy? Podemos charlar sobre cualquier idea, resolver cálculos o empezar a dar vida a lo que imagines directamente en la pantalla líquida. ¿Qué te gustaría hacer?';
+    return '¡Hola! Qué gusto saludarte. Podemos conversar sobre cualquier tema, revisar mis herramientas y disciplinas o dar vida a una simulación en la pantalla líquida. ¿Por dónde empezamos?';
   }
 
   if (kind === 'capabilities') {
     if (en) {
-      return 'Just talk to me in plain words! I can chat with you, help design interactive games, simulate orbits or fluid optics, react to frequencies, or calculate exact numbers — and you can also touch the liquid screen or attach custom data whenever you want. What should we try first?';
+      return `I can chat naturally, list and explain my ${tools.length} tools across 11 areas, run mathematical simulations (space orbits, fluids, optics, 5G/radar, quantum circuits, exact finance), and recombine tools on demand. Ask me to list them or try a topic!`;
     }
-    return 'Solo háblame con tus palabras, sin nada de código. Puedo conversar contigo, ayudarte a imaginar videojuegos, simular órbitas o terrenos, reaccionar a música y frecuencias, o hacer cálculos precisos mientras ves cómo cobra forma en la pantalla líquida. ¿Por dónde te gustaría empezar?';
-  }
-
-  if (kind === 'learning') {
-    if (en) {
-      return 'I would love to explore that with you! Tell me which topic sparks your curiosity — space trajectories, fluids and waves, quantum states, or visual design — and we can test it together right on the screen.';
-    }
-    const activeNote = context.previousIntent
-      ? ` Ahora mismo tenemos en pantalla "${shapeLabel}"${outputHint}.`
-      : '';
-    return `¡Con mucho gusto lo exploramos juntos!${activeNote} Dime qué tema o duda tienes —desde órbitas espaciales y ondas sonoras hasta física de fluidos o matemáticas— y te lo explico paso a paso o lo probamos en vivo en la pantalla.`;
+    return `Puedo conversar contigo, mostrarte mis ${tools.length} herramientas y ${DISCIPLINES_33.length} disciplinas, combinar herramientas entre sí y simular física espacial, fluidos, óptica, telecomunicaciones 5G/radar, cuántica, audio o finanzas exactas en tiempo real. Si quieres ver la lista completa, dime "lista todas tus herramientas y funciones".`;
   }
 
   if (kind === 'gratitude') {
-    if (en) {
-      return 'You are very welcome! Would you like to tweak what is on the screen or try a brand-new idea?';
-    }
-    return '¡Con mucho gusto! ¿Quieres que ajustemos algún detalle de lo que ves en pantalla o probamos otra idea nueva?';
+    return en
+      ? 'You are welcome! Want to inspect another tool or adjust the current scene?'
+      : '¡Con mucho gusto! ¿Quieres profundizar en alguna otra herramienta o probar una nueva simulación?';
   }
 
   if (kind === 'creation_or_simulation') {
-    const category = report?.detectedCategory;
-    const hasQuestions = Boolean(report && report.questions.length > 0 && !context.confirmed);
+    const usedTools = report?.selectedTools.slice(0, 3).map((t) => t.title) ?? [];
+    const toolsText =
+      usedTools.length > 0 ? ` combinando ${usedTools.join(', ')}` : '';
+    const bridgeCount = report?.crossBridges.length ?? 0;
+    const bridgeText =
+      bridgeCount > 0 ? ` con ${bridgeCount} acoplamientos cruzados entre motores` : '';
 
-    if (category === 'VIDEOJUEGO') {
-      if (hasQuestions) {
-        return `¡Qué buena idea! Ya formé un primer prototipo visual («${shapeLabel}») en la pantalla líquida${outputHint}. Para ir dándole el estilo que tú quieres, cuéntame o elige abajo: ¿prefieres que tu nave vuele en el espacio abierto, sobre un planeta con gravedad o entre montañas fractales? ¿Y qué tipo de desafíos o enemigos te gustaría agregar?`;
+    return `Listo: procesé tu petición${toolsText}${bridgeText} y proyecté «${shapeLabel}» en la pantalla líquida${outputHint}. ¿Quieres ajustar algún parámetro, ver los valores de otra área o combinarlo con otra herramienta?`;
+  }
+
+  // 2. Seguimiento contextual ("más detalles", "y las demás?", "continúa")
+  if (
+    /\b(mas detalles|profundiza|continua|sigue|demas|otras|mas sobre eso|explicalo mejor)\b/.test(
+      norm,
+    ) &&
+    context.history &&
+    context.history.length > 0
+  ) {
+    const lastTopic = [...context.history]
+      .reverse()
+      .find((m) => m.role === 'user' && m.text.trim() !== raw.trim())?.text;
+    if (lastTopic) {
+      const dom = extractDomainFilterFromQuery(lastTopic, tools);
+      if (dom) return formatDomainToolList(dom, tools);
+      const { matchedTools } = searchMatchingKnowledge(lastTopic, tools);
+      if (matchedTools.length > 0) {
+        return `Sobre tu consulta anterior, estas son las herramientas relacionadas más relevantes:\n${matchedTools
+          .slice(0, 5)
+          .map((t, i) => `${i + 1}. ${t.title} (${t.domain}): ${t.formulaSummary}`)
+          .join('\n')}`;
       }
-      return `¡Listo! Actualicé tu mundo de juego en la pantalla líquida con forma de «${shapeLabel}»${outputHint}. ¿Cómo sientes el resultado hasta ahora? Podemos cambiar la velocidad, la gravedad, el sonido o añadir nuevos obstáculos cuando me digas.`;
     }
+  }
 
-    if (category === 'SIMULACION_ESPACIAL') {
-      if (hasQuestions) {
-        return `¡En marcha! Proyecté «${shapeLabel}» en la pantalla líquida con los primeros cálculos espaciales${outputHint}. ¿A qué altitud orbital te gustaría llevar la misión o quieres sumar rastreo por radar y enlace satelital? Puedes tocar las opciones de abajo o escribirme los detalles.`;
-      }
-      return `Simulación espacial ajustada en «${shapeLabel}»${outputHint}. Si quieres probar otra altura, velocidad o cambiar a otro escenario, solo dímelo.`;
+  // 3. Búsqueda semántica real sobre catálogo, 33 disciplinas y motores antes de caer en charla abierta
+  const { matchedTools, matchedDisciplines, matchedEngines } = searchMatchingKnowledge(raw, tools);
+  if (matchedTools.length > 0 || matchedDisciplines.length > 0 || matchedEngines.length > 0) {
+    const parts: string[] = [];
+    if (matchedTools.length > 0) {
+      parts.push(
+        `Sobre eso tengo ${matchedTools.length} herramientas directas en mi catálogo:\n` +
+          matchedTools
+            .slice(0, 4)
+            .map((t) => `• ${t.title} (${t.domain}): ${t.formulaSummary}`)
+            .join('\n'),
+      );
     }
-
-    if (category === 'CINEMA_VIDEOCLIP') {
-      if (hasQuestions) {
-        return `¡Me gusta! La pantalla líquida ya tomó forma de «${shapeLabel}» para tu escena visual${outputHint}. ¿Prefieres que el fluido responda con destellos de luz, ondas simétricas o sincronizado con la voz? Dime cómo te imaginas el ritmo.`;
-      }
-      return `Escena audiovisual actualizada en «${shapeLabel}»${outputHint}. ¿Quieres cambiar los colores, la frecuencia o darle más intensidad al movimiento?`;
+    if (matchedDisciplines.length > 0) {
+      parts.push(
+        `Disciplinas relacionadas:\n` +
+          matchedDisciplines
+            .slice(0, 3)
+            .map((d) => `• ${d.name} (${d.faculty}) — ${d.canonicalEquation}`)
+            .join('\n'),
+      );
     }
-
-    if (en) {
-      return `Done! I shaped "${shapeLabel}" on the liquid screen${outputHint}. How does it look to you, and what would you like to adjust next?`;
+    if (matchedTools.length === 0 && matchedEngines.length > 0) {
+      parts.push(
+        `Motores matemáticos aplicables:\n` +
+          matchedEngines.map(([, m]) => `• ${m.label}: ${m.formulaSummary}`).join('\n'),
+      );
     }
+    parts.push('Si quieres que ejecute una simulación o te explique una en detalle, dime cuál prefieres.');
+    return parts.join('\n\n');
+  }
 
-    return `¡Hecho! Ya di forma a «${shapeLabel}» en la pantalla líquida${outputHint}. ¿Qué te parece cómo se ve y qué detalle te gustaría cambiar o combinar ahora?`;
+  if (kind === 'learning') {
+    return `Podemos explorarlo juntos paso a paso. Puedo enseñarte y simular temas de mis ${DISCIPLINES_33.length} disciplinas —como mecánica orbital, acústica armónica, óptica, redes 5G/radar, computación cuántica o finanzas verificables— o mostrarte todas mis herramientas si me pides listarlas.`;
   }
 
   if (kind === 'feedback') {
-    return `Sí, te sigo perfectamente. Ahora mismo estamos trabajando sobre «${shapeLabel}». Cuéntame qué parte te gustaría pulir, cambiar o profundizar y lo conversamos.`;
+    return `Te sigo. Si quieres comprobar algo en vivo, puedes preguntarme por cualquiera de las ${tools.length} herramientas disponibles o pedirme que calcule y proyecte una escena sobre «${shapeLabel}».`;
   }
 
   if (en) {
-    return 'I am listening! Tell me more about what you are thinking, or let me know if you want me to shape or simulate something on the screen.';
+    return 'I understand. You can ask me to list all my tools and functions, explain any scientific topic, or run a live simulation on the screen.';
   }
 
-  return '¡Te escucho! Cuéntame más sobre lo que estás pensando, o dime si quieres que transformemos esta idea en una escena viva en la pantalla líquida.';
+  return `Te entiendo. Si buscas una capacidad concreta, puedo listarte todas mis herramientas y funciones (${tools.length} en total), explicarte cualquier disciplina o ejecutar una simulación ahora mismo sobre «${shapeLabel}». ¿Qué te gustaría hacer?`;
 }
