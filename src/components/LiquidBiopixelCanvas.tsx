@@ -1,270 +1,82 @@
-﻿import { useEffect, useRef, useState } from 'react';
-
-export const MORPH_SHAPE_LABELS: Record<string, string> = {
-  torus: 'Toroide Dinámico',
-  satellite: 'Nave / Satélite Orbital',
-  terrain: 'Terreno Fractal',
-  wave: 'Membrana Acústica',
-  crystal: 'Cristal Icosaédrico',
-  sphere: 'Esfera Cuántica',
-};
-
-export interface LiquidBiopixelCanvasProps {
-  hlxScript?: string;
-  shape?: string;
-  accentColor?: string;
-  pulseCounter?: number;
-  title?: string;
-  subtitle?: string;
+﻿import { useEffect, useRef } from 'react';
+export type HologramShape = 'avatar' | 'torus' | 'satellite' | 'terrain' | 'crystal' | 'sphere' | 'wave';
+export interface LiquidBiopixelCanvasProps { shape?: HologramShape; accentColor?: string; energy?: number; tension?: number; title?: string; subtitle?: string; }
+function hexToRgbNorm(hex: string): [number, number, number] { const c = hex.replace('#', '').trim(); if (c.length !== 6) return [0.22, 0.74, 0.97]; const n = parseInt(c, 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; }
+const VERT_SRC = `#version 300 es
+in vec2 aPos; out vec2 vUv; void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+const FRAG_SRC = `#version 300 es
+precision highp float; in vec2 vUv; out vec4 fragColor;
+uniform vec2 uRes; uniform float uTime; uniform int uShape; uniform vec3 uColor; uniform float uTension; uniform vec3 uPulse;
+float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
+float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
+float sdTorus(vec3 p, vec2 t) { vec2 q = vec2(length(p.xz) - t.x, p.y); return length(q) - t.y; }
+float sdHumanHologramHead(vec3 p, float t, float energy) {
+  p.y -= sin(t * 1.4) * 0.025;
+  float yaw = sin(t * 0.65) * 0.16; float cy = cos(yaw), sy = sin(yaw); p.xz = mat2(cy, -sy, sy, cy) * p.xz;
+  float cranium = length((p - vec3(0.0, 0.12, 0.0)) * vec3(1.18, 0.92, 1.05)) - 0.52;
+  float speak = abs(sin(t * 11.5)) * clamp(energy * 2.0 + 0.03, 0.0, 0.11);
+  float jaw = length((p - vec3(0.0, -0.18 - speak * 0.5, 0.06)) * vec3(1.38, 1.05, 1.18)) - 0.36;
+  float head = smin(cranium, jaw, 0.16);
+  head = smin(head, sdCapsule(p, vec3(0.0, 0.12, 0.44), vec3(0.0, -0.04, 0.54), 0.048), 0.055);
+  vec3 symP = vec3(abs(p.x), p.y, p.z);
+  head = smin(head, length((symP - vec3(0.21, -0.02, 0.36)) * vec3(1.1, 1.3, 1.1)) - 0.14, 0.09);
+  head = smin(head, sdCapsule(symP, vec3(0.06, 0.16, 0.45), vec3(0.27, 0.15, 0.38), 0.036), 0.05);
+  head = max(head, -(length((symP - vec3(0.165, 0.09, 0.43)) * vec3(1.0, 1.35, 1.0)) - 0.075) * 0.75);
+  head = min(head, length(symP - vec3(0.165, 0.09, 0.41)) - 0.052);
+  head = smin(head, sdCapsule(symP, vec3(0.0, -0.155, 0.47), vec3(0.11, -0.165, 0.43), 0.026), 0.03);
+  head = smin(head, sdCapsule(symP, vec3(0.0, -0.195 - speak, 0.46), vec3(0.095, -0.19 - speak * 0.7, 0.42), 0.025), 0.03);
+  return smin(head, sdCapsule(p, vec3(0.0, -0.32, -0.06), vec3(0.0, -0.78, -0.08), 0.21), 0.14);
 }
-
-const VERT_GLSL = `#version 300 es
-in vec2 aPos;
-void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
-`;
-
-const FRAG_GLSL = `#version 300 es
-precision highp float;
-uniform vec2 uRes;
-uniform float uTime;
-uniform float uPulse;
-uniform vec2 uClickPos;
-uniform float uClickTime;
-uniform vec3 uColor;
-uniform int uShape;
-out vec4 fragColor;
-
-float smin(float a, float b, float k) {
-  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-  return mix(b, a, h) - k * h * (1.0 - h);
+float sdScene(vec3 p) {
+  float wave = sin(p.x * 2.4 + uTime * 1.4) * cos(p.z * 2.4 - uTime * 1.1) * 0.05;
+  float age = uTime - uPulse.z;
+  float ripple = (uPulse.z > 0.0 && age >= 0.0 && age < 6.0) ? sin(length(p.xz - uPulse.xy) * 11.0 - age * 8.0) * exp(-length(p.xz - uPulse.xy) * 0.85) * exp(-age * 0.95) * 0.16 : 0.0;
+  float sheet = p.y + 0.62 - wave - ripple;
+  float obj = 100.0;
+  if (uShape == 0) { obj = sdHumanHologramHead(p - vec3(0.0, 0.24, 0.0), uTime, uTension); }
+  else if (uShape == 1) { vec3 q = p - vec3(0.0, 0.12, 0.0); obj = smin(length(q) - 0.34, length(max(abs(q) - vec3(1.05, 0.03, 0.22), 0.0)), 0.08); }
+  else if (uShape == 2) { obj = p.y - (sin(p.x * 3.0) * cos(p.z * 3.0) * 0.28 + sin(p.x * 7.0 + uTime * 0.5) * 0.08); }
+  else if (uShape == 3) { vec3 q = abs(p - vec3(0.0, 0.15, 0.0)); obj = max(max(q.x + q.y + q.z - 0.78, q.x - 0.45), max(q.y - 0.45, q.z - 0.45)); }
+  else if (uShape == 4) { obj = length(p - vec3(0.0, 0.15, 0.0)) - (0.48 + sin(p.x * 8.0 + uTime * 4.0) * 0.04); }
+  else { vec3 q = p - vec3(0.0, 0.16, 0.0); float c = cos(uTime * 0.7), s = sin(uTime * 0.7); q.xz = mat2(c, -s, s, c) * q.xz; obj = sdTorus(q, vec2(0.48, 0.16)); }
+  return smin(sheet, obj, 0.22);
 }
-
-// Pantalla base de viscoelasticidad (Kelvin-Voigt + ondas radiales amortiguadas)
-float sdViscoelasticSheet(vec3 p) {
-  float rCenter = length(p.xz);
-  float baseWave = sin(p.x * 2.8 + uTime * 1.8) * cos(p.z * 2.8 - uTime * 1.5) * 0.045;
-  // Onda viscoelástica por pulso o clic con disipación de Cauchy
-  float dt = max(0.0, uTime - uClickTime);
-  float dClick = length(p.xz - uClickPos);
-  float impactWave = sin(dClick * 7.5 - dt * 9.0) * exp(-dClick * 0.85 - dt * 1.6) * 0.22 * uPulse;
-  float ambientRipple = sin(rCenter * 4.5 - uTime * 2.6) * exp(-rCenter * 0.45) * 0.06 * uPulse;
-  return p.y + 0.62 - (baseWave + impactWave + ambientRipple);
-}
-
-float sdCoreObject(vec3 p) {
-  float w = sin(p.x * 3.5 + uTime * 2.4) * cos(p.z * 3.5 - uTime * 1.9) * (0.11 + uPulse * 0.18);
-  if (uShape == 1) {
-    float body = length(p * vec3(1.0, 2.2, 1.0)) - (0.72 + w * 0.45);
-    float ring = length(vec2(length(p.xz) - 1.32, p.y - w * 0.4)) - 0.075;
-    return min(body, ring);
-  }
-  if (uShape == 2) {
-    float h = sin(p.x * 2.4 + uTime * 0.6) * cos(p.z * 2.4) * 0.52 + w;
-    return p.y - h + 0.18;
-  }
-  if (uShape == 3) {
-    vec3 q = abs(p);
-    return max(max(q.x * 0.85 + q.y * 0.52, q.y * 0.85 + q.z * 0.52), q.z * 0.85 + q.x * 0.52) - (0.78 + w * 0.4);
-  }
-  if (uShape == 4) {
-    return length(p) - (0.82 + w * 0.65);
-  }
-  return length(vec2(length(p.xz) - 1.12, p.y - w)) - (0.38 + 0.05 * sin(uTime * 3.2));
-}
-
-vec2 mapScene(vec3 p) {
-  float dSheet = sdViscoelasticSheet(p);
-  float dCore = sdCoreObject(p);
-  // Acoplamiento viscoelástico continuo entre la membrana y el núcleo
-  float dTotal = smin(dSheet, dCore, 0.32);
-  float matId = dCore < dSheet ? 1.0 : 0.0;
-  return vec2(dTotal, matId);
-}
-
-vec3 getNormal(vec3 p) {
-  vec2 e = vec2(0.002, 0.0);
-  return normalize(vec3(
-    mapScene(p + e.xyy).x - mapScene(p - e.xyy).x,
-    mapScene(p + e.yxy).x - mapScene(p - e.yxy).x,
-    mapScene(p + e.yyx).x - mapScene(p - e.yyx).x
-  ));
-}
-
+vec3 calcNormal(vec3 p) { vec2 e = vec2(0.0015, 0.0); return normalize(vec3(sdScene(p + e.xyy) - sdScene(p - e.xyy), sdScene(p + e.yxy) - sdScene(p - e.yxy), sdScene(p + e.yyx) - sdScene(p - e.yyx))); }
 void main() {
-  vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / min(uRes.x, uRes.y);
-  float ang = uTime * 0.25;
-  vec3 ro = vec3(sin(ang) * 3.6, 1.65, cos(ang) * 3.6);
-  vec3 fwd = normalize(vec3(0.0, -0.25, 0.0) - ro);
-  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
-  vec3 up = cross(fwd, right);
-  vec3 rd = normalize(fwd * 1.45 + right * uv.x + up * uv.y);
-
-  float t = 0.0;
-  float mat = 0.0;
-  for (int i = 0; i < 84; i++) {
-    vec2 res = mapScene(ro + rd * t);
-    if (res.x < 0.002 || t > 16.0) {
-      mat = res.y;
-      break;
-    }
-    t += res.x;
-  }
-
-  vec3 bg = vec3(0.018, 0.03, 0.065);
-  vec3 col = bg;
-  if (t < 16.0) {
-    vec3 p = ro + rd * t;
-    vec3 n = getNormal(p);
-    vec3 v = -rd;
-    float fresnel = pow(1.0 - max(dot(n, v), 0.0), 3.2);
-    float diff = max(dot(n, normalize(vec3(0.5, 0.9, 0.4))), 0.12);
-    vec3 cauchy = vec3(fresnel * 1.15, fresnel * 0.95, fresnel * 1.4);
-
-    if (mat < 0.5) {
-      // Pantalla de viscoelasticidad: malla energética + tensión fluida luminosa
-      vec2 grid = abs(fract(p.xz * 1.6 - 0.5) - 0.5) / fwidth(p.xz * 1.6);
-      float line = 1.0 - min(min(grid.x, grid.y), 1.0);
-      float strainGlow = clamp(abs(p.y + 0.62) * 5.5, 0.0, 1.0);
-      vec3 membraneBase = mix(vec3(0.03, 0.07, 0.14), uColor * 0.85, strainGlow + line * 0.28);
-      col = membraneBase * (0.45 + diff * 0.65) + cauchy * 0.55;
-    } else {
-      // Núcleo 3D acoplado
-      col = uColor * diff * 0.7 + cauchy * (0.8 + uPulse * 0.7);
-    }
-    // Niebla atmosférica suave hacia el horizonte
-    col = mix(col, bg, 1.0 - exp(-0.018 * t * t));
-  }
-
+  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / uRes.y; vec3 ro = vec3(0.0, 0.18, 2.35), rd = normalize(vec3(uv, -1.35));
+  float t = 0.0; bool hit = false;
+  for (int i = 0; i < 84; i++) { float d = sdScene(ro + rd * t); if (d < 0.0015) { hit = true; break; } if (t > 7.5) break; t += d * 0.85; }
+  vec3 bg = mix(vec3(0.01, 0.025, 0.055), vec3(0.02, 0.06, 0.12), vUv.y);
+  if (!hit) { fragColor = vec4(bg, 1.0); return; }
+  vec3 p = ro + rd * t, n = calcNormal(p), v = -rd, l = normalize(vec3(0.6, 0.9, 1.1));
+  float fresnel = pow(1.0 - max(dot(n, v), 0.0), 2.6), diff = max(dot(n, l), 0.0), scan = 0.88 + 0.12 * sin(p.y * 95.0 - uTime * 6.0);
+  vec3 col = vec3(uColor.r * (0.65 + 0.55 * diff) + fresnel * 0.75, uColor.g * (0.72 + 0.52 * diff) + fresnel * 0.90, uColor.b * (0.80 + 0.50 * diff) + fresnel * 1.10) * scan;
+  col = mix(col, bg, smoothstep(3.5, 7.2, t));
   col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
-  fragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(0.4545)), 1.0);
-}
-`;
-
-export function LiquidBiopixelCanvas({
-  shape = 'torus',
-  accentColor = '#38bdf8',
-  pulseCounter = 0,
-  title = 'Membrana Viscoelástica Helix',
-  subtitle = 'Kelvin-Voigt · Raymarching SDF + Cauchy',
-}: LiquidBiopixelCanvasProps) {
+  fragColor = vec4(col, 1.0);
+}`;
+export function LiquidBiopixelCanvas({ shape = 'avatar', accentColor = '#38bdf8', energy = 0.35, tension = 0.35 }: LiquidBiopixelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pulseRef = useRef(1.1);
-  const clickPosRef = useRef<[number, number]>([0, 0]);
-  const clickTimeRef = useRef(0);
-  const timeRef = useRef(0);
-  const [paused, setPaused] = useState(false);
-
+  const st = useRef({ shape, accentColor, energy, tension, px: 0, pz: 0, pt: -10 });
+  st.current.shape = shape; st.current.accentColor = accentColor; st.current.energy = energy; st.current.tension = tension;
   useEffect(() => {
-    pulseRef.current = 1.45;
-    clickPosRef.current = [0, 0];
-    clickTimeRef.current = timeRef.current;
-  }, [pulseCounter, shape]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const gl = canvas.getContext('webgl2');
-    if (!gl) return;
-
-    const compile = (type: number, src: string) => {
-      const s = gl.createShader(type)!;
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      return s;
+    const c = canvasRef.current; if (!c) return; const gl = c.getContext('webgl2', { antialias: true }); if (!gl) return;
+    const sh = (t: number, s: string) => { const o = gl.createShader(t)!; gl.shaderSource(o, s); gl.compileShader(o); return o; };
+    const pg = gl.createProgram()!; gl.attachShader(pg, sh(gl.VERTEX_SHADER, VERT_SRC)); gl.attachShader(pg, sh(gl.FRAGMENT_SHADER, FRAG_SRC)); gl.linkProgram(pg); gl.useProgram(pg);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(pg, 'aPos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const uRes = gl.getUniformLocation(pg, 'uRes'), uTime = gl.getUniformLocation(pg, 'uTime'), uShape = gl.getUniformLocation(pg, 'uShape'), uColor = gl.getUniformLocation(pg, 'uColor'), uTension = gl.getUniformLocation(pg, 'uTension'), uPulse = gl.getUniformLocation(pg, 'uPulse');
+    let raf = 0; const t0 = performance.now();
+    const loop = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2), w = Math.floor(c.clientWidth * dpr), h = Math.floor(c.clientHeight * dpr);
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+      gl.viewport(0, 0, w, h); const s = st.current;
+      const idx = s.shape === 'avatar' ? 0 : s.shape === 'satellite' ? 1 : s.shape === 'terrain' ? 2 : s.shape === 'crystal' ? 3 : s.shape === 'sphere' || s.shape === 'wave' ? 4 : 5;
+      const [r, g, b] = hexToRgbNorm(s.accentColor);
+      gl.uniform2f(uRes, w, h); gl.uniform1f(uTime, (performance.now() - t0) / 1000); gl.uniform1i(uShape, idx); gl.uniform3f(uColor, r, g, b); gl.uniform1f(uTension, Math.max(s.energy, s.tension)); gl.uniform3f(uPulse, s.px, s.pz, s.pt);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); raf = requestAnimationFrame(loop);
     };
-    const prog = gl.createProgram()!;
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT_GLSL));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG_GLSL));
-    gl.linkProgram(prog);
-    gl.useProgram(prog);
-
-    const buf = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(prog, 'aPos');
-    gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-
-    const uRes = gl.getUniformLocation(prog, 'uRes');
-    const uTime = gl.getUniformLocation(prog, 'uTime');
-    const uPulse = gl.getUniformLocation(prog, 'uPulse');
-    const uClickPos = gl.getUniformLocation(prog, 'uClickPos');
-    const uClickTime = gl.getUniformLocation(prog, 'uClickTime');
-    const uColor = gl.getUniformLocation(prog, 'uColor');
-    const uShape = gl.getUniformLocation(prog, 'uShape');
-
-    let raf = 0;
-    const t0 = performance.now();
-    const render = (now: number) => {
-      raf = requestAnimationFrame(render);
-      const w = canvas.clientWidth || 640;
-      const h = canvas.clientHeight || 480;
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-        gl.viewport(0, 0, w, h);
-      }
-      if (!paused) {
-        const elapsed = (now - t0) * 0.001;
-        timeRef.current = elapsed;
-        pulseRef.current = Math.max(0.25, pulseRef.current * 0.985);
-        const hex = accentColor.replace('#', '');
-        const r = parseInt(hex.slice(0, 2) || '38', 16) / 255;
-        const g = parseInt(hex.slice(2, 4) || 'bd', 16) / 255;
-        const b = parseInt(hex.slice(4, 6) || 'f8', 16) / 255;
-        const shapeId = /nave|sat|orb/i.test(shape) ? 1 : /terr|mont|fract/i.test(shape) ? 2 : /crist|cryst|ico/i.test(shape) ? 3 : /esf|spher|cuant|wave/i.test(shape) ? 4 : 0;
-
-        gl.uniform2f(uRes, w, h);
-        gl.uniform1f(uTime, elapsed);
-        gl.uniform1f(uPulse, pulseRef.current);
-        gl.uniform2f(uClickPos, clickPosRef.current[0], clickPosRef.current[1]);
-        gl.uniform1f(uClickTime, clickTimeRef.current);
-        gl.uniform3f(uColor, r, g, b);
-        gl.uniform1i(uShape, shapeId);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      }
-    };
-    raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
-  }, [accentColor, paused, shape]);
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
-    clickPosRef.current = [nx * 2.2, ny * 2.2];
-    clickTimeRef.current = timeRef.current;
-    pulseRef.current = 1.65;
-  };
-
-  return (
-    <div className="relative h-full w-full overflow-hidden bg-slate-950">
-      <canvas ref={canvasRef} onPointerDown={handlePointerDown} className="block h-full w-full cursor-pointer" />
-      <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-slate-950/75 px-3 py-1.5 text-xs text-sky-200 backdrop-blur">
-        <div className="font-semibold">{title}</div>
-        <div className="text-[11px] text-slate-400">{subtitle}</div>
-      </div>
-      <div className="absolute bottom-3 left-3 flex gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            clickPosRef.current = [0, 0];
-            clickTimeRef.current = timeRef.current;
-            pulseRef.current = 1.65;
-          }}
-          className="rounded bg-sky-500 px-3 py-1 text-xs font-semibold text-slate-950"
-        >
-          Pulso viscoelástico
-        </button>
-        <button
-          type="button"
-          onClick={() => setPaused((p) => !p)}
-          className="rounded bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-200"
-        >
-          {paused ? 'Reanudar' : 'Pausar'}
-        </button>
-      </div>
-    </div>
-  );
+    raf = requestAnimationFrame(loop); return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas ref={canvasRef} onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); st.current.px = ((e.clientX - r.left) / r.width - 0.5) * 2.4; st.current.pz = ((e.clientY - r.top) / r.height - 0.5) * 2.4; st.current.pt = performance.now() / 1000; }} className="h-full w-full cursor-pointer" />;
 }
-export default LiquidBiopixelCanvas;
