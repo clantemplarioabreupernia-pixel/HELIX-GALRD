@@ -603,6 +603,7 @@ export class HelixCoreEngine {
     }
     const updated = appendCertifiedCapsuleToPredictor(this.capsulePredictor!, entry, retrainSteps);
     if (updated && this.capsulePredictor) {
+      this.miniGptEngine.ingestAndTrainIncremental(entry, 1);
       this.miniGptEngine.restoreCheckpoint(this.capsulePredictor.checkpointJson);
     }
     return updated;

@@ -1,12 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  appendCertifiedCapsuleToPredictor,
-  CapsulePredictionResult,
-  createCapsulePredictorFromJsonl,
-  predictHelixStructureFromHistory,
-  TrainedCapsulePredictorState,
-} from '../core/helixCapsuleTrainer';
+  createMiniGPTEngine,
+  MiniGPTEngine,
+  MiniGPTHistorySuggestion,
+  MiniGPTPredictionResult,
+} from '../core/MiniGPTEngine';
 
 export const DEFAULT_CAPSULES_FILENAME = 'dataset_capsules.jsonl';
 export const DEFAULT_CHECKPOINT_FILENAME = 'helix_minigpt_checkpoint.pth.json';
@@ -37,7 +36,7 @@ export interface N2TrainingExecutionReport {
   finalLoss: number;
   finalValLoss: number;
   checkpointBytes: number;
-  samplePrediction: CapsulePredictionResult;
+  samplePrediction: MiniGPTPredictionResult;
 }
 
 export interface N2PredictorStatusSnapshot {
@@ -63,7 +62,8 @@ interface LiveCacheEntry {
   checkpointPath: string;
   capsulesMtimeMs: number;
   checkpointMtimeMs: number;
-  predictor: TrainedCapsulePredictorState;
+  engine: MiniGPTEngine;
+  checkpointJson: string;
 }
 
 let liveCache: LiveCacheEntry | null = null;
@@ -107,9 +107,8 @@ function clampSteps(steps: unknown, fallback = 24): number {
 }
 
 /**
- * Procesa `dataset_capsules.jsonl` en Nivel 2, entrena/actualiza los pesos del modelo
- * local Mini-GPT (conservando pesos previos cuando el vocabulario coincide salvo
- * `resetWeights: true`) y persiste el checkpoint `.pth` de forma atómica.
+ * Procesa `dataset_capsules.jsonl` usando `MiniGPTEngine`, entrena o actualiza
+ * los pesos del modelo local Mini-GPT y persiste el checkpoint `.pth` de forma atómica.
  */
 export function runN2CapsuleTrainingPipeline(
   options: N2TrainingPipelineOptions = {},
@@ -130,34 +129,25 @@ export function runN2CapsuleTrainingPipeline(
     ? fs.readFileSync(checkpointPath, 'utf8')
     : undefined;
 
-  let stepsBefore = 0;
-  if (existingCheckpointJson) {
-    try {
-      const parsedMeta = JSON.parse(existingCheckpointJson) as { trainedSteps?: number };
-      if (typeof parsedMeta.trainedSteps === 'number' && Number.isFinite(parsedMeta.trainedSteps)) {
-        stepsBefore = parsedMeta.trainedSteps;
-      }
-    } catch {
-      stepsBefore = 0;
-    }
-  }
-
+  const miniGpt = createMiniGPTEngine();
+  const parsed = miniGpt.loadCapsulesFromJsonl(rawJsonl);
   const stepsRequested = clampSteps(options.steps, 24);
-  const predictor = createCapsulePredictorFromJsonl(rawJsonl, {
+
+  const summary = miniGpt.trainOnCertifiedHistory({
     steps: stepsRequested,
     seed: options.seed ?? 1337,
     existingCheckpointJson,
+    resetWeights: options.resetWeights,
   });
 
-  writeFileAtomic(checkpointPath, predictor.checkpointJson);
+  writeFileAtomic(checkpointPath, summary.checkpointJson);
 
-  const uniqueScriptsCount = new Set(predictor.acceptedRecords.map((r) => r.hlxScript)).size;
   const fallbackSamplePrompt =
     options.samplePrompt?.trim() ||
-    predictor.acceptedRecords.find((r) => r.prompt.trim().length > 4)?.prompt ||
+    parsed.accepted.find((r) => r.prompt.trim().length > 4)?.prompt ||
     'Simula una estructura orbital verificada en Helix';
 
-  const samplePrediction = predictHelixStructureFromHistory(predictor, fallbackSamplePrompt);
+  const samplePrediction = miniGpt.predictStructure(fallbackSamplePrompt);
 
   liveCache = {
     baseDir,
@@ -165,41 +155,39 @@ export function runN2CapsuleTrainingPipeline(
     checkpointPath,
     capsulesMtimeMs: getFileMtimeMs(capsulesPath),
     checkpointMtimeMs: getFileMtimeMs(checkpointPath),
-    predictor,
+    engine: miniGpt,
+    checkpointJson: summary.checkpointJson,
   };
-
-  const checkpointBytes = Buffer.byteLength(predictor.checkpointJson, 'utf8');
-  const restoredFromCheckpoint = Boolean(existingCheckpointJson && predictor.model.trainedSteps > stepsRequested);
 
   return {
     capsulesPath,
     checkpointPath,
-    totalLinesRead: predictor.totalLinesRead,
-    acceptedCapsulesCount: predictor.acceptedRecords.length,
-    rejectedCapsulesCount: predictor.rejectedCapsulesCount,
-    uniqueScriptsCount,
-    restoredFromCheckpoint,
-    stepsBefore: restoredFromCheckpoint ? stepsBefore : 0,
-    stepsAdded: stepsRequested,
-    stepsTrainedTotal: predictor.model.trainedSteps,
-    parameterCount: predictor.model.parameterCount,
-    initialLoss: predictor.initialLoss,
-    finalLoss: predictor.finalLoss,
-    finalValLoss: predictor.finalValLoss,
-    checkpointBytes,
+    totalLinesRead: summary.totalLinesRead,
+    acceptedCapsulesCount: summary.acceptedCapsulesCount,
+    rejectedCapsulesCount: summary.rejectedCapsulesCount,
+    uniqueScriptsCount: summary.uniqueScriptsCount,
+    restoredFromCheckpoint: summary.restoredFromCheckpoint,
+    stepsBefore: summary.stepsBefore,
+    stepsAdded: summary.stepsAdded,
+    stepsTrainedTotal: summary.stepsTrainedTotal,
+    parameterCount: summary.parameterCount,
+    initialLoss: summary.initialLoss,
+    finalLoss: summary.finalLoss,
+    finalValLoss: summary.finalValLoss,
+    checkpointBytes: Buffer.byteLength(summary.checkpointJson, 'utf8'),
     samplePrediction,
   };
 }
 
 /**
- * Mantiene sincronizado en memoria el predictor Mini-GPT de N2 respecto a los archivos
- * en disco (`dataset_capsules.jsonl` y `helix_minigpt_checkpoint.pth.json`).
+ * Mantiene sincronizada en memoria la instancia de `MiniGPTEngine` respecto a
+ * `dataset_capsules.jsonl` y `helix_minigpt_checkpoint.pth.json` en disco.
  */
 export function ensureN2Predictor(options: {
   baseDir?: string;
   persistIfMissing?: boolean;
   initialSteps?: number;
-} = {}): TrainedCapsulePredictorState {
+} = {}): MiniGPTEngine {
   const baseDir = path.resolve(options.baseDir ?? process.cwd());
   const capsulesPath = resolveConfinedWorkspacePath(baseDir, DEFAULT_CAPSULES_FILENAME);
   const checkpointPath = resolveConfinedWorkspacePath(baseDir, DEFAULT_CHECKPOINT_FILENAME);
@@ -213,21 +201,22 @@ export function ensureN2Predictor(options: {
     liveCache.capsulesMtimeMs === diskCapsulesMtime &&
     liveCache.checkpointMtimeMs === diskCkptMtime
   ) {
-    return liveCache.predictor;
+    return liveCache.engine;
   }
 
   const rawJsonl = fs.existsSync(capsulesPath) ? fs.readFileSync(capsulesPath, 'utf8') : '';
   const hasCheckpoint = fs.existsSync(checkpointPath);
   const existingCheckpointJson = hasCheckpoint ? fs.readFileSync(checkpointPath, 'utf8') : undefined;
 
-  const steps = clampSteps(options.initialSteps, hasCheckpoint ? 4 : 20);
-  const predictor = createCapsulePredictorFromJsonl(rawJsonl, {
-    steps,
+  const miniGpt = createMiniGPTEngine();
+  miniGpt.loadCapsulesFromJsonl(rawJsonl);
+  const summary = miniGpt.trainOnCertifiedHistory({
+    steps: clampSteps(options.initialSteps, hasCheckpoint ? 4 : 20),
     existingCheckpointJson,
   });
 
   if (!hasCheckpoint && options.persistIfMissing !== false) {
-    writeFileAtomic(checkpointPath, predictor.checkpointJson);
+    writeFileAtomic(checkpointPath, summary.checkpointJson);
   }
 
   liveCache = {
@@ -236,15 +225,16 @@ export function ensureN2Predictor(options: {
     checkpointPath,
     capsulesMtimeMs: getFileMtimeMs(capsulesPath),
     checkpointMtimeMs: getFileMtimeMs(checkpointPath),
-    predictor,
+    engine: miniGpt,
+    checkpointJson: summary.checkpointJson,
   };
 
-  return predictor;
+  return miniGpt;
 }
 
 /**
- * Predice una estructura HELIX formalmente verificada a partir del historial
- * guardado en `dataset_capsules.jsonl` y los pesos actuales del Mini-GPT.
+ * Predice una estructura HELIX verificada usando `MiniGPTEngine` sobre el historial
+ * guardado en `dataset_capsules.jsonl`.
  */
 export function predictWithN2MiniGpt(
   prompt: string,
@@ -254,9 +244,9 @@ export function predictWithN2MiniGpt(
     maxLines?: number;
     seed?: number;
   } = {},
-): CapsulePredictionResult {
-  const predictor = ensureN2Predictor({ baseDir: options.baseDir });
-  return predictHelixStructureFromHistory(predictor, prompt, {
+): MiniGPTPredictionResult {
+  const miniGpt = ensureN2Predictor({ baseDir: options.baseDir });
+  return miniGpt.predictStructure(prompt, {
     temperature: options.temperature,
     maxLines: options.maxLines,
     seed: options.seed,
@@ -264,8 +254,23 @@ export function predictWithN2MiniGpt(
 }
 
 /**
+ * Sugiere automáticamente estructuras HELIX verificadas desde el historial
+ * de usuario almacenado en `dataset_capsules.jsonl`.
+ */
+export function suggestHelixStructuresFromN2History(
+  query = '',
+  options: {
+    baseDir?: string;
+    limit?: number;
+  } = {},
+): MiniGPTHistorySuggestion[] {
+  const miniGpt = ensureN2Predictor({ baseDir: options.baseDir });
+  return miniGpt.suggestStructuresFromHistory(query, options.limit ?? 4);
+}
+
+/**
  * Registra una cápsula certificada L2 y actualiza de forma incremental los pesos
- * del modelo local Mini-GPT y su checkpoint `.pth` en disco.
+ * del `MiniGPTEngine` y su checkpoint `.pth` en disco.
  */
 export function recordCapsuleAndUpdateN2Weights(
   entry: {
@@ -281,18 +286,21 @@ export function recordCapsuleAndUpdateN2Weights(
     retrainSteps?: number;
     appendToJsonl?: boolean;
   } = {},
-): { updatedWeights: boolean; predictor: TrainedCapsulePredictorState } {
+): { updatedWeights: boolean; engine: MiniGPTEngine } {
   const baseDir = path.resolve(options.baseDir ?? process.cwd());
   const capsulesPath = resolveConfinedWorkspacePath(baseDir, DEFAULT_CAPSULES_FILENAME);
   const checkpointPath = resolveConfinedWorkspacePath(baseDir, DEFAULT_CHECKPOINT_FILENAME);
 
   if (options.appendToJsonl && entry.rawJsonlLine) {
-    fs.appendFileSync(capsulesPath, entry.rawJsonlLine.endsWith('\n') ? entry.rawJsonlLine : `${entry.rawJsonlLine}\n`, 'utf8');
+    fs.appendFileSync(
+      capsulesPath,
+      entry.rawJsonlLine.endsWith('\n') ? entry.rawJsonlLine : `${entry.rawJsonlLine}\n`,
+      'utf8',
+    );
   }
 
-  const predictor = ensureN2Predictor({ baseDir });
-  const updatedWeights = appendCertifiedCapsuleToPredictor(
-    predictor,
+  const miniGpt = ensureN2Predictor({ baseDir });
+  const updatedWeights = miniGpt.ingestAndTrainIncremental(
     {
       prompt: entry.prompt,
       reply: entry.reply,
@@ -303,8 +311,10 @@ export function recordCapsuleAndUpdateN2Weights(
     Math.max(1, Math.min(24, Math.round(options.retrainSteps ?? 3))),
   );
 
+  let ckpt = liveCache?.checkpointJson ?? '';
   if (updatedWeights) {
-    writeFileAtomic(checkpointPath, predictor.checkpointJson);
+    ckpt = miniGpt.exportCheckpoint();
+    writeFileAtomic(checkpointPath, ckpt);
   }
 
   liveCache = {
@@ -313,17 +323,19 @@ export function recordCapsuleAndUpdateN2Weights(
     checkpointPath,
     capsulesMtimeMs: getFileMtimeMs(capsulesPath),
     checkpointMtimeMs: getFileMtimeMs(checkpointPath),
-    predictor,
+    engine: miniGpt,
+    checkpointJson: ckpt,
   };
 
-  return { updatedWeights, predictor };
+  return { updatedWeights, engine: miniGpt };
 }
 
 export function getN2MiniGptStatus(baseDir = process.cwd()): N2PredictorStatusSnapshot {
   const resolvedBase = path.resolve(baseDir);
   const capsulesPath = resolveConfinedWorkspacePath(resolvedBase, DEFAULT_CAPSULES_FILENAME);
   const checkpointPath = resolveConfinedWorkspacePath(resolvedBase, DEFAULT_CHECKPOINT_FILENAME);
-  const predictor = ensureN2Predictor({ baseDir: resolvedBase, persistIfMissing: false });
+  const miniGpt = ensureN2Predictor({ baseDir: resolvedBase, persistIfMissing: false });
+  const st = miniGpt.getStatus();
 
   let checkpointBytes = 0;
   let checkpointUpdatedAt: string | null = null;
@@ -335,17 +347,17 @@ export function getN2MiniGptStatus(baseDir = process.cwd()): N2PredictorStatusSn
   }
 
   return {
-    initialized: true,
+    initialized: st.initialized,
     capsulesPath,
     checkpointPath,
-    capsuleCount: predictor.totalLinesRead,
-    acceptedCapsulesCount: predictor.acceptedRecords.length,
-    rejectedCapsulesCount: predictor.rejectedCapsulesCount,
-    stepsTrained: predictor.model.trainedSteps,
-    parameterCount: predictor.model.parameterCount,
-    initialLoss: predictor.initialLoss,
-    finalLoss: predictor.finalLoss,
-    finalValLoss: predictor.finalValLoss,
+    capsuleCount: st.capsulesRead,
+    acceptedCapsulesCount: st.acceptedCapsules,
+    rejectedCapsulesCount: st.rejectedCapsules,
+    stepsTrained: st.trainedSteps,
+    parameterCount: st.parameterCount,
+    initialLoss: st.initialLoss,
+    finalLoss: st.finalLoss,
+    finalValLoss: st.finalValLoss,
     hasCheckpoint,
     checkpointBytes,
     checkpointUpdatedAt,

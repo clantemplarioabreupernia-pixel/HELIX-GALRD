@@ -106,6 +106,17 @@ export interface MiniGPTEngineStatus {
   hasCheckpoint: boolean;
 }
 
+export interface MiniGPTHistorySuggestion {
+  prompt: string;
+  domain: string;
+  shape: string;
+  timestamp?: string;
+  relevanceScore: number;
+  smtVerified: boolean;
+  godelValid: boolean;
+  predictedScript: string;
+}
+
 function tokenizeWords(text: string): Set<string> {
   const clean = text
     .toLowerCase()
@@ -570,6 +581,100 @@ export class MiniGPTEngine {
       godelValid: generation.godelReport.valid,
       generation,
     };
+  }
+
+  /**
+   * Sugiere automáticamente estructuras HELIX basadas en el historial de usuario
+   * almacenado en `dataset_capsules.jsonl` y los pesos actuales del Mini-GPT.
+   */
+  public suggestStructuresFromHistory(
+    query = '',
+    limit = 4,
+  ): MiniGPTHistorySuggestion[] {
+    if (!this.model) {
+      this.trainOnCertifiedHistory({ steps: 12 });
+    }
+
+    const safeLimit = Math.max(1, Math.min(8, Math.round(limit)));
+    const qClean = query.trim().toLowerCase();
+    const qNorm = qClean.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+    // Deduplica por prompt normalizado conservando la interacción más reciente
+    const latestByPrompt = new Map<string, MiniGPTCapsuleRecord>();
+    for (const rec of this.parsedDataset.accepted) {
+      const p = rec.prompt.replace(/\s+/g, ' ').trim();
+      if (p.length < 3) continue;
+      const key = p.toLowerCase();
+      const prev = latestByPrompt.get(key);
+      if (!prev || rec.index > prev.index) {
+        latestByPrompt.set(key, { ...rec, prompt: p });
+      }
+    }
+
+    const isTrivialGreeting = (p: string) =>
+      /^(hola|hola como estas|buenas|hey|saludos|revisa.*codigo|y puedes revisar.*|que me puedes enseñar|bien y usted.*)$/i.test(
+        p.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(),
+      );
+
+    const candidates = Array.from(latestByPrompt.values());
+    const richCandidates = candidates.filter((c) => !isTrivialGreeting(c.prompt));
+    const pool = richCandidates.length > 0 ? richCandidates : candidates;
+
+    const totalPool = Math.max(1, this.parsedDataset.totalLines);
+    const scored = pool.map((rec) => {
+      const pNorm = rec.prompt.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const recency = (rec.index + 1) / totalPool;
+      let matchScore = 0;
+
+      if (qNorm.length >= 2) {
+        const cosine = promptCosineOverlap(qNorm, pNorm);
+        const substringHit = pNorm.includes(qNorm) ? 0.85 : 0;
+        matchScore = Math.max(cosine, substringHit);
+      }
+
+      const relevanceScore = Number(
+        (qNorm.length >= 2 ? matchScore * 0.85 + recency * 0.15 : recency).toFixed(4),
+      );
+
+      return { rec, relevanceScore, matchScore };
+    });
+
+    const filtered = qNorm.length >= 2
+      ? scored.filter((s) => s.matchScore > 0)
+      : scored;
+
+    const ranked = (filtered.length > 0 ? filtered : scored)
+      .sort((a, b) => b.relevanceScore - a.relevanceScore || b.rec.index - a.rec.index)
+      .slice(0, safeLimit);
+
+    return ranked.map(({ rec, relevanceScore }) => {
+      const prediction = this.predictStructure(rec.prompt);
+      const low = rec.prompt.toLowerCase();
+      const inferredShape =
+        rec.shape ||
+        (/orbit|nave|espaci|satel|astro|juego/i.test(low)
+          ? 'satellite'
+          : /onda|m[uú]sica|528|voz|clip|ac[uú]stic/i.test(low)
+            ? 'wave'
+            : /monta|terr|fractal|lunar/i.test(low)
+              ? 'terrain'
+              : /cristal|icosa/i.test(low)
+                ? 'crystal'
+                : /cu[aá]ntic|bloch|esfera/i.test(low)
+                  ? 'sphere'
+                  : 'torus');
+
+      return {
+        prompt: rec.prompt,
+        domain: rec.domain || 'UNIFIED_PHYSICS',
+        shape: inferredShape,
+        timestamp: rec.timestamp,
+        relevanceScore,
+        smtVerified: prediction.smtVerified,
+        godelValid: prediction.godelValid,
+        predictedScript: prediction.predictedScript,
+      };
+    });
   }
 
   public exportCheckpoint(): string {
