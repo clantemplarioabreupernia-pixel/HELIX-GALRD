@@ -1,4 +1,4 @@
-import { derivePrimeColor } from '../utils/primeColor';
+﻿import { derivePrimeColor } from '../utils/primeColor';
 
 export type GrammaticalRole = 'Entidad' | 'Operación' | 'Modificador';
 
@@ -123,4 +123,34 @@ export const TOKEN_BY_PRIME = new Map<number, PrimitiveToken>(
 export const RUNE_BY_GLYPH = TOKEN_BY_GLYPH;
 export const RUNE_BY_PRIME = TOKEN_BY_PRIME;
 
+export type FaceStateZ4 = 0 | 1 | 2 | 3;
+
+export interface CubeFacesZ4 {
+  cara0_accion: FaceStateZ4;             // Externa 0: Hebra A (Acción física)
+  cara1_espalda: FaceStateZ4;            // Externa 1: Hebra B (Traducción dual / inverso)
+  cara2_disciplina: FaceStateZ4;         // Externa 2: Proyección P33
+  cara3_faseZ4: FaceStateZ4;             // Externa 3: Fase modular externa
+  caraInternaA_invariante: FaceStateZ4;  // Interna A: Paridad de homeostasis (0..3)
+  caraInternaB_semillaAcustica: FaceStateZ4; // Interna B: Fase armónica coclear (0..3)
+}
+
+export function deriveCubeFacesForPrime(index: number, prime: number): CubeFacesZ4 {
+  const c0 = (prime % 4) as FaceStateZ4;
+  const c1 = ((4 - c0) % 4) as FaceStateZ4;
+  const c2 = (index % 4) as FaceStateZ4;
+  const c3 = ((prime ^ index) & 3) as FaceStateZ4;
+  const internaA = ((c0 + c1 + c2) % 4) as FaceStateZ4;
+  const internaB = ((prime * 3 + index) & 3) as FaceStateZ4;
+  return {
+    cara0_accion: c0,
+    cara1_espalda: c1,
+    cara2_disciplina: c2,
+    cara3_faseZ4: c3,
+    caraInternaA_invariante: internaA,
+    caraInternaB_semillaAcustica: internaB,
+  };
+}
+
+export const RUNES_WITH_CUBE_FACES = () =>
+  RUNES.map((r) => ({ ...r, cubeFaces: deriveCubeFacesForPrime(r.index, r.prime) }));
 export const OPERATOR_SET = new Set<string>(HELIX_OPERATORS.map((o) => o.symbol));

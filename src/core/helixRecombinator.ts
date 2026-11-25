@@ -1,4 +1,4 @@
-import { INITIAL_COMPOUND_VOCABULARY } from '../data/vocabulary';
+﻿import { INITIAL_COMPOUND_VOCABULARY } from '../data/vocabulary';
 import {
   buildProofCarryingCertificate,
   ProofCarryingCertificate,
@@ -378,31 +378,26 @@ function bridgeOutputToInput(
         transformRule: 'quantum_entropy_to_mulberry32_seed',
         transferredValue: val,
       });
-    } else if (inPort.name === 'debit_cents' && typeof m.kinetic_approx_j === 'number') {
-      const val = Math.max(100, Math.round(m.kinetic_approx_j * 100));
-      mappedParams[inPort.name] = val;
-      mappedParams['credit_cents'] = val;
-      bridges.push({
-        fromToolId: fromTool.id,
-        fromPort: 'kinetic_approx_j',
-        toToolId: toTool.id,
-        toPort: 'debit_cents',
-        transformRule: 'energy_conservation_to_double_entry_conservation',
-        transferredValue: val,
-      });
     } else {
-      // Fallback genérico por tipo compatible ('scalar')
-      const firstNumeric = Object.entries(m).find(([, v]) => typeof v === 'number' && Number.isFinite(v) && v > 0);
-      if (firstNumeric && inPort.type === 'scalar') {
-        const clamped = Number(Math.min(1000, Math.max(0.05, Number(firstNumeric[1]))).toFixed(4));
-        mappedParams[inPort.name] = clamped;
+      // Compatibilidad estricta por unidad fisica/financiera (cero cruces heuristicos ciegos)
+      const matchingEntry = Object.entries(m).find(([k, v]) => {
+        if (typeof v !== 'number' || !Number.isFinite(v)) return false;
+        const sameName = k === inPort.name;
+        const bothVelocity = k.includes('vel') && inPort.name.includes('vel');
+        const bothFreq = k.includes('freq') && inPort.name.includes('freq');
+        const bothCurrency = k.includes('cents') && inPort.name.includes('cents');
+        return sameName || bothVelocity || bothFreq || bothCurrency;
+      });
+      if (matchingEntry) {
+        const val = Number(Number(matchingEntry[1]).toFixed(4));
+        mappedParams[inPort.name] = val;
         bridges.push({
           fromToolId: fromTool.id,
-          fromPort: firstNumeric[0],
+          fromPort: matchingEntry[0],
           toToolId: toTool.id,
           toPort: inPort.name,
-          transformRule: 'typed_scalar_cross_projection',
-          transferredValue: clamped,
+          transformRule: 'strict_unit_verified_bridge',
+          transferredValue: val,
         });
       }
     }
