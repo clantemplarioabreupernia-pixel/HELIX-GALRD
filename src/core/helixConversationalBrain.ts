@@ -41,7 +41,7 @@ const PHYSICAL_VALUE_RE =
   /\b\d+(?:[.,]\d+)?\s*(?:km|m\/s|hz|ghz|mpa|kg|fps|qubits?|bpm|lpm|mg\/dl|mmhg|°c|\$|usd)\b/i;
 
 const INVENTORY_VERB_RE =
-  /\b(lista|listar|listame|enumera|enumerar|muestra|muestrame|dime|dame|cuales|que|todas|todos|catalogo|inventario)\b/;
+  /\b(lista|listar|listame|enumera|enumerar|muestra|muestrame|dime|dame|cuales|que|todas|todos|catalogo|inventario|revisa|revisar|audita|auditar|verifica|verificar|inspecciona|analiza)\b/;
 
 const TOOLS_NOUN_RE =
   /\b(herramienta|herramientas|erramienta|erramientas|funcion|funciones|funsion|funsiones|modulo|modulos|capacidad|capacidades|comando|comandos|utilidad|utilidades)\b/;

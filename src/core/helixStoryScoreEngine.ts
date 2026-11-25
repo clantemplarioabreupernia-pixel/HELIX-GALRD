@@ -1,4 +1,4 @@
-﻿import { evaluateCineAcoustoFrame } from './helixCineAcoustoOptics';
+﻿import { evaluateCineAcoustoFrame, CineAcoustoFrameState } from './helixCineAcoustoOptics';
 
 export interface StorySceneCue {
   index: number;
@@ -42,28 +42,50 @@ export function parseStoryIntoMusicalScore(storyText: string): StorySceneCue[] {
 
 export function playStoryScoreLive(
   cues: StorySceneCue[],
-  onCueChange?: (cue: StorySceneCue, cineState: ReturnType<typeof evaluateCineAcoustoFrame>) => void,
+  onCueChange?: (cue: StorySceneCue, cineState: CineAcoustoFrameState, fft?: Uint8Array) => void,
 ): () => void {
   let stopped = false;
   const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!AudioCtx || cues.length === 0) return () => {};
 
   const ctx = new AudioCtx();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.connect(ctx.destination);
+  const fftBuffer = new Uint8Array(analyser.frequencyBinCount);
+
   let timerId = 0;
+  let rafId = 0;
   let idx = 0;
+  let activeCue = cues[0];
+  const startTime = ctx.currentTime;
+  const totalSec = cues.reduce((a, b) => a + b.durationSec, 0);
+
+  const pumpFft = () => {
+    if (stopped) return;
+    analyser.getByteFrequencyData(fftBuffer);
+    const elapsed = ctx.currentTime - startTime;
+    const cine = evaluateCineAcoustoFrame(fftBuffer, ctx.sampleRate, elapsed, totalSec);
+    onCueChange?.(activeCue, cine, fftBuffer);
+    rafId = window.requestAnimationFrame(pumpFft);
+  };
 
   const playNext = () => {
     if (stopped || idx >= cues.length) {
+      stopped = true;
+      window.cancelAnimationFrame(rafId);
       void ctx.close().catch(() => {});
       return;
     }
     const cue = cues[idx];
+    activeCue = cue;
     const now = ctx.currentTime;
 
-    // Nota melodica P33 + tono pedal grave para sostener el paisaje
     const oscLead = ctx.createOscillator();
     const oscDrone = ctx.createOscillator();
+    const oscFsk = ctx.createOscillator();
     const gain = ctx.createGain();
+    const fskGain = ctx.createGain();
 
     oscLead.type = cue.mood === 'tension' ? 'sawtooth' : 'triangle';
     oscLead.frequency.setValueAtTime(cue.freqHz, now);
@@ -71,32 +93,40 @@ export function playStoryScoreLive(
     oscDrone.type = 'sine';
     oscDrone.frequency.setValueAtTime(cue.freqHz * 0.5, now);
 
+    // Portadora FSK P33 codificada para demodulación FFT en tiempo real
+    const fskHz = 1200 + cue.prime * 35;
+    oscFsk.type = 'sine';
+    oscFsk.frequency.setValueAtTime(fskHz, now);
+    fskGain.gain.setValueAtTime(0.015, now);
+
     gain.gain.setValueAtTime(0.001, now);
     gain.gain.exponentialRampToValueAtTime(0.08, now + 0.15);
     gain.gain.exponentialRampToValueAtTime(0.001, now + cue.durationSec);
 
     oscLead.connect(gain);
     oscDrone.connect(gain);
-    gain.connect(ctx.destination);
+    oscFsk.connect(fskGain);
+    gain.connect(analyser);
+    fskGain.connect(analyser);
 
     oscLead.start(now);
     oscDrone.start(now);
+    oscFsk.start(now);
     oscLead.stop(now + cue.durationSec);
     oscDrone.stop(now + cue.durationSec);
-
-    const cine = evaluateCineAcoustoFrame(null, ctx.sampleRate, idx * 4, cues.length * 4);
-    onCueChange?.(cue, cine);
+    oscFsk.stop(now + cue.durationSec);
 
     idx += 1;
     timerId = window.setTimeout(playNext, cue.durationSec * 1000);
   };
 
   playNext();
+  rafId = window.requestAnimationFrame(pumpFft);
+
   return () => {
     stopped = true;
     window.clearTimeout(timerId);
+    window.cancelAnimationFrame(rafId);
     void ctx.close().catch(() => {});
   };
 }
-
-
