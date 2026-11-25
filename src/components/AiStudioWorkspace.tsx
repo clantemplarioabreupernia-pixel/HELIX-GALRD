@@ -1,4 +1,8 @@
-﻿import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+﻿import { evaluateAstronautMissionHealth } from '../core/helixAstronautHealth';
+import { parseStoryIntoMusicalScore, playStoryScoreLive } from '../core/helixStoryScoreEngine';
+import { evolveCompanionWithTurn, getInitialCompanionGreeting, loadCompanionBond } from '../core/helixCompanionBond';
+import { MORPH_SHAPE_LABELS } from '../data/morphShapeLabels';
+import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Download, ExternalLink, ImagePlus, Mic, MicOff, Send, Volume2, VolumeX, X } from 'lucide-react';
 import { createHelixCoreEngine, EngineeringReport } from '../core';
 import {
@@ -19,8 +23,7 @@ import { DEFAULT_HELIX_PHYSICS_PROGRAM } from '../utils/helixVm';
 import {
   LiquidBiopixelCanvas,
   LiquidMorphShape,
-  MORPH_SHAPE_LABELS,
-} from './LiquidBiopixelCanvas';
+  } from './LiquidBiopixelCanvas';
 
 interface ChatMessage {
   id: string;
@@ -143,7 +146,7 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
     {
       id: 'welcome-1',
       role: 'assistant',
-      text: 'Hola, soy Helix. Podemos conversar con total naturalidad, explorar cualquier tema o dar vida a una simulación cuando me lo pidas.',
+      text: getInitialCompanionGreeting(loadCompanionBond()),
     },
   ]);
 
@@ -374,6 +377,20 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
       }).catch(() => {});
     }
 
+    const bondStep = evolveCompanionWithTurn(text, MORPH_SHAPE_LABELS[inferredShape] ?? 'General');
+        const isStoryRequest = /\b(cuento|historia|escanea|caperucita|pel[ií]cula|partitura|musicaliza)\b/i.test(text);
+    let storyAddendum = '';
+    const healthEval = evaluateAstronautMissionHealth(text);
+    if (healthEval.detected) { storyAddendum += '\n\n' + healthEval.summary + '\n' + healthEval.guidance; setAccentHex(healthEval.accentHex); setCurrentShape('quantum_bloch'); }
+    if (isStoryRequest) {
+      const cues = parseStoryIntoMusicalScore(text);
+      storyAddendum = '\n\nPartitura Rúnica P33 (' + cues.length + ' escenas): ' + cues.map(c => '[E' + c.index + ': p=' + c.prime + ' · ' + c.freqHz + 'Hz]').join(' → ');
+      playStoryScoreLive(cues, (cue, cine) => {
+        setPulseCounter((n) => n + 1);
+        setCurrentShape(cue.mood === 'bosque' ? 'terrain_fbm' : cue.mood === 'tension' ? 'sphere' : 'avatar');
+        setAccentHex(cine.shotCode === 0x03 ? '#f43f5e' : cue.mood === 'bosque' ? '#22c55e' : '#38bdf8');
+      });
+    }
     const replyText = buildHumanConversationReply(
       text,
       MORPH_SHAPE_LABELS[inferredShape] ?? 'Rostro Holográfico Humano',
@@ -385,6 +402,7 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
         history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
       },
     );
+    const enrichedReply = replyText + storyAddendum; const finalReply = bondStep.bondReplyOverride ?? (bondStep.distilledPrompt ? enrichedReply + "\n\n" + bondStep.distilledPrompt : enrichedReply);
 
     // 2. Destilación N2 + Aduana PCC en servidor en segundo plano
     try {
@@ -433,7 +451,7 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
       {
         id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         role: 'assistant',
-        text: replyText,
+        text: finalReply,
         artifactHtml: finalArtifactHtml,
         artifactTitle: actionIntent ? text.slice(0, 48) : undefined,
       },
@@ -770,3 +788,9 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
     </div>
   );
 }
+
+
+
+
+
+

@@ -1,6 +1,9 @@
-﻿import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
+import { NemesisGovernor } from '../core/NemesisGovernor';
+
 export type HologramShape = 'avatar' | 'torus' | 'satellite' | 'terrain' | 'crystal' | 'sphere' | 'wave';
 export type LiquidMorphShape = HologramShape | 'orbital_ship' | 'terrain_fbm' | 'cymatic_wave' | 'quantum_bloch';
+
 export interface LiquidBiopixelCanvasProps {
   shape?: LiquidMorphShape;
   accentColor?: string;
@@ -16,191 +19,253 @@ export interface LiquidBiopixelCanvasProps {
   hideOverlay?: boolean;
   isSpeaking?: boolean;
 }
-function hexToRgbNorm(hex: string): [number, number, number] { const c = hex.replace('#', '').trim(); if (c.length !== 6) return [0.22, 0.74, 0.97]; const n = parseInt(c, 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]; }
+
 const VERT_SRC = `#version 300 es
-in vec2 aPos; out vec2 vUv; void main() { vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.0, 1.0); }`;
+in vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
+
 const FRAG_SRC = `#version 300 es
-precision highp float; in vec2 vUv; out vec4 fragColor;
-uniform vec2 uRes; uniform float uTime; uniform int uShape; uniform vec3 uColor; uniform float uTension; uniform vec3 uPulse; uniform float uVoice;
-float smin(float a, float b, float k) { float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
-float sdCapsule(vec3 p, vec3 a, vec3 b, float r) { vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h) - r; }
-float sdTorus(vec3 p, vec2 t) { vec2 q = vec2(length(p.xz) - t.x, p.y); return length(q) - t.y; }
-float sdHumanHologramHead(vec3 p, float t, float energy, float voice) {
-  p.y -= sin(t * 1.4) * 0.025;
-  float yaw = sin(t * 0.65) * 0.16; float cy = cos(yaw), sy = sin(yaw); p.xz = mat2(cy, -sy, sy, cy) * p.xz;
-  float cranium = length((p - vec3(0.0, 0.12, 0.0)) * vec3(1.18, 0.92, 1.05)) - 0.52;
-  float cadence = abs(sin(t * 10.5) * 0.65 + sin(t * 17.3) * 0.35);
-  float speak = cadence * clamp(voice * 0.095 + energy * 0.035, 0.015, 0.115);
-  float jaw = length((p - vec3(0.0, -0.18 - speak * 0.5, 0.06)) * vec3(1.38, 1.05, 1.18)) - 0.36;
-  float head = smin(cranium, jaw, 0.16);
-  head = smin(head, sdCapsule(p, vec3(0.0, 0.12, 0.44), vec3(0.0, -0.04, 0.54), 0.048), 0.055);
-  vec3 symP = vec3(abs(p.x), p.y, p.z);
-  head = smin(head, length((symP - vec3(0.21, -0.02, 0.36)) * vec3(1.1, 1.3, 1.1)) - 0.14, 0.09);
-  head = smin(head, sdCapsule(symP, vec3(0.06, 0.16, 0.45), vec3(0.27, 0.15, 0.38), 0.036), 0.05);
-  head = max(head, -(length((symP - vec3(0.165, 0.09, 0.43)) * vec3(1.0, 1.35, 1.0)) - 0.075) * 0.75);
-  head = min(head, length(symP - vec3(0.165, 0.09, 0.41)) - 0.052);
-  head = smin(head, sdCapsule(symP, vec3(0.0, -0.155, 0.47), vec3(0.11, -0.165, 0.43), 0.026), 0.03);
-  head = smin(head, sdCapsule(symP, vec3(0.0, -0.195 - speak, 0.46), vec3(0.095, -0.19 - speak * 0.7, 0.42), 0.025), 0.03);
-  return smin(head, sdCapsule(p, vec3(0.0, -0.32, -0.06), vec3(0.0, -0.78, -0.08), 0.21), 0.14);
+precision highp float;
+uniform vec2 u_res; uniform float u_t, u_p33, u_mo, u_en; uniform int u_oc;
+out vec4 O;
+
+float h12(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float ns(vec2 p) {
+  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), u.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), u.x), u.y);
 }
-float sdScene(vec3 p) {
-  float wave = sin(p.x * 2.4 + uTime * 1.4) * cos(p.z * 2.4 - uTime * 1.1) * 0.05;
-  float voiceWave = uVoice * sin(length(p.xz) * 14.0 - uTime * 9.5) * exp(-length(p.xz) * 1.15) * 0.042;
-  float age = uTime - uPulse.z;
-  float ripple = (uPulse.z > 0.0 && age >= 0.0 && age < 6.0) ? sin(length(p.xz - uPulse.xy) * 11.0 - age * 8.0) * exp(-length(p.xz - uPulse.xy) * 0.85) * exp(-age * 0.95) * 0.16 : 0.0;
-  float sheet = p.y + 0.62 - wave - voiceWave - ripple;
-  float obj = 100.0;
-  if (uShape == 0) { obj = sdHumanHologramHead(p - vec3(0.0, 0.36, 0.0), uTime, uTension, uVoice); }
-  else if (uShape == 1) { vec3 q = p - vec3(0.0, 0.12, 0.0); obj = smin(length(q) - 0.34, length(max(abs(q) - vec3(1.05, 0.03, 0.22), 0.0)), 0.08); }
-  else if (uShape == 2) { obj = p.y - (sin(p.x * 3.0) * cos(p.z * 3.0) * 0.28 + sin(p.x * 7.0 + uTime * 0.5) * 0.08); }
-  else if (uShape == 3) { vec3 q = abs(p - vec3(0.0, 0.15, 0.0)); obj = max(max(q.x + q.y + q.z - 0.78, q.x - 0.45), max(q.y - 0.45, q.z - 0.45)); }
-  else if (uShape == 4) { obj = length(p - vec3(0.0, 0.15, 0.0)) - (0.48 + sin(p.x * 8.0 + uTime * 4.0) * 0.04); }
-  else { vec3 q = p - vec3(0.0, 0.16, 0.0); float c = cos(uTime * 0.7), s = sin(uTime * 0.7); q.xz = mat2(c, -s, s, c) * q.xz; obj = sdTorus(q, vec2(0.48, 0.16)); }
-  return smin(sheet, obj, 0.22);
+float ter(vec2 xz, float a) {
+  float h = 0.0, am = 2.15, fr = 0.16; mat2 r = mat2(0.8, -0.6, 0.6, 0.8);
+  for (int i = 0; i < 10; i++) {
+    if (i >= u_oc) break;
+    float n = 1.0 - abs(ns(xz * fr) * 2.0 - 1.0);
+    h += n * n * am; xz = r * xz; fr *= 2.04; am *= 0.48;
+  }
+  return h * a - 1.35;
 }
-vec3 calcNormal(vec3 p) { vec2 e = vec2(0.0015, 0.0); return normalize(vec3(sdScene(p + e.xyy) - sdScene(p - e.xyy), sdScene(p + e.yxy) - sdScene(p - e.yxy), sdScene(p + e.yyx) - sdScene(p - e.yyx))); }
+float cap(vec3 p, vec3 a, vec3 b, float r) {
+  vec3 pa = p - a, ba = b - a;
+  return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)) - r;
+}
+vec3 map(vec3 p) {
+  float a = smoothstep(0.0, 2.0, u_t);
+  float kv = sin(p.z * 0.55 - u_t * 2.2) * (u_p33 / 5200.0) * u_en;
+  float dt = p.y - ter(p.xz, a) + kv;
+  vec3 q = p - vec3(sin(u_t * 0.25) * 1.4, 1.85 + sin(u_t * 2.0) * 0.14, u_t * 3.1 + 7.5);
+  float sq = 1.0 + sin(u_t * 4.0) * 0.12; q.y *= sq; q.xz /= sqrt(sq);
+  float dw = mix(dt, min(dt, length(q) - 1.05), u_mo);
+  float dObj = 100.0, id = 1.0, sub = 0.0;
+
+  for (int i = 0; i < 7; i++) {
+    float f = float(i);
+    vec3 bp = vec3(sin(u_t * 0.65 + f * 1.5) * 3.3 + (f - 3.0) * 0.85, 2.05 + cos(u_t * 0.85 + f) * 0.5 + mod(f, 3.0) * 0.22, u_t * 3.1 + 6.8 + f * 1.35);
+    vec3 bq = p - bp; float w = abs(bq.x);
+    bq.y -= sin(u_t * 11.0 + f * 2.1) * 0.28 * smoothstep(0.04, 0.42, w);
+    float body = length(bq * vec3(2.8, 3.2, 1.1)) - 0.13;
+    float wing = length(max(abs(bq - vec3(0.0, 0.0, -0.03)) - vec3(0.44, 0.012, max(0.14 - w * 0.26, 0.004)), 0.0));
+    float db = min(body, wing);
+    if (db < dObj) { dObj = db; id = 2.0; sub = f; }
+  }
+  for (int j = 0; j < 4; j++) {
+    float fj = float(j), gz = floor((u_t * 3.1 + 6.0) / 8.0) * 8.0 + fj * 5.5 + 4.0, gx = sin(fj * 2.3 + gz * 0.2) * 2.5;
+    float gy = ter(vec2(gx, gz), a);
+    if (gy > -0.7 && gy < 0.65) {
+      vec3 gq = p - vec3(gx, gy + 0.16, gz);
+      float dg = min(min(cap(gq, vec3(0.0, 0.0, -0.14), vec3(0.0, 0.0, 0.14), 0.09), cap(gq, vec3(0.0, 0.04, 0.14), vec3(0.0, 0.14, 0.24), 0.055)),
+                 min(cap(gq, vec3(0.0, 0.16, 0.20), vec3(0.0, 0.26, 0.12), 0.015), min(cap(gq, vec3(-0.05, 0.0, -0.1), vec3(-0.05, -0.16, -0.1), 0.022), cap(gq, vec3(0.05, 0.0, 0.1), vec3(0.05, -0.16, 0.1), 0.022))));
+      if (dg < dObj) { dObj = dg; id = 3.0; sub = fj; }
+    }
+  }
+  return (dObj < dw) ? vec3(dObj, id, sub) : vec3(dw, 1.0, 0.0);
+}
+vec3 nrm(vec3 p) { vec2 e = vec2(0.012, 0.0); return normalize(vec3(map(p + e.xyy).x - map(p - e.xyy).x, map(p + e.yxy).x - map(p - e.yxy).x, map(p + e.yyx).x - map(p - e.yyx).x)); }
+vec3 birdPal(float f) {
+  int k = int(mod(f, 6.0));
+  if (k == 0) return vec3(0.96, 0.18, 0.12); if (k == 1) return vec3(0.12, 0.56, 0.98); if (k == 2) return vec3(0.98, 0.78, 0.10);
+  if (k == 3) return vec3(0.15, 0.86, 0.42); if (k == 4) return vec3(0.96, 0.42, 0.08); return vec3(0.78, 0.28, 0.96);
+}
 void main() {
-  vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / uRes.y; vec3 ro = vec3(0.0, 0.18, 2.35), rd = normalize(vec3(uv, -1.35));
-  float t = 0.0; bool hit = false;
-  for (int i = 0; i < 84; i++) { float d = sdScene(ro + rd * t); if (d < 0.0015) { hit = true; break; } if (t > 7.5) break; t += d * 0.85; }
-  float radial = length(uv - vec2(0.0, 0.10));
-  float auraPulse = sin(radial * 22.0 - uTime * 6.5) * 0.5 + 0.5;
-  float aura = uVoice * exp(-abs(radial - 0.56) * 7.5) * (0.14 + 0.10 * auraPulse);
-  vec3 bg = mix(vec3(0.01, 0.025, 0.055), vec3(0.02, 0.06, 0.12), vUv.y) + uColor * aura;
-  if (!hit) { fragColor = vec4(bg, 1.0); return; }
-  vec3 p = ro + rd * t, n = calcNormal(p), v = -rd, l = normalize(vec3(0.6, 0.9, 1.1));
-  float fresnel = pow(1.0 - max(dot(n, v), 0.0), 2.6), diff = max(dot(n, l), 0.0);
-  float voiceScan = 1.0 + uVoice * 0.08 * sin(p.y * 42.0 - uTime * 11.0);
-  float scan = (0.88 + 0.12 * sin(p.y * 280.0 - uTime * 5.0)) * voiceScan;
-  float rimBoost = 1.0 + uVoice * (0.28 + 0.14 * sin(uTime * 12.0));
-  vec3 col = vec3(uColor.r * (0.65 + 0.55 * diff) + fresnel * 0.75 * rimBoost, uColor.g * (0.72 + 0.52 * diff) + fresnel * 0.90 * rimBoost, uColor.b * (0.80 + 0.50 * diff) + fresnel * 1.10 * rimBoost) * scan;
-  col = mix(col, bg, smoothstep(3.5, 7.2, t));
-  col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
-  fragColor = vec4(col, 1.0);
+  vec2 uv = (gl_FragCoord.xy - 0.5 * u_res) / u_res.y;
+  float cz = u_t * 3.1, cx = sin(u_t * 0.25) * 2.0;
+  vec3 ro = vec3(cx, 2.45, cz), ta = vec3(sin(u_t * 0.25 + 0.5) * 1.4, 1.15, cz + 6.5);
+  vec3 fw = normalize(ta - ro), ri = normalize(cross(vec3(0.0, 1.0, 0.0), fw)), up = cross(fw, ri), rd = normalize(fw + uv.x * ri + uv.y * up);
+  float t = 0.0, id = 0.0, sub = 0.0;
+  for (int i = 0; i < 84; i++) { vec3 r = map(ro + rd * t); if (r.x < 0.006 * t || t > 58.0) { id = r.y; sub = r.z; break; } t += r.x * 0.72; }
+  vec3 sd = normalize(vec3(0.55, 0.42, 0.72)); float sa = max(dot(rd, sd), 0.0);
+  vec3 sky = mix(vec3(0.52, 0.74, 0.96), vec3(0.12, 0.26, 0.52), clamp(rd.y * 1.4, 0.0, 1.0)) + vec3(1.0, 0.82, 0.55) * pow(sa, 14.0) * 0.55, col = sky;
+  if (t < 58.0) {
+    vec3 p = ro + rd * t, n = nrm(p); float df = max(dot(n, sd), 0.0), am = 0.32 + 0.28 * n.y;
+    if (id == 1.0) {
+      float det = ns(p.xz * 18.0) * 0.5 + ns(p.xz * 42.0) * 0.25;
+      vec3 grass = mix(vec3(0.08, 0.38, 0.12), vec3(0.24, 0.58, 0.16), det);
+      vec3 rock = mix(vec3(0.25, 0.22, 0.19), vec3(0.46, 0.41, 0.36), det);
+      float slope = smoothstep(0.48, 0.84, n.y);
+      vec3 base = mix(rock, grass, smoothstep(0.22, -0.55, p.y) * slope);
+      float snowM = smoothstep(0.28, 0.85, p.y + n.y * 0.38 + det * 0.15);
+      base = mix(base, vec3(0.95, 0.98, 1.0), snowM);
+      float ph = fract(p.y * 0.5 + u_p33 / 853.0);
+      base += vec3(0.5 + 0.5 * cos(6.28 * ph), 0.5 + 0.5 * cos(6.28 * (ph + 0.33)), 0.5 + 0.5 * cos(6.28 * (ph + 0.67))) * snowM * 0.24;
+      col = base * (df * vec3(1.0, 0.95, 0.86) + am * vec3(0.48, 0.66, 0.92));
+    } else if (id == 2.0) {
+      col = birdPal(sub) * (df * 1.25 + am * 0.65) + vec3(1.0) * pow(max(dot(reflect(rd, n), sd), 0.0), 10.0) * 0.35;
+    } else {
+      col = mix(vec3(0.88, 0.84, 0.76), vec3(0.38, 0.30, 0.24), ns(p.xz * 25.0)) * (df * 1.1 + am * 0.6);
+    }
+    col = mix(col, sky, 1.0 - exp(-t * 0.028));
+  }
+  O = vec4(pow(col, vec3(0.4545)), 1.0);
 }`;
 
-function shapeToShaderIndex(shape: LiquidMorphShape): number {
-  if (shape === 'avatar') return 0;
-  if (shape === 'satellite' || shape === 'orbital_ship') return 1;
-  if (shape === 'terrain' || shape === 'terrain_fbm') return 2;
-  if (shape === 'crystal') return 3;
-  if (shape === 'sphere' || shape === 'wave' || shape === 'cymatic_wave' || shape === 'quantum_bloch') return 4;
-  return 5;
-}
-
+const P33 = new Int32Array([2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89,97,101,103,107,109,113,127,131,137]);
 export function LiquidBiopixelCanvas({
-  shape = 'avatar',
-  accentColor,
-  accentHex = '#38bdf8',
-  energy = 0.35,
-  tension = 0.35,
-  title,
-  titleLabel,
-  subtitle,
-  subtitleLabel,
-  pulseCounter = 0,
-  hlxScript,
+  shape = 'terrain_fbm',
+  energy = 0.5,
   hideOverlay = false,
-  isSpeaking = false,
 }: LiquidBiopixelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const startTimeRef = useRef<number>(performance.now());
-  const resolvedColor = accentColor ?? accentHex;
-  const resolvedTitle = titleLabel ?? title ?? MORPH_SHAPE_LABELS[shape] ?? 'Rostro Holográfico Humano';
-  const resolvedSubtitle = subtitleLabel ?? subtitle ?? 'Biopíxeles 6-DoF en tiempo real';
-  const st = useRef({
-    shape,
-    accentColor: resolvedColor,
-    energy,
-    tension,
-    speaking: isSpeaking,
-    voiceLevel: isSpeaking ? 1 : 0,
-    px: 0,
-    pz: 0,
-    pt: -10,
-  });
-  st.current.shape = shape;
-  st.current.accentColor = resolvedColor;
-  st.current.energy = energy;
-  st.current.tension = tension;
-  st.current.speaking = isSpeaking;
+  const [octaves, setOctaves] = useState<number>(5);
+  const [resScale, setResScale] = useState<number>(0.7);
+  const [primeIdx, setPrimeIdx] = useState<number>(12);
+  const [timeDir, setTimeDir] = useState<number>(1);
+  const [simSeconds, setSimSeconds] = useState<number>(0);
+  const [fps, setFps] = useState<number>(60);
+  const [recording, setRecording] = useState<boolean>(false);
+
+  const nemesisRef = useRef<NemesisGovernor>(new NemesisGovernor({ mode: 'STANDARD' }));
+  const simTimeRef = useRef<number>(0);
+  const dirRef = useRef<number>(1);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  dirRef.current = timeDir;
 
   useEffect(() => {
-    if (pulseCounter > 0) {
-      st.current.px = 0;
-      st.current.pz = 0;
-      st.current.pt = (performance.now() - startTimeRef.current) / 1000;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const gl = canvas.getContext('webgl2', { antialias: false, preserveDrawingBuffer: true });
+    if (!gl) return;
+
+    const compile = (type: number, src: string) => {
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      return s;
+    };
+
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT_SRC));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG_SRC));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    const uRes = gl.getUniformLocation(prog, 'u_res');
+    const uT = gl.getUniformLocation(prog, 'u_t');
+    const uP33 = gl.getUniformLocation(prog, 'u_p33');
+    const uMo = gl.getUniformLocation(prog, 'u_mo');
+    const uEn = gl.getUniformLocation(prog, 'u_en');
+    const uOc = gl.getUniformLocation(prog, 'u_oc');
+
+    const resize = () => {
+      canvas.width = Math.floor(canvas.clientWidth * resScale);
+      canvas.height = Math.floor(canvas.clientHeight * resScale);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    let raf = 0, last = performance.now(), frames = 0, fpsMark = last;
+    const isMorph = shape === 'sphere' || shape === 'quantum_bloch' || shape === 'crystal';
+
+    const tick = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      simTimeRef.current = Math.max(0, simTimeRef.current + dt * dirRef.current);
+      const t = simTimeRef.current;
+      const prime = P33[primeIdx % P33.length];
+      const freqHz = 261.6256 * (prime / 16) * (1 - nemesisRef.current.gamma * 0.1);
+
+      gl.uniform2f(uRes, canvas.width, canvas.height);
+      gl.uniform1f(uT, t);
+      gl.uniform1f(uP33, freqHz);
+      gl.uniform1f(uMo, isMorph ? 1.0 : 0.0);
+      gl.uniform1f(uEn, energy);
+      gl.uniform1i(uOc, octaves);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      frames++;
+      if (now - fpsMark >= 500) {
+        setFps(Math.round((frames * 1000) / (now - fpsMark)));
+        setSimSeconds(Number(t.toFixed(1)));
+        frames = 0; fpsMark = now;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize); };
+  }, [shape, energy, octaves, resScale, primeIdx]);
+
+  const toggleRecord = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (recRef.current && recRef.current.state === 'recording') {
+      recRef.current.stop();
+      setRecording(false);
+      return;
     }
-  }, [pulseCounter, hlxScript]);
+    chunksRef.current = [];
+    const rec = new MediaRecorder(canvas.captureStream(30), { mimeType: 'video/webm' });
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    rec.onstop = () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(chunksRef.current, { type: 'video/webm' }));
+      a.download = 'capitulo_helix.webm';
+      a.click();
+    };
+    rec.start();
+    recRef.current = rec;
+    setRecording(true);
+  };
 
-  useEffect(() => {
-    const c = canvasRef.current; if (!c) return; const gl = c.getContext('webgl2', { antialias: true }); if (!gl) return;
-    const sh = (t: number, s: string) => { const o = gl.createShader(t)!; gl.shaderSource(o, s); gl.compileShader(o); return o; };
-    const pg = gl.createProgram()!; gl.attachShader(pg, sh(gl.VERTEX_SHADER, VERT_SRC)); gl.attachShader(pg, sh(gl.FRAGMENT_SHADER, FRAG_SRC)); gl.linkProgram(pg); gl.useProgram(pg);
-    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(pg, 'aPos'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-    const uRes = gl.getUniformLocation(pg, 'uRes'), uTime = gl.getUniformLocation(pg, 'uTime'), uShape = gl.getUniformLocation(pg, 'uShape'), uColor = gl.getUniformLocation(pg, 'uColor'), uTension = gl.getUniformLocation(pg, 'uTension'), uPulse = gl.getUniformLocation(pg, 'uPulse'), uVoice = gl.getUniformLocation(pg, 'uVoice');
-    let raf = 0; startTimeRef.current = performance.now();
-    const loop = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2), w = Math.floor(c.clientWidth * dpr), h = Math.floor(c.clientHeight * dpr);
-      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
-      gl.viewport(0, 0, w, h); const s = st.current;
-      const targetVoice = s.speaking ? 1.0 : 0.0;
-      s.voiceLevel += (targetVoice - s.voiceLevel) * 0.14;
-      const idx = shapeToShaderIndex(s.shape);
-      const [r, g, b] = hexToRgbNorm(s.accentColor);
-      gl.uniform2f(uRes, w, h); gl.uniform1f(uTime, (performance.now() - startTimeRef.current) / 1000); gl.uniform1i(uShape, idx); gl.uniform3f(uColor, r, g, b); gl.uniform1f(uTension, Math.max(s.energy, s.tension)); gl.uniform3f(uPulse, s.px, s.pz, s.pt); gl.uniform1f(uVoice, s.voiceLevel);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); raf = requestAnimationFrame(loop);
-    };
-    const onContextLost = (e: Event) => {
-      e.preventDefault();
-      cancelAnimationFrame(raf);
-    };
-    const onContextRestored = () => {
-      raf = requestAnimationFrame(loop);
-    };
-    c.addEventListener('webglcontextlost', onContextLost);
-    c.addEventListener('webglcontextrestored', onContextRestored);
-
-    raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf);
-      c.removeEventListener('webglcontextlost', onContextLost);
-      c.removeEventListener('webglcontextrestored', onContextRestored);
-    };
-  }, []);
+  const btnCls = (active: boolean) => 'px-1.5 py-0.5 rounded border ' + (active ? 'bg-cyan-500 text-slate-950 border-cyan-400' : 'border-slate-700');
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-slate-950">
-      <canvas
-        ref={canvasRef}
-        onPointerDown={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          st.current.px = ((e.clientX - r.left) / r.width - 0.5) * 2.4;
-          st.current.pz = ((e.clientY - r.top) / r.height - 0.5) * 2.4;
-          st.current.pt = (performance.now() - startTimeRef.current) / 1000;
-        }}
-        className="h-full w-full cursor-pointer"
-      />
+    <div className="relative w-full h-full bg-[#04060b] overflow-hidden select-none">
+      <canvas ref={canvasRef} className="w-full h-full block" />
       {!hideOverlay && (
-        <div className="pointer-events-none absolute left-4 top-4 rounded-lg border border-sky-400/20 bg-slate-950/70 px-3 py-2 backdrop-blur-sm">
-          <div className="text-xs font-semibold text-sky-300">{resolvedTitle}</div>
-          <div className="text-[11px] text-slate-300">{resolvedSubtitle}</div>
+        <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2 bg-slate-950/80 backdrop-blur-md border border-cyan-500/30 rounded-lg px-3 py-1.5 text-[11px] font-mono text-cyan-200 shadow-lg">
+          <span className="text-cyan-400 font-bold">HELIX Q-OMEGA</span>
+          <span>| P33: p={P33[primeIdx % P33.length]} | {fps} FPS</span>
+          <div className="flex items-center gap-1 ml-1">
+            <button onClick={() => setTimeDir(-1)} className={btnCls(timeDir === -1)}>◀</button>
+            <button onClick={() => setTimeDir(0)} className={btnCls(timeDir === 0)}>❚❚</button>
+            <button onClick={() => setTimeDir(1)} className={btnCls(timeDir === 1)}>▶</button>
+            <span className="ml-1 text-cyan-300">{simSeconds}s</span>
+          </div>
+          <select value={octaves} onChange={(e) => setOctaves(Number(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-cyan-200">
+            <option value={4}>4 Octavas (HP i5 Ligero)</option>
+            <option value={5}>5 Octavas (HP i5 Óptimo)</option>
+            <option value={8}>8 Octavas (Hiperrealismo)</option>
+          </select>
+          <select value={resScale} onChange={(e) => setResScale(Number(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-1.5 py-0.5 text-cyan-200">
+            <option value={0.55}>GPU 0.55x</option>
+            <option value={0.70}>GPU 0.70x</option>
+            <option value={1.00}>GPU 1.00x</option>
+          </select>
+          <button onClick={() => setPrimeIdx((p) => (p + 1) % P33.length)} className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/40 hover:bg-cyan-500 hover:text-slate-950">λ Cauchy</button>
+          <button onClick={toggleRecord} className={'px-2 py-0.5 rounded border ' + (recording ? 'bg-rose-600 text-white border-rose-400' : 'border-rose-500/50 text-rose-300')}>
+            {recording ? '■ Detener' : '● Grabar'}
+          </button>
         </div>
       )}
     </div>
   );
 }
-export const MORPH_SHAPE_LABELS: Record<string, string> = {
-  avatar: 'Rostro Holográfico Humano',
-  torus: 'Toroide Viscoelástico',
-  satellite: 'Nave Orbital',
-  orbital_ship: 'Nave Orbital',
-  terrain: 'Relieve Planetario',
-  terrain_fbm: 'Relieve Planetario fBm',
-  crystal: 'Cristal Cuántico',
-  sphere: 'Esfera de Bloch',
-  quantum_bloch: 'Esfera de Bloch SU(2)',
-  wave: 'Onda Armónica',
-  cymatic_wave: 'Onda Cimática 29-EDO',
-};
+
+export default LiquidBiopixelCanvas;
+
+
+

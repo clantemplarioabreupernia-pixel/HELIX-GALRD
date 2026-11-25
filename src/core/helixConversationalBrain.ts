@@ -1,4 +1,5 @@
-﻿import { DISCIPLINES_33 } from '../data/disciplines33';
+﻿import { analyzeVocalAndTextProsody } from '../utils/auroraProsody';
+import { DISCIPLINES_33 } from '../data/disciplines33';
 import { DOMAIN_ENGINE_METADATA } from './helixDomainEngines';
 import type { HelixCoreEngine } from './HelixCoreEngine';
 import type { EngineeringReport } from './helixPlanner';
@@ -417,6 +418,8 @@ export function buildHumanConversationReply(
   isAction: boolean,
   context: ConversationTurnContext = {},
 ): string {
+  const _prosody = analyzeVocalAndTextProsody(raw, 0, 0.05);
+  const _lead = _prosody.mood === 'worried' ? _prosody.empathyPrefix : '';
   const norm = normalizeEs(raw);
   const tools = getLiveTools(context);
   const en =
@@ -454,29 +457,29 @@ export function buildHumanConversationReply(
   }
 
   if (kind === 'architecture_explain') {
-    return 'Mi núcleo conecta el diálogo humano con un motor determinista de cálculo: cada petición selecciona las herramientas necesarias entre las 11 áreas científicas, acopla sus variables automáticamente en la Doble Hélice, verifica formalmente la seguridad de la solución y destila el aprendizaje en fichas compactas de 17 bytes mientras lo proyecta en la pantalla líquida. Si quieres inspeccionar o combinar módulos manualmente, también cuentas con el botón Laboratorio arriba a la derecha.';
+    return _lead + 'Mi núcleo conecta el diálogo humano con un motor determinista de cálculo: cada petición selecciona las herramientas necesarias entre las 11 áreas científicas, acopla sus variables automáticamente en la Doble Hélice, verifica formalmente la seguridad de la solución y destila el aprendizaje en fichas compactas de 17 bytes mientras lo proyecta en la pantalla líquida. Si quieres inspeccionar o combinar módulos manualmente, también cuentas con el botón Laboratorio arriba a la derecha.';
   }
 
   if (kind === 'identity') {
     const alsoGreeting = /\b(hola|buenas|hey|hello|hi)\b/.test(norm);
     if (en) {
-      return `${alsoGreeting ? 'Hello! ' : ''}My name is Helix. I combine ${tools.length} verified tools across ${DISCIPLINES_33.length} disciplines so we can talk naturally, explore knowledge, or run live simulations on the liquid screen. What would you like to explore?`;
+      return `${_lead}${alsoGreeting ? 'Hello! ' : ''}My name is Helix. I combine ${tools.length} verified tools across ${DISCIPLINES_33.length} disciplines so we can talk naturally, explore knowledge, or run live simulations on the liquid screen. What would you like to explore?`;
     }
-    return `${alsoGreeting ? '¡Hola! ' : ''}Me llamo Helix. Integro ${tools.length} herramientas reales y ${DISCIPLINES_33.length} disciplinas científicas para conversar contigo, explicarte cualquier tema o ejecutar simulaciones y cálculos en vivo en la pantalla líquida. ¿Qué te gustaría explorar hoy?`;
+    return `${_lead}${alsoGreeting ? '¡Hola! ' : ''}Me llamo Helix. Integro ${tools.length} herramientas reales y ${DISCIPLINES_33.length} disciplinas científicas para conversar contigo, explicarte cualquier tema o ejecutar simulaciones y cálculos en vivo en la pantalla líquida. ¿Qué te gustaría explorar hoy?`;
   }
 
   if (kind === 'greeting') {
     if (en) {
-      return 'Hello! Good to see you. Ask me about any of my tools, start a simulation, or let us talk through any idea.';
+      return _lead + 'Hello! Good to see you. Ask me about any of my tools, start a simulation, or let us talk through any idea.';
     }
-    return '¡Hola! Qué gusto saludarte. Podemos conversar sobre cualquier tema, revisar mis herramientas y disciplinas o dar vida a una simulación en la pantalla líquida. ¿Por dónde empezamos?';
+    return _lead + '¡Hola! Qué gusto saludarte. Podemos conversar sobre cualquier tema, revisar mis herramientas y disciplinas o dar vida a una simulación en la pantalla líquida. ¿Por dónde empezamos?';
   }
 
   if (kind === 'capabilities') {
     if (en) {
-      return `I can chat naturally, list and explain my ${tools.length} tools across 11 areas, run mathematical simulations (space orbits, fluids, optics, 5G/radar, quantum circuits, exact finance), and recombine tools on demand. Ask me to list them or try a topic!`;
+      return `${_lead}I can chat naturally, list and explain my ${tools.length} tools across 11 areas, run mathematical simulations (space orbits, fluids, optics, 5G/radar, quantum circuits, exact finance), and recombine tools on demand. Ask me to list them or try a topic!`;
     }
-    return `Puedo conversar contigo, mostrarte mis ${tools.length} herramientas y ${DISCIPLINES_33.length} disciplinas, combinar herramientas entre sí y simular física espacial, fluidos, óptica, telecomunicaciones 5G/radar, cuántica, audio o finanzas exactas en tiempo real. Si quieres ver la lista completa, dime "lista todas tus herramientas y funciones".`;
+    return `${_lead}Puedo conversar contigo, mostrarte mis ${tools.length} herramientas y ${DISCIPLINES_33.length} disciplinas, combinar herramientas entre sí y simular física espacial, fluidos, óptica, telecomunicaciones 5G/radar, cuántica, audio o finanzas exactas en tiempo real. Si quieres ver la lista completa, dime "lista todas tus herramientas y funciones".`;
   }
 
   if (kind === 'gratitude') {
@@ -493,7 +496,7 @@ export function buildHumanConversationReply(
     const bridgeText =
       bridgeCount > 0 ? ` con ${bridgeCount} acoplamientos cruzados entre motores` : '';
 
-    return `Listo: procesé tu petición${toolsText}${bridgeText} y proyecté «${shapeLabel}» en la pantalla líquida${outputHint}. ¿Quieres ajustar algún parámetro, ver los valores de otra área o combinarlo con otra herramienta?`;
+    return `${_lead}Listo: procesé tu petición${toolsText}${bridgeText} y proyecté «${shapeLabel}» en la pantalla líquida${outputHint}. ¿Quieres ajustar algún parámetro, ver los valores de otra área o combinarlo con otra herramienta?`;
   }
 
   // 2. Seguimiento contextual ("más detalles", "y las demás?", "continúa")
@@ -512,7 +515,7 @@ export function buildHumanConversationReply(
       if (dom) return formatDomainToolList(dom, tools);
       const { matchedTools } = searchMatchingKnowledge(lastTopic, tools);
       if (matchedTools.length > 0) {
-        return `Sobre tu consulta anterior, estas son las herramientas relacionadas más relevantes:\n${matchedTools
+        return `${_lead}Sobre tu consulta anterior, estas son las herramientas relacionadas más relevantes:\n${matchedTools
           .slice(0, 5)
           .map((t, i) => `${i + 1}. ${t.title} (${t.domain}): ${t.formulaSummary}`)
           .join('\n')}`;
@@ -563,12 +566,12 @@ export function buildHumanConversationReply(
   }
 
   if (kind === 'feedback') {
-    return `Te sigo. Si quieres comprobar algo en vivo, puedes preguntarme por cualquiera de las ${tools.length} herramientas disponibles o pedirme que calcule y proyecte una escena sobre «${shapeLabel}».`;
+    return `${_lead}Te sigo. Si quieres comprobar algo en vivo, puedes preguntarme por cualquiera de las ${tools.length} herramientas disponibles o pedirme que calcule y proyecte una escena sobre «${shapeLabel}».`;
   }
 
   if (en) {
-    return 'I understand. You can ask me to list all my tools and functions, explain any scientific topic, or run a live simulation on the screen.';
+    return _lead + 'I understand. You can ask me to list all my tools and functions, explain any scientific topic, or run a live simulation on the screen.';
   }
 
-  return `Te entiendo. Si buscas una capacidad concreta, puedo listarte todas mis herramientas y funciones (${tools.length} en total), explicarte cualquier disciplina o ejecutar una simulación ahora mismo sobre «${shapeLabel}». ¿Qué te gustaría hacer?`;
+  return `${_lead}Te entiendo. Si buscas una capacidad concreta, puedo listarte todas mis herramientas y funciones (${tools.length} en total), explicarte cualquier disciplina o ejecutar una simulación ahora mismo sobre «${shapeLabel}». ¿Qué te gustaría hacer?`;
 }
