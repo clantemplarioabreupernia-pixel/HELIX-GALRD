@@ -1,4 +1,4 @@
-import { DISCIPLINES_33 } from '../data/disciplines33';
+﻿import { DISCIPLINES_33 } from '../data/disciplines33';
 import { DOMAIN_ENGINE_METADATA } from './helixDomainEngines';
 import type { HelixCoreEngine } from './HelixCoreEngine';
 import type { EngineeringReport } from './helixPlanner';
