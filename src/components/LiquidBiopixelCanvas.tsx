@@ -25,7 +25,7 @@ in vec2 p; void main() { gl_Position = vec4(p, 0.0, 1.0); }`;
 
 const FRAG_SRC = `#version 300 es
 precision highp float;
-uniform vec2 u_res; uniform float u_t, u_p33, u_mo, u_en; uniform int u_oc;
+uniform vec2 u_res; uniform float u_t, u_p33, u_mo, u_en, u_spk; uniform vec3 u_col; uniform int u_oc;
 out vec4 O;
 
 float h12(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
@@ -52,7 +52,13 @@ vec3 map(vec3 p) {
   float dt = p.y - ter(p.xz, a) + kv;
   vec3 q = p - vec3(sin(u_t * 0.25) * 1.4, 1.85 + sin(u_t * 2.0) * 0.14, u_t * 3.1 + 7.5);
   float sq = 1.0 + sin(u_t * 4.0) * 0.12; q.y *= sq; q.xz /= sqrt(sq);
-  float dw = mix(dt, min(dt, length(q) - 1.05), u_mo);
+    vec3 hq = p - vec3(0.0, 1.85, u_t * 3.1 + 6.4);
+  float head = length(hq * vec3(1.2, 0.92, 1.05)) - 0.85;
+  float eyeL = length(hq - vec3(-0.28, 0.15, -0.74)) - 0.11;
+  float eyeR = length(hq - vec3( 0.28, 0.15, -0.74)) - 0.11;
+  float mouth = length((hq - vec3(0.0, -0.32, -0.76)) * vec3(1.8, 1.0 / (0.04 + u_spk * 0.14), 2.0)) - 0.22;
+  head = max(max(head, -eyeL), -max(eyeR, mouth));
+  float dw = mix(dt, min(dt, head), clamp(u_mo + 0.65, 0.0, 1.0));
   float dObj = 100.0, id = 1.0, sub = 0.0;
 
   for (int i = 0; i < 7; i++) {
@@ -266,6 +272,7 @@ export function LiquidBiopixelCanvas({
 }
 
 export default LiquidBiopixelCanvas;
+
 
 
 
