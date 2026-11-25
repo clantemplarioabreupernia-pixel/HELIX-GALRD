@@ -82,4 +82,3 @@ export function LiquidBiopixelCanvas({ shape = 'avatar', accentColor = '#38bdf8'
 }
 export const MORPH_SHAPE_LABELS: Record<string, string> = { avatar: 'Rostro Holográfico Humano', torus: 'Toroide Viscoelástico', satellite: 'Nave Orbital', terrain: 'Relieve Planetario', crystal: 'Cristal Cuántico', sphere: 'Esfera de Bloch', wave: 'Onda Armónica' };
 
-export const MORPH_SHAPE_LABELS: Record<string, string> = { avatar: 'Rostro Holográfico Humano', torus: 'Toroide Viscoelástico', satellite: 'Nave Orbital', terrain: 'Relieve Planetario', crystal: 'Cristal Cuántico', sphere: 'Esfera de Bloch', wave: 'Onda Armónica' };
