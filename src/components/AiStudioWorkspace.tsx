@@ -1,4 +1,5 @@
-﻿import { buildHumanConversationReply } from '../core/helixConversationalBrain';
+﻿import { speakAndPulseHologram } from '../utils/cochlearPulseSynth';
+import { buildHumanConversationReply } from '../core/helixConversationalBrain';
 import { KeyboardEvent, useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
