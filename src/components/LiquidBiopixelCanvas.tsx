@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+﻿import { useEffect, useRef } from 'react';
 export type HologramShape = 'avatar' | 'torus' | 'satellite' | 'terrain' | 'crystal' | 'sphere' | 'wave';
 export type LiquidMorphShape = HologramShape | 'orbital_ship' | 'terrain_fbm' | 'cymatic_wave' | 'quantum_bloch';
 export interface LiquidBiopixelCanvasProps {
@@ -50,7 +50,7 @@ float sdScene(vec3 p) {
   float ripple = (uPulse.z > 0.0 && age >= 0.0 && age < 6.0) ? sin(length(p.xz - uPulse.xy) * 11.0 - age * 8.0) * exp(-length(p.xz - uPulse.xy) * 0.85) * exp(-age * 0.95) * 0.16 : 0.0;
   float sheet = p.y + 0.62 - wave - voiceWave - ripple;
   float obj = 100.0;
-  if (uShape == 0) { obj = sdHumanHologramHead(p - vec3(0.0, 0.24, 0.0), uTime, uTension, uVoice); }
+  if (uShape == 0) { obj = sdHumanHologramHead(p - vec3(0.0, 0.36, 0.0), uTime, uTension, uVoice); }
   else if (uShape == 1) { vec3 q = p - vec3(0.0, 0.12, 0.0); obj = smin(length(q) - 0.34, length(max(abs(q) - vec3(1.05, 0.03, 0.22), 0.0)), 0.08); }
   else if (uShape == 2) { obj = p.y - (sin(p.x * 3.0) * cos(p.z * 3.0) * 0.28 + sin(p.x * 7.0 + uTime * 0.5) * 0.08); }
   else if (uShape == 3) { vec3 q = abs(p - vec3(0.0, 0.15, 0.0)); obj = max(max(q.x + q.y + q.z - 0.78, q.x - 0.45), max(q.y - 0.45, q.z - 0.45)); }
@@ -71,7 +71,7 @@ void main() {
   vec3 p = ro + rd * t, n = calcNormal(p), v = -rd, l = normalize(vec3(0.6, 0.9, 1.1));
   float fresnel = pow(1.0 - max(dot(n, v), 0.0), 2.6), diff = max(dot(n, l), 0.0);
   float voiceScan = 1.0 + uVoice * 0.08 * sin(p.y * 42.0 - uTime * 11.0);
-  float scan = (0.88 + 0.12 * sin(p.y * 95.0 - uTime * 6.0)) * voiceScan;
+  float scan = (0.88 + 0.12 * sin(p.y * 280.0 - uTime * 5.0)) * voiceScan;
   float rimBoost = 1.0 + uVoice * (0.28 + 0.14 * sin(uTime * 12.0));
   vec3 col = vec3(uColor.r * (0.65 + 0.55 * diff) + fresnel * 0.75 * rimBoost, uColor.g * (0.72 + 0.52 * diff) + fresnel * 0.90 * rimBoost, uColor.b * (0.80 + 0.50 * diff) + fresnel * 1.10 * rimBoost) * scan;
   col = mix(col, bg, smoothstep(3.5, 7.2, t));

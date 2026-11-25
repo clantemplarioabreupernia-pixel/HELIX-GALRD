@@ -1,4 +1,4 @@
-import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+﻿import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { Download, ExternalLink, ImagePlus, Mic, MicOff, Send, Volume2, VolumeX, X } from 'lucide-react';
 import { createHelixCoreEngine, EngineeringReport } from '../core';
 import {

@@ -53,7 +53,7 @@ function normalizeEs(raw: string): string {
     .replace(/\berramienta(s)?\b/g, 'herramienta$1')
     .replace(/\bfunsion(es)?\b/g, 'funcion$1')
     .replace(/\bdesiplina(s)?\b/g, 'disciplina$1')
-    .replace(/\bcuantiqu(a|o)\b/g, 'cuantic$1')
+    .replace(/\bcuantiqu(a|o)\b/g, 'cuantic$1').replace(/quieroqprender|quieroaprender/g, 'quiero aprender')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -552,8 +552,14 @@ export function buildHumanConversationReply(
     return parts.join('\n\n');
   }
 
-  if (kind === 'learning') {
-    return `Podemos explorarlo juntos paso a paso. Puedo enseñarte y simular temas de mis ${DISCIPLINES_33.length} disciplinas —como mecánica orbital, acústica armónica, óptica, redes 5G/radar, computación cuántica o finanzas verificables— o mostrarte todas mis herramientas si me pides listarlas.`;
+  if (kind === 'learning' || /\b(aprender|enseña|ensename|ciencia|ciencias|fisica|física|matematicas|matemáticas|quimica|química|astronomia|astronomía)\b/.test(norm)) {
+    return [
+      `¡Excelente! Empecemos tu primera sesión interactiva de Ciencias en SIGRDRÍFA / HELIX:`,
+      `1. Física Espacial y Gravedad: Podemos simular órbitas satelitales (Kepler/Verlet) o caída libre y conservación de energía.`,
+      `2. Ondas, Luz y Sonido: Exploramos cómo las frecuencias armónicas (Hz) y la dispersión espectral de Cauchy descomponen la luz y el sonido.`,
+      `3. Computación Cuántica y Criptografía: Probamos estados en la Esfera de Bloch y sellado matemático SHA-256.`,
+      `Dime cuál de estos 3 temas quieres explorar primero (por ejemplo: "simula una órbita a 400 km" o "explícame las ondas y frecuencias") y lo proyectamos juntos en vivo.`
+    ].join('\n');
   }
 
   if (kind === 'feedback') {
