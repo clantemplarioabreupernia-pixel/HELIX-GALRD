@@ -18,7 +18,8 @@ export type HelixToolDomain =
   | 'Videojuegos y Mundos 3D'
   | 'Verificación Formal y Seguridad'
   | 'Kernel, Red y Telemetría'
-  | 'IA Acotada y Orquestación';
+  | 'IA Acotada y Orquestación'
+  | 'Química y Termodinámica';
 
 export type ToolOrigin = 'canonical_opcode' | 'recovered_159' | 'autopoietic_child';
 
@@ -50,6 +51,9 @@ function classifyTool(fileName: string, title: string): {
 } {
   const key = `${fileName} ${title}`.toLowerCase();
 
+  if (key.includes('chem') || key.includes('quim') || key.includes('nernst') || key.includes('gibbs') || key.includes('arrhenius') || key.includes('morse') || key.includes('molecul')) {
+    return { domain: 'Química y Termodinámica', engineId: 'chemistry_quantum_thermodynamics' };
+  }
   if (key.includes('radar') || key.includes('fmcw') || key.includes('cfar') || key.includes('doppler')) {
     return { domain: 'Telecomunicaciones y RF', engineId: 'radar_fmcw_doppler' };
   }
@@ -225,7 +229,129 @@ function buildRecovered159Tools(): HelixRegisteredTool[] {
   });
 }
 
+function buildNanotechCoupledTool(): HelixRegisteredTool {
+  const engineId: DomainEngineId = 'nanotech_biopixel_quantum';
+  const meta = DOMAIN_ENGINE_METADATA[engineId];
+  const hlxSource = [
+    '# BIOPÍXEL NANOTECNOLÓGICO ACOPLADO (Brus + WKB + Mott-Gurney + Maxwell Z4 + EUV)',
+    'ᛇᚢ',
+    'ᛗᚦ sys_admin',
+    'SOA_INIT 32',
+    'CURL_STEP 0.38 0.016',
+    'BLOCH_ROT 0 1 0 1.05 1',
+    'NEMESIS_DECAY 0.08',
+    'GEOM_SEAL ICOSAHEDRON PHI_FIBONACCI 457.84',
+    'ᚳᛏ',
+  ].join('\n');
+  return {
+    id: '200_nanotech_biopixel_z4',
+    fileName: '200_nanotech_biopixel_z4.hlx',
+    title: meta.label,
+    prime: 137,
+    godelProduct: 137,
+    sha256: sha256Hex(`200_nanotech_biopixel_z4|137|${hlxSource}`),
+    origin: 'canonical_opcode',
+    domain: 'Materia Digital y Fluidos',
+    engineId,
+    formulaSummary: meta.formulaSummary,
+    inputs: meta.inputs,
+    outputs: meta.outputs,
+    smtContract: {
+      pre: '(and (> lambda_nm 380) (<= tension 1.0))',
+      post: '(and (> brus_radius_nm 0) (<= z4_polarity 3))',
+    },
+    hlxSource,
+    keywords: [
+      'nanotecnologia',
+      'biopixel',
+      'brus',
+      'wkb',
+      'mott',
+      'gurney',
+      'maxwell',
+      'fotonico',
+      'euv',
+      'rayleigh',
+      'igzo',
+      'z4',
+      'cubo',
+      '6',
+      'caras',
+      'holograma',
+      '36000',
+    ],
+  };
+}
+
+function buildChemistryTools(): HelixRegisteredTool[] {
+  const engineId: DomainEngineId = 'chemistry_quantum_thermodynamics';
+  const meta = DOMAIN_ENGINE_METADATA[engineId];
+  const nernstHlx = [
+    '# QUÍMICA ELECTROQUÍMICA Y TERMODINÁMICA (PV=nRT · ΔG · Nernst)',
+    'ᛇᚢ',
+    'ᛗᚦ sys_admin',
+    'SET temp_k 298',
+    'SET delta_h -48',
+    'GEOM_SEAL ICOSAHEDRON PHI_FIBONACCI 457.84',
+    'ᚳᛏ',
+  ].join('\n');
+  const morseHlx = [
+    '# ENLACE ANARMÓNICO DE MORSE Y CINÉTICA ARRHENIUS',
+    'ᛇᚢ',
+    'ᛗᚦ sys_admin',
+    'SOA_INIT 32',
+    'CURL_STEP 0.34 0.016',
+    'NEMESIS_DECAY 0.08',
+    'GEOM_SEAL TORUS_T2 PHI_FIBONACCI 512.0',
+    'ᚳᛏ',
+  ].join('\n');
+  return [
+    {
+      id: '201_chemistry_nernst_gibbs',
+      fileName: '201_chemistry_nernst_gibbs.hlx',
+      title: 'Termodinámica Química (Gibbs · Gases Ideales · Nernst)',
+      prime: 113,
+      godelProduct: 113,
+      sha256: sha256Hex(`201_chemistry_nernst_gibbs|113|${nernstHlx}`),
+      origin: 'canonical_opcode',
+      domain: 'Química y Termodinámica',
+      engineId,
+      formulaSummary: meta.formulaSummary,
+      inputs: meta.inputs,
+      outputs: meta.outputs,
+      smtContract: {
+        pre: '(and (> temp_k 0) (> volume_l 0))',
+        post: '(and (finite_gibbs true) (nernst_bounded true))',
+      },
+      hlxSource: nernstHlx,
+      keywords: ['quimica', 'termodinamica', 'gibbs', 'nernst', 'gases', 'ph', 'electroquimica', 'reaccion'],
+    },
+    {
+      id: '202_chemistry_morse_arrhenius',
+      fileName: '202_chemistry_morse_arrhenius.hlx',
+      title: 'Enlace Molecular Morse y Cinética de Arrhenius',
+      prime: 127,
+      godelProduct: 127,
+      sha256: sha256Hex(`202_chemistry_morse_arrhenius|127|${morseHlx}`),
+      origin: 'canonical_opcode',
+      domain: 'Química y Termodinámica',
+      engineId,
+      formulaSummary: 'V(r)=D_e·(1-e^(-a(r-r_e)))² y k=A·e^(-Ea/RT)',
+      inputs: meta.inputs,
+      outputs: meta.outputs,
+      smtContract: {
+        pre: '(and (> morse_de_ev 0) (> temp_k 50))',
+        post: '(and (>= morse_potential_ev 0) (> arrhenius_rate 0))',
+      },
+      hlxSource: morseHlx,
+      keywords: ['molecula', 'enlace', 'morse', 'arrhenius', 'cinetica', 'quimica', 'orbital'],
+    },
+  ];
+}
+
 export const BASE_HELIX_TOOL_CATALOG: readonly HelixRegisteredTool[] = [
   ...buildCanonicalTools(),
   ...buildRecovered159Tools(),
+  buildNanotechCoupledTool(),
+  ...buildChemistryTools(),
 ];

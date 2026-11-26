@@ -11,5 +11,7 @@ export * from './helixKinematics12';
 export * from './helixDoubleHelix';
 export * from './helixAutodidactLoop';
 export * from './holographicAcademicLibrary';
+export * from './helixQuantumDisplayPhysics';
+export * from './helixHolographicContainers';
 export * from '../data/disciplines33';
 

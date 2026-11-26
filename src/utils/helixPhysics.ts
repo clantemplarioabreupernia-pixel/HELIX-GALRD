@@ -1,4 +1,5 @@
 import type { SoAHolographicBuffer } from './helixSignal';
+import { NEMESIS_THERMAL_CUTOFF, WEBER_PERCEPTUAL_K } from '../core/NemesisGovernor';
 
 /**
  * Líneas espectrales reales de Fraunhofer (C, e, g) en nanómetros
@@ -160,7 +161,7 @@ export function computeCurlNoise3D(
 export function stepNemesisCauchy(tension: number, gamma = 0.08): number {
   const safeGamma = Math.min(0.9999, Math.max(1e-5, gamma));
   const next = tension - tension * safeGamma;
-  return Math.abs(next) < 1e-8 ? 0 : next;
+  return Math.abs(next) < NEMESIS_THERMAL_CUTOFF ? 0 : next;
 }
 
 export interface PauliSoAPhysicsState {
@@ -267,7 +268,7 @@ export function stepPauliSoAPhysics(
 export function evaluateWeberFechnerFrame(
   prevMetric: number,
   nextMetric: number,
-  thresholdK = 0.015,
+  thresholdK = WEBER_PERCEPTUAL_K,
 ): { decision: 'RENDER_FRAME' | 'SKIP_FRAME'; deltaRatio: number } {
   const denom = Math.max(1e-4, Math.abs(prevMetric));
   const deltaRatio = Math.abs(nextMetric - prevMetric) / denom;

@@ -103,6 +103,20 @@ import {
   runAutodidactCycle,
 } from './helixAutodidactLoop';
 import { createMiniGPTEngine, MiniGPTEngine } from './MiniGPTEngine';
+import {
+  ChainVerificationSummary,
+  createHolographicContainerChain,
+  DecodedHolographicContainer,
+  DEFAULT_HOLOGRAPHIC_CONTAINER_COUNT,
+  HolographicContainerChain,
+  inspectHolographicContainer,
+  queryHolographicContainerIndices,
+  verifyHolographicContainerChain,
+} from './helixHolographicContainers';
+import {
+  computeCoupledNanotechBiopixelState,
+  CoupledNanotechBiopixelState,
+} from './helixQuantumDisplayPhysics';
 
 export interface VerifiedExecutionBundle {
   source: string;
@@ -206,9 +220,35 @@ export class HelixCoreEngine {
   private readonly miniGptEngine: MiniGPTEngine = createMiniGPTEngine();
   private readonly holographicLibrary: HolographicAcademicLibrary =
     sharedHolographicAcademicLibrary;
+  private containerChain: HolographicContainerChain | null = null;
 
   constructor(initialTools: readonly HelixRegisteredTool[] = BASE_HELIX_TOOL_CATALOG) {
     this.tools = [...initialTools];
+  }
+
+  public getHolographicContainerChain(
+    count = DEFAULT_HOLOGRAPHIC_CONTAINER_COUNT,
+  ): HolographicContainerChain {
+    if (!this.containerChain || this.containerChain.count !== count) {
+      this.containerChain = createHolographicContainerChain(count);
+    }
+    return this.containerChain;
+  }
+
+  public inspectContainerAt(index: number, count = DEFAULT_HOLOGRAPHIC_CONTAINER_COUNT): DecodedHolographicContainer {
+    return inspectHolographicContainer(this.getHolographicContainerChain(count), index);
+  }
+
+  public verifyContainerChain(count = DEFAULT_HOLOGRAPHIC_CONTAINER_COUNT): ChainVerificationSummary {
+    return verifyHolographicContainerChain(this.getHolographicContainerChain(count));
+  }
+
+  public queryContainers(filter: Parameters<typeof queryHolographicContainerIndices>[1] = {}): number[] {
+    return queryHolographicContainerIndices(this.getHolographicContainerChain(), filter);
+  }
+
+  public computeCoupledBiopixel(params: Parameters<typeof computeCoupledNanotechBiopixelState>[0] = {}): CoupledNanotechBiopixelState {
+    return computeCoupledNanotechBiopixelState(params);
   }
 
   public getMiniGPTEngine(): MiniGPTEngine {

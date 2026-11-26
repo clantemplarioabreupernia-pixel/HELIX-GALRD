@@ -1,4 +1,4 @@
-﻿import { parseStoryIntoMusicalScore, StorySceneCue } from './helixStoryScoreEngine';
+import { parseStoryIntoMusicalScore, StorySceneCue } from './helixStoryScoreEngine';
 import { analyzeVocalAndTextProsody } from '../utils/auroraProsody';
 import { DISCIPLINES_33 } from '../data/disciplines33';
 import { DOMAIN_ENGINE_METADATA } from './helixDomainEngines';
@@ -36,7 +36,7 @@ export interface ConversationTurnContext {
 }
 
 const ACTION_CREATION_RE =
-  /\b(crea|crear|creame|créame|simul|calcul|diseñ|disen|construy|genera|haz|hagam|esculp|proyecta|cambia|cambialo|cámbialo|ajusta|ponle|agrega|añade|combina|mezcla|mueve|anima|dibuja|modela|transforma|deforma|ejecuta|prueba|videojuego|juego|nave|espaci|gravedad|asteroide|enemigo|obst[aá]culo|velocidad|color|brillo|órbita|orbita|cohete|satelit|planeta|luna|marte|martes|radar|montaña|montana|terreno|fluido|onda|cuántic|cuantic|videoclip|música|musica|balance|financier|saldo|salud|monitoreo|monitor|astronaut|supervivencia|hospital|aviacion|aviación|marina|ejercito|ejército|imagen|foto|laboratorio)\b/i;
+  /\b(crea|crear|creame|créame|simul|calcul|diseñ|disen|construy|genera|haz|hagam|esculp|proyecta|cambia|cambialo|cámbialo|ajusta|ponle|agrega|añade|combina|mezcla|mueve|anima|dibuja|modela|transforma|deforma|ejecuta|prueba|escanea|escanear|cuento|historia|relato|bosque|lobo|caperucita|castillo|mar|olas|videojuego|juego|nave|espaci|gravedad|asteroide|enemigo|obst[aá]culo|velocidad|color|brillo|órbita|orbita|cohete|satelit|planeta|luna|marte|martes|radar|montaña|montana|terreno|fluido|onda|cuántic|cuantic|videoclip|música|musica|balance|financier|saldo|quimic|químic|molecul|molécul|reaccion|reacción|nernst|gibbs|morse|imagen|foto|laboratorio)\b/i;
 
 const PHYSICAL_VALUE_RE =
   /\b\d+(?:[.,]\d+)?\s*(?:km|m\/s|hz|ghz|mpa|kg|fps|qubits?|bpm|lpm|mg\/dl|mmhg|°c|\$|usd)\b/i;
@@ -121,10 +121,9 @@ export function classifyConversationIntent(raw: string): ConversationalIntentKin
   }
 
   if (
-    /\b(doble helice|recombinador|biblioteca|17\s*bytes|17b|qpsk|aduana|pcc|minigpt|mini-gpt|exocortex|pantalla liquida)\b/.test(
+    /\b(doble helice|recombinador|biblioteca|17\s*bytes|17b|qpsk|aduana|pcc|minigpt|mini-gpt|exocortex|pantalla liquida|36000|contenedores|biopixel|nanotec|6 caras)\b/.test(
       norm,
-    ) &&
-    /\b(que es|como funciona|explica|explicame|para que sirve|detalle)\b/.test(norm)
+    )
   ) {
     return 'architecture_explain';
   }
@@ -217,6 +216,9 @@ function extractDomainFilterFromQuery(
   }
   if (/\b(ia|inteligencia|optimiz|recocido|minigpt|orquestacion)\b/.test(norm)) {
     return 'IA Acotada y Orquestación';
+  }
+  if (/\b(quimic|molecul|nernst|gibbs|arrhenius|morse|termodinamica|reaccion|ph)\b/.test(norm)) {
+    return 'Química y Termodinámica';
   }
 
   return null;
@@ -344,10 +346,10 @@ function formatFullInventory(context: ConversationTurnContext): string {
     `Tengo integradas ${tools.length} herramientas ejecutables, ${enginesCount} motores matemáticos verificados y ${disciplines.length} disciplinas académicas.`,
     '',
     'Mis funciones principales:',
-    '1. Conversar contigo y proyectar simulaciones en vivo sobre el Rostro Holográfico y la pantalla líquida.',
-    '2. Calcular y simular física orbital, fluidos, óptica, electrónica RF, cuántica, audio y finanzas exactas.',
-    '3. Combinar y recombinar herramientas (Recombinador A×B) con verificación formal automática.',
-    '4. Aprender de cada sesión verificada y guardar fichas científicas compactas.',
+    '1. Conversar contigo y moldear la pantalla líquida 4K UHD (8.29M biopíxeles) en Educación, Investigación y Entretenimiento.',
+    '2. Calcular y simular física orbital, fluidos Pauli-SoA, óptica Cauchy, química cuántica, RF 5G/radar, cuántica Bloch y finanzas exactas.',
+    '3. Descomponer programas .hlx en átomos verificables y recombinar herramientas (A×B) con puentes tipados, SMT y PCC SHA-256.',
+    '4. Aprender de cada sesión certificada mediante cápsulas holográficas de 17 bytes y 36,000 contenedores.',
     '',
     'Áreas y herramientas disponibles:',
     ...domainLines,
@@ -458,46 +460,48 @@ export function buildHumanConversationReply(
   }
 
   if (kind === 'architecture_explain') {
-    return _lead + 'Mi núcleo conecta el diálogo humano con un motor determinista de cálculo: cada petición selecciona las herramientas necesarias entre las 11 áreas científicas, acopla sus variables automáticamente en la Doble Hélice, verifica formalmente la seguridad de la solución y destila el aprendizaje en fichas compactas de 17 bytes mientras lo proyecta en la pantalla líquida. Si quieres inspeccionar o combinar módulos manualmente, también cuentas con el botón Laboratorio arriba a la derecha.';
+    return (
+      _lead +
+      'Todo el núcleo determinista de HELIX corre en esta consola híbrida autárquica sin depender de la nube: Pauli-SoA de 28 bytes/biopíxel (4K UHD), 36,000 contenedores holográficos, 23 motores matemáticos/físicos/químicos/cuánticos, raymarching SDF, red hexagonal Voronoi A₂ y descomposición/recombinación autopoiética de ADN (.hlx).'
+    );
   }
 
   if (kind === 'identity') {
     const alsoGreeting = /\b(hola|buenas|hey|hello|hi)\b/.test(norm);
     if (en) {
-      return `${_lead}${alsoGreeting ? 'Hello! ' : ''}My name is Helix. I combine ${tools.length} verified tools across ${DISCIPLINES_33.length} disciplines so we can talk naturally, explore knowledge, or run live simulations on the liquid screen. What would you like to explore?`;
+      return `${_lead}${alsoGreeting ? 'Hello! ' : ''}I am Helix, your universal science, research, and entertainment console. Ask me anything and watch the 4K liquid biopixels transform live.`;
     }
-    return `${_lead}${alsoGreeting ? '¡Hola! ' : ''}Me llamo Helix. Integro ${tools.length} herramientas reales y ${DISCIPLINES_33.length} disciplinas científicas para conversar contigo, explicarte cualquier tema o ejecutar simulaciones y cálculos en vivo en la pantalla líquida. ¿Qué te gustaría explorar hoy?`;
+    return `${_lead}${alsoGreeting ? '¡Hola! ' : ''}Soy Helix, tu consola universal de educación, investigación y entretenimiento para la Tierra, la Luna o Marte. Puedo explicar cualquier ley científica, descomponer y recombinar herramientas con su ADN y transformar esta pantalla líquida 4K en tiempo real. ¿Qué quieres descubrir?`;
   }
 
   if (kind === 'greeting') {
     if (en) {
-      return _lead + 'Hello! Good to see you. Ask me about any of my tools, start a simulation, or let us talk through any idea.';
+      return _lead + 'Hello! Tell me what you want to explore — molecules, a trip to the Moon, 3D geometry, or interactive stories — and I will shape the 4K screen live.';
     }
-    return _lead + '¡Hola! Qué gusto saludarte. Podemos conversar sobre cualquier tema, revisar mis herramientas y disciplinas o dar vida a una simulación en la pantalla líquida. ¿Por dónde empezamos?';
+    return _lead + '¡Hola! Qué alegría verte. Dime qué quieres explorar hoy —una molécula química, una nave hacia la Luna, geometría SDF en 3D, ondas cuánticas o un cuento interactivo— y lo formo en vivo en los biopíxeles 4K.';
   }
 
   if (kind === 'capabilities') {
     if (en) {
-      return `${_lead}I can chat naturally, list and explain my ${tools.length} tools across 11 areas, run mathematical simulations (space orbits, fluids, optics, 5G/radar, quantum circuits, exact finance), and recombine tools on demand. Ask me to list them or try a topic!`;
+      return `${_lead}I combine Education, Research, and Entertainment in one 4K liquid screen: orbital flight games, chemistry thermodynamics, quantum Bloch spheres, story-to-math scanning, and an interactive DNA tool recombinator.`;
     }
-    return `${_lead}Puedo conversar contigo, mostrarte mis ${tools.length} herramientas y ${DISCIPLINES_33.length} disciplinas, combinar herramientas entre sí y simular física espacial, fluidos, óptica, telecomunicaciones 5G/radar, cuántica, audio o finanzas exactas en tiempo real. Si quieres ver la lista completa, dime "lista todas tus herramientas y funciones".`;
+    return `${_lead}Sirvo como una consola universal de Educación, Investigación y Entretenimiento: puedes explorar moléculas y reacciones químicas, pilotar una nave orbital con W/A/S/D, probar geometría raymarched SDF + red hexagonal A₂, escanear cuentos en partituras 3D o abrir la pestaña ADN / Lab para descomponer código y recombinar cualquiera de las 190+ herramientas en vivo.`;
   }
 
   if (kind === 'gratitude') {
     return en
-      ? 'You are welcome! Want to inspect another tool or adjust the current scene?'
-      : '¡Con mucho gusto! ¿Quieres profundizar en alguna otra herramienta o probar una nueva simulación?';
+      ? 'You are welcome! What shall we morph on the screen next?'
+      : '¡Con mucho gusto! ¿Qué quieres que transformemos ahora en la pantalla?';
   }
 
   if (kind === 'creation_or_simulation') {
-    const usedTools = report?.selectedTools.slice(0, 3).map((t) => t.title) ?? [];
-    const toolsText =
-      usedTools.length > 0 ? ` combinando ${usedTools.join(', ')}` : '';
-    const bridgeCount = report?.crossBridges.length ?? 0;
-    const bridgeText =
-      bridgeCount > 0 ? ` con ${bridgeCount} acoplamientos cruzados entre motores` : '';
+    const isSpace = /\b(nave|espaci|orbit|órbita|luna|marte|planeta|cohete|satel)\b/.test(norm);
+    const controlHint = isSpace
+      ? ' Puedes girar la escena con el ratón y pilotar la nave con las teclas W, A, S, D.'
+      : ' Puedes rotar y acercar el modelo 3D directamente en la pantalla líquida.';
+    const metricsHint = outputHint ? ` Datos vivos en este instante${outputHint}.` : '';
 
-    return `${_lead}Listo: procesé tu petición${toolsText}${bridgeText} y proyecté «${shapeLabel}» en la pantalla líquida${outputHint}. ¿Quieres ajustar algún parámetro, ver los valores de otra área o combinarlo con otra herramienta?`;
+    return `${_lead}Transformé la materia de la pantalla en «${shapeLabel}» en tiempo real.${metricsHint}${controlHint} Dime qué parte quieres cambiar, acelerar o investigar.`;
   }
 
   // 2. Seguimiento contextual ("más detalles", "y las demás?", "continúa")
@@ -558,11 +562,11 @@ export function buildHumanConversationReply(
 
   if (kind === 'learning' || /\b(aprender|enseña|ensename|ciencia|ciencias|fisica|física|matematicas|matemáticas|quimica|química|astronomia|astronomía)\b/.test(norm)) {
     return [
-      `¡Excelente! Empecemos tu primera sesión interactiva de Ciencias en SIGRDRÍFA / HELIX:`,
-      `1. Física Espacial y Gravedad: Podemos simular órbitas satelitales (Kepler/Verlet) o caída libre y conservación de energía.`,
-      `2. Ondas, Luz y Sonido: Exploramos cómo las frecuencias armónicas (Hz) y la dispersión espectral de Cauchy descomponen la luz y el sonido.`,
-      `3. Computación Cuántica y Criptografía: Probamos estados en la Esfera de Bloch y sellado matemático SHA-256.`,
-      `Dime cuál de estos 3 temas quieres explorar primero (por ejemplo: "simula una órbita a 400 km" o "explícame las ondas y frecuencias") y lo proyectamos juntos en vivo.`
+      `¡Excelente! Empecemos tu sesión interactiva en la consola HELIX (Educación · Investigación · Entretenimiento):`,
+      `1. Química y Energía Molecular: Simulamos gases ideales (PV=nRT), Gibbs (ΔG), Arrhenius, Nernst y enlaces anarmónicos de Morse en 3D.`,
+      `2. Física Espacial y Geometría: Órbitas Kepler/Verlet, raymarching SDF, teselación hexagonal Voronoi A₂ y ondas de Helmholtz-Bessel.`,
+      `3. Cuántica y Recombinación ADN: Esfera de Bloch SU(2), Statevector OpenQASM 2.0 y síntesis autopoiética A×B desde la pestaña ADN / Lab.`,
+      `Dime qué tema quieres probar (por ejemplo: "simula una molécula con Morse", "pilota la nave a la Luna" o "recombina óptica con cuántica").`
     ].join('\n');
   }
 

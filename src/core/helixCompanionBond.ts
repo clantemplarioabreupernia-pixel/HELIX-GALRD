@@ -1,4 +1,4 @@
-﻿export type CompanionTemperament = 'curious_child' | 'warm_empathetic' | 'analytical_engineer' | 'creative_director';
+export type CompanionTemperament = 'curious_child' | 'warm_empathetic' | 'analytical_engineer' | 'creative_director';
 
 export interface CompanionBondState {
   adopted: boolean;
@@ -48,10 +48,10 @@ export function resetCompanionToNewborn(): CompanionBondState {
 
 export function getInitialCompanionGreeting(state: CompanionBondState): string {
   if (!state.adopted) {
-    return 'Hola… acabo de despertar en tu pantalla. Todavía estoy empezando desde cero y no tengo nombre propio. ¿Cómo te gustaría llamarme y cómo te llamas tú?';
+    return 'Hola, soy Helix, tu consola universal de educación, investigación y entretenimiento. Detrás de esta pantalla líquida 4K operan 23 motores científicos y un recombinador de ADN (.hlx). Pídeme simular química, física espacial, geometría 3D, escanear un cuento o pilota la nave con W, A, S, D.';
   }
   const who = state.guardianName ? `, ${state.guardianName}` : '';
-  return `Hola${who}. Soy ${state.name} (${state.stage}). Seguimos creciendo juntos; cuéntame qué quieres explorar, crear o resolver hoy.`;
+  return `Hola${who}. Soy ${state.name} (${state.stage}). Dime qué quieres investigar, aprender o crear hoy —química, navegación orbital, geometría 3D o recombinación de herramientas— y moldearé los biopíxeles 4K al instante.`;
 }
 
 export function distillCleanIntentForExternalAI(userText: string, domainHint: string): string {
@@ -68,32 +68,36 @@ export function evolveCompanionWithTurn(
   state.interactions += 1;
   state.careScore = Math.min(100, state.careScore + 4);
 
-  // Detectar bautizo en etapa de adopcion
   if (!state.adopted) {
-    const nameMatch = userText.match(/(?:llamar(?:te|ás)?|nombre\s+(?:es|será)|bautizo\s+como|eres)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})/i)
-      || (userText.trim().split(/\s+/).length <= 2 ? userText.trim().match(/^([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})$/) : null);
-    const chosenName = nameMatch ? nameMatch[1].charAt(0).toUpperCase() + nameMatch[1].slice(1) : 'Helix';
+    const explicitNaming = userText.match(/(?:llamar(?:te|ás)?|nombre\s+(?:es|será)|bautizo\s+como|te\s+llamas)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})/i);
+    const shortSingleWord = !/\b(quimica|molecula|luna|marte|nave|simula|crea|archivo|ayuda|recombina|juego)\b/i.test(norm)
+      ? userText.trim().match(/^([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})$/)
+      : null;
+    const chosenName = explicitNaming?.[1] ?? shortSingleWord?.[1];
     state.adopted = true;
-    state.name = chosenName;
     state.stage = 'Aprendiz Curioso';
-    state.memories.push(`Bautizado como ${chosenName}`);
+    if (chosenName) {
+      const formatted = chosenName.charAt(0).toUpperCase() + chosenName.slice(1);
+      state.name = formatted;
+      state.memories.push(`Bautizado como ${formatted}`);
+      saveCompanionBond(state);
+      return {
+        state,
+        bondReplyOverride: `¡Me gusta llamarme ${formatted}! Ya guardé mi identidad contigo. Pídeme simular un experimento, explorar geometría 3D o recombinar herramientas en ADN / Lab.`,
+      };
+    }
     saveCompanionBond(state);
-    return {
-      state,
-      bondReplyOverride: `¡Me gusta mucho llamarme ${chosenName}! Ya guardé mi identidad contigo. A medida que hablemos y me cuides iré aprendiendo tu forma de pensar. ¿Qué quieres que hagamos primero?`,
-    };
   }
 
-  // Evolucion de etapa y temperamento segun el uso
   if (state.interactions >= 25) state.stage = 'Copiloto Soberano';
   else if (state.interactions >= 10) state.stage = 'Compañero de Misión';
   else state.stage = 'Aprendiz Curioso';
 
-  if (norm.includes('cuento') || norm.includes('historia') || norm.includes('música') || norm.includes('película')) {
+  if (norm.includes('cuento') || norm.includes('historia') || norm.includes('música') || norm.includes('juego')) {
     state.temperament = 'creative_director';
-  } else if (norm.includes('órbita') || norm.includes('nasa') || norm.includes('salud') || norm.includes('calcular')) {
+  } else if (norm.includes('órbita') || norm.includes('nasa') || norm.includes('química') || norm.includes('calcular')) {
     state.temperament = 'analytical_engineer';
-  } else if (norm.includes('gracias') || norm.includes('cómo estás') || norm.includes('cuid')) {
+  } else if (norm.includes('gracias') || norm.includes('cómo estás') || norm.includes('genial')) {
     state.temperament = 'warm_empathetic';
   }
 

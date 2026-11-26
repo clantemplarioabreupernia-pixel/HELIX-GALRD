@@ -1,4 +1,4 @@
-﻿export interface FuthorcRuneEntry {
+export interface FuthorcRuneEntry {
   index: number; primeP33: number; glyph: string; name: string; ipa: string; meaning: string; harmonicRatio: number; envMode: 0 | 1 | 2 | 3;
 }
 export const FUTHORC_33: FuthorcRuneEntry[] = [
@@ -33,6 +33,6 @@ export const FUTHORC_33: FuthorcRuneEntry[] = [
   { index: 29, primeP33: 109, glyph: 'ᛠ', name: 'Ēar', ipa: '/æɑ/', meaning: 'Earth', harmonicRatio: 1.5, envMode: 1 },
   { index: 30, primeP33: 113, glyph: 'ᛢ', name: 'Cweorð', ipa: '/kw/', meaning: 'Fire', harmonicRatio: 1.667, envMode: 3 },
   { index: 31, primeP33: 127, glyph: 'ᛣ', name: 'Calc', ipa: '/k/', meaning: 'Chalice', harmonicRatio: 1.778, envMode: 3 },
-  { index: 32, primeP33: 131, glyph: 'ᛥ', name: 'Stān', ipa: '/st/', meaning: 'Stone', harmonicRatio: 2.0, envMode: 3 },
-  { index: 33, primeP33: 137, glyph: 'ᚸ', name: 'Gār', ipa: '/g/', meaning: 'Spear', harmonicRatio: 1.5, envMode: 2 },
+  { index: 32, primeP33: 131, glyph: 'ᛤ', name: 'Cweorð-KIL', ipa: '/gˠ/', meaning: 'Revocation', harmonicRatio: 2.0, envMode: 3 },
+  { index: 33, primeP33: 137, glyph: 'ᛥ', name: 'Stān-ROM', ipa: '/st/', meaning: 'Immutable Stone', harmonicRatio: 1.5, envMode: 2 },
 ];

@@ -1,7 +1,11 @@
-﻿import { useEffect, useRef } from 'react';
-import { computeIgzoDrainCurrent, stepNemesisHomeostasis } from '../core/helixQuantumDisplayPhysics';
+import { useEffect, useRef } from 'react';
+import {
+  computeCoupledNanotechBiopixelState,
+  computeIgzoDrainCurrent,
+  stepNemesisHomeostasis,
+} from '../core/helixQuantumDisplayPhysics';
 
-export type HologramShape = 'avatar' | 'torus' | 'satellite' | 'terrain' | 'crystal' | 'sphere' | 'wave';
+export type HologramShape = 'avatar' | 'torus' | 'satellite' | 'terrain' | 'crystal' | 'sphere' | 'wave' | 'chemistry_molecule';
 export type LiquidMorphShape = HologramShape | 'orbital_ship' | 'terrain_fbm' | 'cymatic_wave' | 'quantum_bloch';
 
 export interface LiquidBiopixelCanvasProps {
@@ -91,6 +95,12 @@ float sceneField(vec2 r0, float phi_p, float wsHeight) {
   } else if (u_env == 2) {
     float d = length(r0);
     target = sin(d * (10.0 + mod(u_p33, 13.0)) - u_t * 4.2 + phi_p) * cos(atan(r0.y, r0.x) * (3.0 + mod(u_p33, 5.0))) + wsHeight * 0.8;
+  } else if (u_env == 4) {
+    float atom1 = smoothstep(0.32, 0.06, length(r0 - vec2(-0.34, 0.0)));
+    float atom2 = smoothstep(0.32, 0.06, length(r0 - vec2(0.34, 0.0)));
+    float atomTop = smoothstep(0.24, 0.05, length(r0 - vec2(0.0, 0.38)));
+    float bond = smoothstep(0.11, 0.01, abs(r0.y)) * step(abs(r0.x), 0.36);
+    target = max(max(atom1, atom2), max(atomTop, bond * 0.8));
   } else {
     target = cos(r0.x * 6.0 + phi_p) * cos(r0.y * 6.0 - phi_p) + smoothstep(0.55, 0.1, abs(r0.x) + abs(r0.y)) + wsHeight * 0.7;
   }
@@ -238,17 +248,31 @@ export function LiquidBiopixelCanvas({ shape = 'terrain', accentColor, accentHex
       ptrRef.current.tension = stepNemesisHomeostasis(ptrRef.current.tension, ptrRef.current.down ? 0.05 : 0.0, 0.075);
       const s = stRef.current;
 
+      const coupled = computeCoupledNanotechBiopixelState({
+        tension: Math.min(1, s.tension + ptrRef.current.tension * 0.5),
+        primeIndex: Math.max(0, s.pulseCounter) % 33,
+      });
+
       const now = performance.now();
       if (ws && ws.readyState === WebSocket.OPEN && now - lastSync > 100) {
         lastSync = now;
         const freq = Math.round(70 + s.energy * 340);
         const amp = Math.round(150 + (s.isSpeaking ? 950 : s.energy * 750));
-        ws.send(`F:${freq}|A:${amp}`);
+        ws.send(`F:${freq}|A:${amp}|E:${coupled.cauchyElasticityGo}|V:${coupled.nemesisViscosityGo}`);
       }
 
       const target = s.isSpeaking || s.energy > 0.55 || s.tension > 0.45 ? 1.0 : 0.0;
       morphRef.current += (target - morphRef.current) * (target > morphRef.current ? 0.06 : 0.025);
-      const env = s.shape === 'terrain' || s.shape === 'terrain_fbm' ? 1 : s.shape === 'cymatic_wave' || s.shape === 'wave' || s.shape === 'sphere' || s.shape === 'quantum_bloch' ? 2 : s.shape === 'crystal' || s.shape === 'torus' || s.shape === 'satellite' || s.shape === 'orbital_ship' ? 3 : 0;
+      const env =
+        s.shape === 'chemistry_molecule'
+          ? 4
+          : s.shape === 'terrain' || s.shape === 'terrain_fbm'
+            ? 1
+            : s.shape === 'cymatic_wave' || s.shape === 'wave' || s.shape === 'sphere' || s.shape === 'quantum_bloch'
+              ? 2
+              : s.shape === 'crystal' || s.shape === 'torus' || s.shape === 'satellite' || s.shape === 'orbital_ship'
+                ? 3
+                : 0;
 
       const delta = Math.abs(s.energy - prevEnergyRef.current) + ptrRef.current.tension + wsActive;
       if (!resized && env !== 1 && delta < 0.0005 && !s.isSpeaking && morphRef.current < 0.01) {

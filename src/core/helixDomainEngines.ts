@@ -44,6 +44,7 @@ import {
   makeRationalP33,
   mulRationalP33,
 } from '../utils/rationalP33';
+import { computeCoupledNanotechBiopixelState } from './helixQuantumDisplayPhysics';
 
 export type PortDataType =
   | 'scalar'
@@ -88,7 +89,9 @@ export type DomainEngineId =
   | 'qpsk_telemetry_bus'
   | 'neural_smt_synthesizer'
   | 'annealing_optimizer'
-  | 'crypto_ed25519_merkle';
+  | 'crypto_ed25519_merkle'
+  | 'nanotech_biopixel_quantum'
+  | 'chemistry_quantum_thermodynamics';
 
 export interface EngineExecutionOutput {
   engineId: DomainEngineId;
@@ -985,6 +988,122 @@ export function runCryptoEd25519Merkle(params: Record<string, number | string>):
   };
 }
 
+/**
+ * 22. Física Nanotecnológica Acoplada del Biopíxel (Brus + IGZO + WKB + Mott-Gurney + Maxwell Z4 + EUV)
+ */
+export function runNanotechBiopixelQuantum(params: Record<string, number | string>): EngineExecutionOutput {
+  const tension = Math.min(1, Math.max(0, num(params, 'tension', 0.38)));
+  const lambdaNm = Math.max(410, Math.min(680, num(params, 'lambda_nm', 512)));
+  const vGs = Math.max(0.2, num(params, 'v_gs', 1.8));
+  const vDs = Math.max(0.2, num(params, 'v_ds', 3.2));
+  const primeIndex = Math.max(0, Math.min(32, Math.floor(num(params, 'prime_index', 15))));
+
+  const st = computeCoupledNanotechBiopixelState({
+    lambdaNm,
+    tension,
+    vGs,
+    vDs,
+    primeIndex,
+  });
+
+  return {
+    engineId: 'nanotech_biopixel_quantum',
+    valid: st.brusCauchy.radiusNm > 0 && Number.isFinite(st.photonicCrystal.eigenFrequencyThz),
+    invariantSummary: `R_Brus=${st.brusCauchy.radiusNm}nm · n(λ)=${st.brusCauchy.cauchyRefractiveIndex} · EQE=${st.cieEqe.eqePercent}% · CD_EUV=${st.rayleighEuv.criticalDimensionNm}nm · Z4=${st.photonicCrystal.z4PolarityIndex}`,
+    metrics: {
+      lambda_nm: st.lambdaNm,
+      brus_radius_nm: st.brusCauchy.radiusNm,
+      photon_energy_ev: st.brusCauchy.photonEnergyEv,
+      cauchy_n: st.brusCauchy.cauchyRefractiveIndex,
+      igzo_current_ua: Number((st.igzo.currentAmps * 1e6).toFixed(3)),
+      igzo_regime: st.igzo.regime,
+      wkb_transmission: st.wkbTunneling.transmissionProb,
+      mott_gurney_acm2: st.mottGurney.currentDensityAcm2,
+      photonic_thz: st.photonicCrystal.eigenFrequencyThz,
+      euv_cd_nm: st.rayleighEuv.criticalDimensionNm,
+      euv_pitch_pm_bigint: st.rayleighEuv.latticePitchPmBigInt,
+      eqe_percent: st.cieEqe.eqePercent,
+      z4_polarity: st.photonicCrystal.z4PolarityIndex,
+      cauchy_elasticity_go: st.cauchyElasticityGo,
+      nemesis_viscosity_go: st.nemesisViscosityGo,
+    },
+    vectors: {
+      cie1931_xy: [st.cieEqe.cieX, st.cieEqe.cieY],
+      cube_faces_z4: [
+        st.photonicCrystal.cubeFaces.cara0_accion,
+        st.photonicCrystal.cubeFaces.cara1_espalda,
+        st.photonicCrystal.cubeFaces.cara2_disciplina,
+        st.photonicCrystal.cubeFaces.cara3_faseZ4,
+        st.photonicCrystal.cubeFaces.caraInternaA_invariante,
+        st.photonicCrystal.cubeFaces.caraInternaB_semillaAcustica,
+      ],
+    },
+  };
+}
+
+/**
+ * 23. Química Física, Termodinámica y Enlace Molecular Cuántico
+ * - Gases Ideales: P·V = n·R·T
+ * - Energía Libre de Gibbs: ΔG = ΔH - T·ΔS
+ * - Cinética de Arrhenius: k = A·exp(-Ea / (R·T))
+ * - Potencial Electroquímico de Nernst: E = E° - (R·T / (n_e·F))·ln(Q)
+ * - Potencial Anarmónico de Morse: V(r) = D_e·(1 - exp(-a·(r - r_e)))²
+ * - Escala ácido-base: pH = -log₁₀([H⁺])
+ */
+export function runChemistryQuantumThermodynamics(
+  params: Record<string, number | string> = {},
+): EngineExecutionOutput {
+  const R_GAS = 8.314462618; // J/(mol·K)
+  const FARADAY = 96485.33212; // C/mol
+  const tempK = Math.max(50, Math.min(4000, Number(params.temp_k ?? 298.15)));
+  const molesN = Math.max(0.01, Number(params.moles_n ?? 1.0));
+  const volumeL = Math.max(0.1, Number(params.volume_l ?? 22.414));
+  const deltaHKj = Number(params.delta_h_kj ?? -48.5);
+  const deltaSJmolK = Number(params.delta_s_j_mol_k ?? 42.0);
+  const eaKj = Math.max(1, Number(params.ea_kj_mol ?? 38.0));
+  const preExpA = Math.max(1, Number(params.arrhenius_a ?? 1.2e6));
+  const e0Volts = Number(params.e0_volts ?? 1.10); // Ej: celda Daniell Zn/Cu
+  const electronsN = Math.max(1, Math.round(Number(params.electrons_n ?? 2)));
+  const reactionQ = Math.max(1e-9, Number(params.reaction_q ?? 0.15));
+  const bondDeEv = Math.max(0.2, Number(params.morse_de_ev ?? 4.52)); // H2 ~4.52 eV
+  const bondDisplacementA = Number(params.bond_dr_angstrom ?? 0.18);
+  const morseA = Math.max(0.2, Number(params.morse_a ?? 1.94));
+  const hPlusConc = Math.max(1e-14, Math.min(10, Number(params.h_plus_molar ?? 1e-7)));
+
+  const pressureKpa = (molesN * R_GAS * tempK) / volumeL; // L * kPa = J
+  const gibbsKjMol = deltaHKj - (tempK * deltaSJmolK) / 1000;
+  const arrheniusK = preExpA * Math.exp(-(eaKj * 1000) / (R_GAS * tempK));
+  const nernstV = e0Volts - ((R_GAS * tempK) / (electronsN * FARADAY)) * Math.log(reactionQ);
+  const expTerm = 1 - Math.exp(-morseA * bondDisplacementA);
+  const morsePotentialEv = bondDeEv * expTerm * expTerm;
+  const phValue = -Math.log10(hPlusConc);
+  const emissionLambdaNm = Number(Math.max(380, Math.min(700, 1239.84 / Math.max(1.77, bondDeEv * 0.52))).toFixed(2));
+  const spontaneous = gibbsKjMol < 0;
+
+  return {
+    engineId: 'chemistry_quantum_thermodynamics',
+    valid: Number.isFinite(pressureKpa) && Number.isFinite(gibbsKjMol) && Number.isFinite(nernstV),
+    invariantSummary: `ΔG=${gibbsKjMol.toFixed(2)} kJ/mol (${spontaneous ? 'ESPONTÁNEA' : 'ENDERGÓNICA'}) · E_Nernst=${nernstV.toFixed(3)} V · P=${pressureKpa.toFixed(1)} kPa · pH=${phValue.toFixed(2)}`,
+    metrics: {
+      temp_k: Number(tempK.toFixed(2)),
+      pressure_kpa: Number(pressureKpa.toFixed(3)),
+      gibbs_kj_mol: Number(gibbsKjMol.toFixed(3)),
+      spontaneous,
+      arrhenius_rate: Number(arrheniusK.toExponential(3)),
+      nernst_voltage_v: Number(nernstV.toFixed(4)),
+      morse_potential_ev: Number(morsePotentialEv.toFixed(4)),
+      ph_value: Number(phValue.toFixed(3)),
+      bandgap_lambda_nm: emissionLambdaNm,
+    },
+    vectors: {
+      morse_curve_ev: [0, 0.25, 0.5, 0.75, 1.0].map((dr) => {
+        const t = 1 - Math.exp(-morseA * dr);
+        return Number((bondDeEv * t * t).toFixed(4));
+      }),
+    },
+  };
+}
+
 export const DOMAIN_ENGINE_METADATA: Record<
   DomainEngineId,
   {
@@ -1279,5 +1398,37 @@ export const DOMAIN_ENGINE_METADATA: Record<
       { name: 'hmac_verified', type: 'telemetry', unit: 'bool', description: 'Integridad HMAC en tiempo constante' },
     ],
     execute: runCryptoEd25519Merkle,
+  },
+  nanotech_biopixel_quantum: {
+    label: 'Nanotecnología Biopíxel (Brus + WKB + Mott-Gurney + Maxwell Z₄ + EUV)',
+    discipline: 'Materia Digital y Fluidos',
+    formulaSummary: 'Confinamiento Brus, Túnel WKB, SCLC Mott-Gurney, Cristal Fotónico Z₄ y Litografía EUV P₃₃',
+    inputs: [
+      { name: 'tension', type: 'scalar', unit: '[0..1]', description: 'Tensión viscoelástica acoplada', defaultValue: 0.38 },
+      { name: 'lambda_nm', type: 'scalar', unit: 'nm', description: 'Longitud de onda cuántica', defaultValue: 512 },
+    ],
+    outputs: [
+      { name: 'brus_radius_nm', type: 'scalar', unit: 'nm', description: 'Radio del punto cuántico CdSe' },
+      { name: 'photonic_thz', type: 'scalar', unit: 'THz', description: 'Frecuencia eigen-modal Maxwell Z₄' },
+      { name: 'euv_cd_nm', type: 'scalar', unit: 'nm', description: 'Dimensión crítica Rayleigh EUV' },
+    ],
+    execute: runNanotechBiopixelQuantum,
+  },
+  chemistry_quantum_thermodynamics: {
+    label: 'Química Cuántica, Termodinámica y Electroquímica',
+    discipline: 'Química y Termodinámica',
+    formulaSummary: 'PV=nRT, ΔG=ΔH-TΔS, Arrhenius k=A·e^(-Ea/RT), Nernst E=E°-(RT/nF)lnQ y Morse V(r)',
+    inputs: [
+      { name: 'temp_k', type: 'scalar', unit: 'K', description: 'Temperatura absoluta del reactor', defaultValue: 298.15 },
+      { name: 'morse_de_ev', type: 'scalar', unit: 'eV', description: 'Energía de disociación de enlace D_e', defaultValue: 4.52 },
+      { name: 'reaction_q', type: 'scalar', unit: 'ratio', description: 'Cociente de reacción Q', defaultValue: 0.15 },
+    ],
+    outputs: [
+      { name: 'gibbs_kj_mol', type: 'scalar', unit: 'kJ/mol', description: 'Energía libre de Gibbs ΔG' },
+      { name: 'nernst_voltage_v', type: 'scalar', unit: 'V', description: 'Potencial electroquímico de Nernst' },
+      { name: 'morse_potential_ev', type: 'scalar', unit: 'eV', description: 'Potencial anarmónico de enlace Morse' },
+      { name: 'bandgap_lambda_nm', type: 'scalar', unit: 'nm', description: 'Longitud de onda fotónica acoplada' },
+    ],
+    execute: runChemistryQuantumThermodynamics,
   },
 };

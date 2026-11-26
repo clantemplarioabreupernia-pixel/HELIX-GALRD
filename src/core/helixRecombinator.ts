@@ -337,6 +337,28 @@ function bridgeOutputToInput(
         transformRule: 'von_mises_stress_normalized_to_optical_B',
         transferredValue: val,
       });
+    } else if (inPort.name === 'lambda_nm' && typeof m.cymatic_freq_hz === 'number') {
+      const val = Number(Math.max(420, Math.min(670, 700 - (m.cymatic_freq_hz - 220) * 0.48)).toFixed(2));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'cymatic_freq_hz',
+        toToolId: toTool.id,
+        toPort: 'lambda_nm',
+        transformRule: 'cymatic_acoustic_freq_to_brus_photon_wavelength',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'tension' && typeof m.mean_tension === 'number') {
+      const val = Number(Math.min(1, Math.max(0, m.mean_tension)).toFixed(4));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'mean_tension',
+        toToolId: toTool.id,
+        toPort: 'tension',
+        transformRule: 'cauchy_soa_tension_to_quantum_dot_strain',
+        transferredValue: val,
+      });
     } else if (inPort.name === 'sigma_xx' && typeof m.mean_elevation === 'number') {
       const val = Number((60 + m.mean_elevation * 140).toFixed(2));
       mappedParams[inPort.name] = val;
@@ -451,6 +473,48 @@ function bridgeOutputToInput(
         transformRule: 'hilbert_basis_dim_to_merkle_leaves',
         transferredValue: val,
       });
+    } else if (inPort.name === 'lambda_nm' && typeof m.bandgap_lambda_nm === 'number') {
+      mappedParams[inPort.name] = m.bandgap_lambda_nm;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'bandgap_lambda_nm',
+        toToolId: toTool.id,
+        toPort: 'lambda_nm',
+        transformRule: 'chemistry_morse_gap_to_brus_photon_nm',
+        transferredValue: m.bandgap_lambda_nm,
+      });
+    } else if (inPort.name === 'tension' && typeof m.nernst_voltage_v === 'number') {
+      const val = Number(Math.min(1, Math.max(0.05, Math.abs(m.nernst_voltage_v) / 2.5)).toFixed(4));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'nernst_voltage_v',
+        toToolId: toTool.id,
+        toPort: 'tension',
+        transformRule: 'nernst_electrochemical_potential_to_cauchy_strain',
+        transferredValue: val,
+      });
+    } else if (inPort.name === 'initial_temp' && typeof m.temp_k === 'number') {
+      mappedParams[inPort.name] = m.temp_k;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'temp_k',
+        toToolId: toTool.id,
+        toPort: 'initial_temp',
+        transformRule: 'reactor_temp_to_simulated_annealing_k',
+        transferredValue: m.temp_k,
+      });
+    } else if (inPort.name === 'temp_k' && typeof m.cymatic_freq_hz === 'number') {
+      const val = Number((260 + m.cymatic_freq_hz * 0.18).toFixed(2));
+      mappedParams[inPort.name] = val;
+      bridges.push({
+        fromToolId: fromTool.id,
+        fromPort: 'cymatic_freq_hz',
+        toToolId: toTool.id,
+        toPort: 'temp_k',
+        transformRule: 'sonochemical_frequency_to_reactor_temp_k',
+        transferredValue: val,
+      });
     } else if (inPort.name === 'gamma' && typeof m.safety_factor === 'number') {
       const val = Number(Math.min(0.4, Math.max(0.01, 0.15 / Math.max(0.5, m.safety_factor))).toFixed(4));
       mappedParams[inPort.name] = val;
@@ -527,6 +591,9 @@ function buildCombinedHlxScript(
       lines.push('CRYPTO_AUDIT 256 8 RECOMB_SEAL');
     } else if (out.engineId === 'geom_seal_topology') {
       hasGeomSeal = true;
+    } else if (out.engineId === 'nanotech_biopixel_quantum') {
+      lines.push('BLOCH_ROT 0 1 0 1.05 1');
+      lines.push('NEMESIS_DECAY 0.08');
     } else if (out.engineId === 'audio_p33_cymatic' && typeof out.metrics.cymatic_freq_hz === 'number') {
       cymFreq = out.metrics.cymatic_freq_hz;
     }
@@ -737,5 +804,13 @@ export const CURATED_CROSS_EXPERIMENTS: readonly CrossDomainExperiment[] = [
     toolIds: ['131_statevector_12q_simulator', '96_procedural_seed_spawner', '77_exact_decimal_ledger'],
     disciplines: ['Computación Cuántica', 'Videojuegos y Mundos 3D', 'Finanzas y Criptografía'],
     expectedInsight: 'Entropía cuántica exacta -> semilla determinista -> registro contable P₃₃ balanceado con raíz SHA-256.',
+  },
+  {
+    id: 'exp-chemistry-quantum-optics',
+    title: 'Química Nernst/Morse + Nanotecnología Biopíxel + Óptica Cauchy',
+    question: '¿Cómo acopla el potencial electroquímico y enlace Morse la emisión cuántica Brus y dispersión de Cauchy en 4K?',
+    toolIds: ['201_chemistry_nernst_gibbs', '200_nanotech_biopixel_z4', '04_render_3d_pbr'],
+    disciplines: ['Química y Termodinámica', 'Materia Digital y Fluidos', 'Fotónica y Shaders GLSL'],
+    expectedInsight: 'El voltaje Nernst y la energía de enlace determinan λ_nm del punto cuántico CdSe y el índice de refracción espectral RGB.',
   },
 ];

@@ -2,7 +2,7 @@ import type { PauliSoAPhysicsState } from '../utils/helixPhysics';
 import type { SoAHolographicBuffer } from '../utils/helixSignal';
 
 export const NEMESIS_THERMAL_CUTOFF = 0.001;
-export const WEBER_PERCEPTUAL_K = 0.001;
+export const WEBER_PERCEPTUAL_K = 0.015;
 
 export const NEMESIS_GAMMA_PRESETS = {
   STANDARD: 0.02,
