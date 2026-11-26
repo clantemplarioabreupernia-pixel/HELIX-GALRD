@@ -3,7 +3,7 @@ import { parseStoryIntoMusicalScore, playStoryScoreLive } from '../core/helixSto
 import { evolveCompanionWithTurn, getInitialCompanionGreeting, loadCompanionBond } from '../core/helixCompanionBond';
 import { MORPH_SHAPE_LABELS } from '../data/morphShapeLabels';
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { Download, ExternalLink, ImagePlus, Mic, MicOff, Send, Volume2, VolumeX, X } from 'lucide-react';
+import { Download, ExternalLink, Camera, ImagePlus, SlidersHorizontal, Mic, MicOff, Send, Volume2, VolumeX, X } from 'lucide-react';
 import { createHelixCoreEngine, EngineeringReport } from '../core';
 import {
   buildHumanConversationReply,
@@ -63,6 +63,21 @@ function inferShapeAndAccent(
   report?: EngineeringReport,
 ): { shape: LiquidMorphShape; accentHex: string } {
   const combined = text.toLowerCase();
+  if (
+    combined.includes('montañ') ||
+    combined.includes('ave') ||
+    combined.includes('pajar') ||
+    combined.includes('pájar') ||
+    combined.includes('paisaje') ||
+    combined.includes('terreno') ||
+    combined.includes('cielo') ||
+    combined.includes('volar') ||
+    combined.includes('volando') ||
+    combined.includes('liquida') ||
+    combined.includes('líquida')
+  ) {
+    return { shape: 'terrain', accentHex: '#38bdf8' };
+  }
 
   if (
     combined.includes('rostro') ||
@@ -122,6 +137,8 @@ function inferShapeAndAccent(
 
 export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps = {}) {
   const stopCineScoreRef = useRef<(() => void) | null>(null);
+  const [showMorePanel, setShowMorePanel] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const [engine] = useState(() => createHelixCoreEngine());
 
   const [inputText, setInputText] = useState('');
@@ -140,7 +157,7 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
   const [activeArtifact, setActiveArtifact] = useState<{ html: string; title: string } | null>(null);
 
   const [currentScript, setCurrentScript] = useState<string>(DEFAULT_HELIX_PHYSICS_PROGRAM);
-  const [currentShape, setCurrentShape] = useState<LiquidMorphShape>('avatar');
+  const [currentShape, setCurrentShape] = useState<LiquidMorphShape>(externalProjection?.shape ?? 'terrain');
   const [accentHex, setAccentHex] = useState<string>('#38bdf8');
   const [pulseCounter, setPulseCounter] = useState<number>(1);
 
@@ -637,128 +654,108 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
           )}
 
           {/* Cuadro de diálogo minimalista: texto + imagen opcional + micrófono + voz + selector Femenina/Masculina */}
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/80 p-2 backdrop-blur-md sm:flex-nowrap">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleAttachImage}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              title="Adjuntar imagen real o captura para mezclar o analizar"
-              aria-label="Adjuntar imagen real"
-              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                attachedImageName
-                  ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/50'
-                  : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <ImagePlus className="h-4 w-4" />
-            </button>
+          <div className="flex flex-col gap-2">
+            {showMorePanel && (
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/95 p-2.5 shadow-xl backdrop-blur-md">
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAttachImage} className="hidden" />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium ${attachedImageName ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/50' : 'bg-white/5 text-slate-200 hover:bg-white/10'}`}
+                >
+                  <ImagePlus className="h-4 w-4" />
+                  <span>{attachedImageName ? 'Imagen lista' : 'Subir imagen'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleVoiceOutput}
+                  className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium ${voiceEnabled ? 'bg-sky-500/15 text-sky-300' : 'bg-white/5 text-slate-400 hover:text-white'}`}
+                >
+                  {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                  <span>{voiceEnabled ? 'Voz ON' : 'Voz OFF'}</span>
+                </button>
+                <div role="group" aria-label="Selector de voz" className="inline-flex h-9 items-center rounded-xl bg-white/5 p-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectVoiceGender('female')}
+                    className={`h-7 rounded-lg px-2.5 font-medium ${voiceGender === 'female' ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Femenina
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectVoiceGender('male')}
+                    className={`h-7 rounded-lg px-2.5 font-medium ${voiceGender === 'male' ? 'bg-white/15 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                    Masculina
+                  </button>
+                </div>
+                <select
+                  aria-label="Selector de Voz Web Speech"
+                  value={selectedVoiceURI}
+                  onChange={(e) => handleSelectVoiceURI(e.target.value)}
+                  className="h-9 max-w-[180px] truncate rounded-xl border border-white/10 bg-white/5 px-2.5 text-xs text-slate-200 focus:outline-none"
+                >
+                  <option value="" className="bg-slate-900 text-slate-100">
+                    Voz: {voiceGender === 'female' ? 'Auto Femenina' : 'Auto Masculina'}
+                  </option>
+                  {availableVoices.map((voice) => (
+                    <option key={voice.voiceURI} value={voice.voiceURI} className="bg-slate-900 text-slate-100">
+                      {voice.name} ({voice.lang})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            <button
-              type="button"
-              onClick={handleToggleMic}
-              title={micActive ? 'Detener micrófono' : 'Hablar por micrófono'}
-              aria-label={micActive ? 'Detener micrófono' : 'Hablar por micrófono'}
-              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                micActive
-                  ? 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-400/50'
-                  : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {micActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleToggleVoiceOutput}
-              title={voiceEnabled ? 'Silenciar voz de Helix' : 'Activar voz de Helix'}
-              aria-label={voiceEnabled ? 'Silenciar voz de Helix' : 'Activar voz de Helix'}
-              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                voiceEnabled
-                  ? 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
-                  : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-            </button>
-
-            {/* Selector discreto Femenina / Masculina + Desplegable minimalista de voces Web Speech API */}
-            <div
-              role="group"
-              aria-label="Selector de voz"
-              className="inline-flex h-10 shrink-0 items-center rounded-xl bg-white/5 p-1 text-xs"
-            >
+            <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/80 p-2 backdrop-blur-md">
               <button
                 type="button"
-                aria-pressed={!selectedVoiceURI && voiceGender === 'female'}
-                onClick={() => handleSelectVoiceGender('female')}
-                className={`h-8 rounded-lg px-2.5 font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  voiceGender === 'female'
-                    ? 'bg-white/15 text-white'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+                onClick={() => setShowMorePanel((v) => !v)}
+                title="Imagen y voz"
+                aria-label="Imagen y voz"
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${showMorePanel || attachedImageName ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-400/40' : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'}`}
               >
-                Femenina
+                <SlidersHorizontal className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                aria-pressed={!selectedVoiceURI && voiceGender === 'male'}
-                onClick={() => handleSelectVoiceGender('male')}
-                className={`h-8 rounded-lg px-2.5 font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  voiceGender === 'male'
-                    ? 'bg-white/15 text-white'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
+                onClick={handleToggleMic}
+                title={micActive ? 'Detener micrófono' : 'Voz activa (micrófono)'}
+                aria-label={micActive ? 'Detener micrófono' : 'Voz activa (micrófono)'}
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${micActive ? 'bg-rose-500/25 text-rose-300 ring-1 ring-rose-400/60' : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'}`}
               >
-                Masculina
+                {micActive ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleAttachImage} className="hidden" />
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                title="Cámara"
+                aria-label="Cámara"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+              >
+                <Camera className="h-4 w-4" />
+              </button>
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Conversa con Helix, aprende o pide una simulación..."
+                className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm text-white placeholder:text-slate-400 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSendInstruction()}
+                disabled={!inputText.trim() && !attachedImageDataUrl}
+                aria-label="Enviar mensaje"
+                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-sky-500 px-4 text-xs font-semibold text-slate-950 hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>Enviar</span>
               </button>
             </div>
-
-            <select
-              aria-label="Selector de Voz Web Speech"
-              title="Elegir voz del motor Web Speech API"
-              value={selectedVoiceURI}
-              onChange={(e) => handleSelectVoiceURI(e.target.value)}
-              className="h-10 max-w-[156px] shrink-0 truncate rounded-xl border border-white/10 bg-white/5 px-2.5 text-xs font-medium text-slate-200 transition-colors hover:bg-white/10 focus:border-sky-400/50 focus:outline-none"
-            >
-              <option value="" className="bg-slate-900 text-slate-100">
-                Voz: {voiceGender === 'female' ? 'Auto Femenina' : 'Auto Masculina'}
-              </option>
-              {availableVoices.map((voice) => (
-                <option
-                  key={voice.voiceURI}
-                  value={voice.voiceURI}
-                  className="bg-slate-900 text-slate-100"
-                >
-                  {voice.name} ({voice.lang})
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Conversa con Helix, aprende o pide una simulación..."
-              className="h-10 min-w-0 flex-1 bg-transparent px-2 text-sm text-white placeholder:text-slate-400 focus:outline-none"
-            />
-
-            <button
-              type="button"
-              onClick={() => void handleSendInstruction()}
-              disabled={!inputText.trim() && !attachedImageDataUrl}
-              aria-label="Enviar mensaje"
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-sky-500 px-4 text-xs font-semibold text-slate-950 transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap"
-            >
-              <Send className="h-3.5 w-3.5" />
-              <span>Enviar</span>
-            </button>
           </div>
         </div>
       </div>
@@ -801,6 +798,7 @@ export function AiStudioWorkspace({ externalProjection }: AiStudioWorkspaceProps
     </div>
   );
 }
+
 
 
 
