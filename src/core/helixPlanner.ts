@@ -87,7 +87,7 @@ const DOMAIN_SIGNAL_RULES: {
   },
   {
     engineId: 'cauchy_optical_sss',
-    preferredToolId: 'canon_sss_optics',
+    preferredToolId: '04_render_3d_pbr',
     triggers: ['luz', 'óptica', 'optica', 'cristal', 'refrac', 'brillo', 'espectr', 'color', 'laser', 'láser', 'imagen', 'foto', 'mezcla', 'radiacion', 'radiación'],
   },
   {
@@ -142,12 +142,12 @@ const DOMAIN_SIGNAL_RULES: {
   },
   {
     engineId: 'interval_formal_guard',
-    preferredToolId: '14_interval_bounds',
+    preferredToolId: 'canon_auth_check',
     triggers: ['salud', 'monitoreo', 'monitor', 'signos', 'vital', 'biomed', 'astronaut', 'glucosa', 'temperatura', 'sueno', 'sueño', 'hospital', 'medic', 'supervivencia', 'umbral'],
   },
   {
     engineId: 'qpsk_telemetry_bus',
-    preferredToolId: '17_qpsk_telemetry',
+    preferredToolId: 'canon_ws_emit',
     triggers: ['telemetria', 'telemetría', 'sensor', 'monitoreo', 'monitor', 'astronaut', 'luna', 'marte', 'aviacion', 'marina', 'transmision'],
   },
 ];
