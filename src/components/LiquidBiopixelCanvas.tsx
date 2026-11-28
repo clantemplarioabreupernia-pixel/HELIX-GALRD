@@ -128,7 +128,7 @@ void main() {
     float skyGrad = clamp(p.y + 0.45, 0.0, 1.0);
     vec3 skyTop = mix(vec3(0.03, 0.07, 0.18), cie1931PhotonToRgb(465.0), 0.35);
     vec3 skyHorizon = mix(vec3(0.08, 0.24, 0.42), u_col, 0.48);
-    vec3 col = mix(skyHorizon, skyTop, pow(skyGrad, 0.75));
+    vec3 col = mix(skyHorizon, skyTop, pow(max(skyGrad, 0.0001), 0.75));
 
     float sunDist = length(p - vec2(-0.32, 0.16));
     col += mix(vec3(0.95, 0.65, 0.25), u_col, 0.4) * exp(-sunDist * sunDist * 14.0) * (0.55 + u_en * 0.35);
@@ -154,7 +154,7 @@ void main() {
 
     col = mix(col, col * biopixelCell + wsSample.rgb * 0.18 * u_wsActive, 0.85);
     col += u_col * touchField * 0.35 * cos(distPtr * 26.0 - u_t * 8.0);
-    O = vec4(pow(max(col, 0.0), vec3(0.92)), 1.0);
+    O = vec4(pow(max(col, vec3(0.0001)), vec3(0.92)), 1.0);
     return;
   }
 
@@ -168,9 +168,9 @@ void main() {
 
   vec3 quantumColor = mix(cie1931PhotonToRgb(lambdaNm), wsSample.rgb, u_wsActive * 0.58);
   vec3 matColor = mix(quantumColor, u_col, 0.38);
-  float spec = pow(clamp(0.5 + hVal * 0.55 + touchField * 0.4, 0.0, 1.0), 3.0);
+  float spec = pow(clamp(0.5 + hVal * 0.55 + touchField * 0.4, 0.0001, 1.0), 3.0);
   vec3 col = matColor * (0.28 + max(0.0, hVal) * 0.95 + u_igzo * 0.25) * (0.85 + 0.15 * facet) + vec3(1.0, 0.97, 0.92) * spec * 0.45 + matColor * rim * 0.22;
-  O = vec4(pow(max(col, 0.0), vec3(0.88)), 1.0);
+  O = vec4(pow(max(col, vec3(0.0001)), vec3(0.88)), 1.0);
 }`;
 export function LiquidBiopixelCanvas({ shape = 'terrain', accentColor, accentHex, energy = 0.45, tension = 0.3, title, titleLabel, subtitle, subtitleLabel, pulseCounter = 0, hideOverlay = false, isSpeaking = false }: LiquidBiopixelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

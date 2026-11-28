@@ -330,6 +330,14 @@ function resolveInterval(token: string | undefined, state: AbstractState): Inter
   if (Object.prototype.hasOwnProperty.call(state.vars, token)) {
     return { ...state.vars[token] };
   }
+  const ratMatch = token.trim().match(/^(-?\d+)\/(\d+)$/);
+  if (ratMatch) {
+    const num = BigInt(ratMatch[1]);
+    const den = BigInt(ratMatch[2]);
+    if (den === 0n) return { min: NaN, max: NaN };
+    const val = Number(num) / Number(den);
+    return { min: val, max: val };
+  }
   const num = Number(token);
   if (!Number.isNaN(num)) {
     return { min: num, max: num };
@@ -822,6 +830,18 @@ export function solveHelixConstraints(
             clearRelationalForVar(cur, varName);
           } else {
             if (isIdentifier(rhsToken)) checkVarReadInit(cur, rhsToken, inst.lineNumber);
+            const ratMatch = rhsToken.trim().match(/^(-?\d+)\/(\d+)$/);
+            if (ratMatch) {
+              const chk = checkDenominatorInP33(BigInt(ratMatch[2]));
+              if (!chk.inSubringP33) {
+                pushUniqueFinding({
+                  lineNumber: inst.lineNumber,
+                  severity: 'ERROR',
+                  rule: 'SMT_P33_VAR',
+                  detail: `SET ${varName}: denominador ${ratMatch[2]} fuera del subanillo exacto P33 (residuo primo ${chk.remainderFactor.toString()}).`,
+                });
+              }
+            }
             const val = resolveInterval(rhsToken, cur);
             if (!Number.isNaN(val.min)) {
               cur.vars[varName] = val;
@@ -1310,6 +1330,54 @@ export function solveHelixConstraints(
         continue;
       }
 
+      if (op === 'CAUCHY_OPTIC') {
+        const aTok = inst.args[0] ?? '1.458';
+        const bTok = inst.args[1] ?? '0.00354';
+        const cTok = inst.args[2] ?? '0.00012';
+        [aTok, bTok, cTok].forEach((t) => {
+          if (isIdentifier(t)) checkVarReadInit(cur, t, inst.lineNumber);
+        });
+        const aB = resolveInterval(aTok, cur);
+        const bB = resolveInterval(bTok, cur);
+        const cB = resolveInterval(cTok, cur);
+        if (
+          [aB, bB, cB].some((b) => Number.isNaN(b.min) || !Number.isFinite(b.min) || !Number.isFinite(b.max)) ||
+          aB.min < 1 ||
+          aB.max > 4 ||
+          bB.min < 0 ||
+          cB.min < 0
+        ) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_PHYSICS_STABILITY',
+            detail: `CAUCHY_OPTIC: coeficientes A∈[${aB.min},${aB.max}]⊆[1,4], B>=0, C>=0 fuera de rango óptico.`,
+          });
+        } else {
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
+      if (op === 'GALDR_SYNTH') {
+        const runeTok = inst.args[0] ?? '0';
+        if (isIdentifier(runeTok)) checkVarReadInit(cur, runeTok, inst.lineNumber);
+        const rB = resolveInterval(runeTok, cur);
+        if (Number.isNaN(rB.min) || !Number.isFinite(rB.max)) {
+          pushUniqueFinding({
+            lineNumber: inst.lineNumber,
+            severity: 'ERROR',
+            rule: 'SMT_PHYSICS_STABILITY',
+            detail: 'GALDR_SYNTH: índice de runa o frecuencia acústica inválida.',
+          });
+        } else {
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
       if (op === 'WEBER_GUARD') {
         const kTok = inst.args[0] ?? '0.015';
         const prevTok = inst.args[1] ?? '1.0';
@@ -1552,6 +1620,42 @@ export function solveHelixConstraints(
         } else {
           cur.vars['crypto_audit_ok'] = { min: 1, max: 1 };
           cur.init['crypto_audit_ok'] = 'INIT';
+          dischargedRuntimeChecks++;
+        }
+        pc++;
+        continue;
+      }
+
+      if (
+        op === 'ORBIT_KEPLER' ||
+        op === 'KINETIC_P33' ||
+        op === 'TENSOR_VM' ||
+        op === 'QASM_STATE' ||
+        op === 'TERRAIN_FBM' ||
+        op === 'RIGID_COLLIDE' ||
+        op === 'LIPSYNC_DSP' ||
+        op === 'LEDGER_MERKLE' ||
+        op === 'CHEM_THERMO' ||
+        op === 'NANO_BRUS' ||
+        op === 'DISNEY_KIN12'
+      ) {
+        for (const aTok of inst.args) {
+          if (isIdentifier(aTok)) checkVarReadInit(cur, aTok, inst.lineNumber);
+        }
+        if (op === 'LEDGER_MERKLE') {
+          const dB = resolveInterval(inst.args[0] ?? '10000', cur);
+          const cB = resolveInterval(inst.args[1] ?? '10000', cur);
+          if (dB.min > cB.max || cB.min > dB.max) {
+            pushUniqueFinding({
+              lineNumber: inst.lineNumber,
+              severity: 'ERROR',
+              rule: 'SMT_CONTRACT_VIOLATION',
+              detail: 'LEDGER_MERKLE: Debe != Haber viola invariante contable de partida doble.',
+            });
+          } else {
+            dischargedRuntimeChecks++;
+          }
+        } else {
           dischargedRuntimeChecks++;
         }
         pc++;

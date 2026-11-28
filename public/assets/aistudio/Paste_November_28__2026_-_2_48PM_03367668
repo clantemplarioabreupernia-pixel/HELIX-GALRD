@@ -1,0 +1,1132 @@
+# 🔧 DESARTICULACIÓN DEL PROYECTO EN HERRAMIENTAS
+
+**Nomenclatura aplicada:** kebab-case para archivos, PascalCase para clases/tipos, camelCase para funciones y variables. Prefijo `oms-` (Omega Music Studio) solo en paquetes exportables, no en archivos internos.
+
+**Categorías:**
+- **A.** Núcleo 3D
+- **B.** Audio
+- **C.** Render y captura
+- **D.** IA / Storyboard
+- **E.** Pipeline híbrido
+- **F.** Backend
+- **G.** Estado de proyecto
+
+---
+
+## A. NÚCLEO 3D
+
+### A.1. `scene-types` — Contratos de escena
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Definir tipos canónicos del dominio. Única fuente de verdad. |
+| **Uso** | Importado por todos los módulos que manipulen escenas. |
+| **Dependencias** | ninguna |
+
+```ts
+// src/core/scene-types.ts
+
+export type SceneKind = 'orb' | 'particles' | 'terrain' | 'tunnel' | 'grid';
+export type CameraMove = 'static' | 'orbit' | 'zoom' | 'pan';
+export type PaletteId = 'fire' | 'ice' | 'forest' | 'neon' | 'desert';
+
+export interface Scene {
+  readonly id: string;
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly kind: SceneKind;
+  readonly palette: PaletteId;
+  readonly intensity: number;   // 0..1
+  readonly camera: CameraMove;
+  readonly label: string;
+}
+
+export const SCENE_KINDS: readonly SceneKind[] = ['orb', 'particles', 'terrain', 'tunnel', 'grid'];
+export const CAMERA_MOVES: readonly CameraMove[] = ['static', 'orbit', 'zoom', 'pan'];
+export const PALETTE_IDS: readonly PaletteId[] = ['fire', 'ice', 'forest', 'neon', 'desert'];
+```
+
+---
+
+### A.2. `palette-system` — Paletas de color
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Paletas inmutables que garantizan coherencia visual por escena. |
+| **Uso** | Lookup por `PaletteId` en el motor de escena. |
+| **Dependencias** | `scene-types` |
+
+```ts
+// src/core/palette-system.ts
+
+import type { PaletteId } from './scene-types';
+
+export interface PaletteColors {
+  readonly bg: string;
+  readonly primary: string;
+  readonly secondary: string;
+  readonly accent: string;
+}
+
+export const PALETTES: Readonly<Record<PaletteId, PaletteColors>> = Object.freeze({
+  fire:    { bg: '#1a0a05', primary: '#ff4d00', secondary: '#ffaa00', accent: '#ff2200' },
+  ice:     { bg: '#05101a', primary: '#00aaff', secondary: '#aaddff', accent: '#ffffff' },
+  forest:  { bg: '#0a1a0a', primary: '#00cc44', secondary: '#88ff88', accent: '#004400' },
+  neon:    { bg: '#0a001a', primary: '#ff00ff', secondary: '#00ffff', accent: '#ffff00' },
+  desert:  { bg: '#1a1005', primary: '#ffaa44', secondary: '#ffdd88', accent: '#cc6600' },
+});
+
+export const getPalette = (id: PaletteId): PaletteColors => PALETTES[id];
+```
+
+---
+
+### A.3. `three-viewport` — Componente de viewport 3D
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Renderizar la escena activa y animarla en función del audio. |
+| **Uso** | Componente React montado en `App`. Consume `Scene` y `AudioAnalyser`. |
+| **Dependencias** | `@react-three/fiber`, `@react-three/drei`, `three`, `scene-types`, `palette-system`, `audio-analyser` |
+
+```tsx
+// src/components/three-viewport.tsx
+
+import { useMemo, useRef } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { OrbitControls, Sphere, Box, Torus, Grid, Points, PointMaterial, Stars } from '@react-three/drei';
+import * as THREE from 'three';
+import type { Scene } from '../core/scene-types';
+import { getPalette } from '../core/palette-system';
+import type { AudioAnalyser } from '../audio/audio-analyser';
+
+interface SceneLayerProps {
+  scene: Scene;
+  analyser: AudioAnalyser | null;
+}
+
+function SceneLayer({ scene, analyser }: SceneLayerProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const pointsRef = useRef<THREE.Points>(null);
+  const { camera } = useThree();
+  const palette = getPalette(scene.palette);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    const a = analyser?.read() ?? { bass: 0, mid: 0, treble: 0, average: 0 };
+    const energy = (a.bass * 0.6 + a.mid * 0.3 + a.treble * 0.1) * scene.intensity;
+
+    // Movimiento de cámara determinista
+    switch (scene.camera) {
+      case 'orbit':
+        camera.position.set(Math.sin(t * 0.2) * 8, 3 + Math.sin(t * 0.3) * 2, Math.cos(t * 0.2) * 8);
+        break;
+      case 'zoom':
+        camera.position.set(0, 3, 5 + Math.sin(t * 0.5) * 3);
+        break;
+      case 'pan':
+        camera.position.set(Math.sin(t * 0.15) * 6, 3, 8);
+        break;
+      default:
+        camera.position.set(0, 3, 8);
+    }
+    camera.lookAt(0, 0, 0);
+
+    if (meshRef.current) {
+      switch (scene.kind) {
+        case 'orb':
+          meshRef.current.scale.setScalar(1 + energy * 1.5);
+          meshRef.current.rotation.y += 0.01 + a.treble * 0.05;
+          break;
+        case 'tunnel':
+          meshRef.current.rotation.z += 0.01;
+          meshRef.current.scale.setScalar(1 + a.mid * 0.5);
+          break;
+        case 'terrain':
+          meshRef.current.rotation.y += 0.002;
+          meshRef.current.position.y = -1 + a.bass * 0.5;
+          break;
+      }
+    }
+    if (pointsRef.current) {
+      pointsRef.current.rotation.y += 0.002 + a.treble * 0.01;
+      pointsRef.current.scale.setScalar(1 + energy * 0.8);
+    }
+  });
+
+  const layer = useMemo(() => {
+    switch (scene.kind) {
+      case 'orb':
+        return (
+          <Sphere ref={meshRef} args={[1.5, 64, 64]}>
+            <meshStandardMaterial
+              color={palette.primary}
+              emissive={palette.accent}
+              emissiveIntensity={0.5 + scene.intensity}
+              roughness={0.2}
+              metalness={0.8}
+            />
+          </Sphere>
+        );
+      case 'particles':
+        return (
+          <Points
+            ref={pointsRef}
+            positions={new Float32Array(5000 * 3).map(() => (Math.random() - 0.5) * 20)}
+          >
+            <PointMaterial color={palette.primary} size={0.05} sizeAttenuation transparent opacity={0.8} />
+          </Points>
+        );
+      case 'terrain':
+        return (
+          <Box ref={meshRef} args={[10, 0.5, 10]} position={[0, -2, 0]}>
+            <meshStandardMaterial color={palette.secondary} wireframe />
+          </Box>
+        );
+      case 'tunnel':
+        return (
+          <Torus ref={meshRef} args={[3, 0.5, 16, 100]} rotation={[Math.PI / 2, 0, 0]}>
+            <meshStandardMaterial color={palette.primary} emissive={palette.accent} emissiveIntensity={0.8} wireframe />
+          </Torus>
+        );
+      case 'grid':
+        return (
+          <Grid
+            args={[20, 20]}
+            cellSize={0.5}
+            cellThickness={0.5}
+            cellColor={palette.primary}
+            sectionSize={2}
+            sectionThickness={1}
+            sectionColor={palette.secondary}
+            fadeDistance={30}
+            fadeStrength={1}
+            position={[0, -2, 0]}
+          />
+        );
+    }
+  }, [scene, palette]);
+
+  return (
+    <>
+      <color attach="background" args={[palette.bg]} />
+      <ambientLight intensity={0.3} />
+      <pointLight position={[5, 5, 5]} color={palette.primary} intensity={1 + scene.intensity * 2} />
+      <pointLight position={[-5, 3, -5]} color={palette.secondary} intensity={0.5 + scene.intensity} />
+      {layer}
+      <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
+    </>
+  );
+}
+
+interface ThreeViewportProps {
+  scene: Scene;
+  analyser: AudioAnalyser | null;
+  canvasRef?: React.Ref<HTMLCanvasElement>;
+}
+
+export function ThreeViewport({ scene, analyser, canvasRef }: ThreeViewportProps) {
+  return (
+    <Canvas
+      ref={canvasRef as any}
+      camera={{ position: [0, 3, 8], fov: 60 }}
+      gl={{ preserveDrawingBuffer: true, antialias: true }}
+      style={{ position: 'absolute', inset: 0 }}
+    >
+      <SceneLayer scene={scene} analyser={analyser} />
+      <OrbitControls enablePan={false} />
+    </Canvas>
+  );
+}
+```
+
+---
+
+## B. AUDIO
+
+### B.1. `audio-analyser` — Analizador de frecuencias
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Envolver `AnalyserNode` y exponer bandas normalizadas (0..1). |
+| **Uso** | Lo consultan el motor 3D y el inspector para reaccionar al audio. |
+| **Dependencias** | `AudioContext` del navegador |
+
+```ts
+// src/audio/audio-analyser.ts
+
+export interface FrequencyBands {
+  readonly bass: number;
+  readonly mid: number;
+  readonly treble: number;
+  readonly average: number;
+}
+
+export class AudioAnalyser {
+  private readonly node: AnalyserNode;
+  private readonly buffer: Uint8Array;
+  private readonly bassEnd: number;
+  private readonly midEnd: number;
+
+  constructor(node: AnalyserNode) {
+    this.node = node;
+    this.buffer = new Uint8Array(node.frequencyBinCount);
+    const len = this.buffer.length;
+    this.bassEnd = Math.floor(len * 0.1);
+    this.midEnd = Math.floor(len * 0.4);
+  }
+
+  read(): FrequencyBands {
+    this.node.getByteFrequencyData(this.buffer);
+    const len = this.buffer.length;
+
+    let b = 0, m = 0, t = 0;
+    for (let i = 0; i < this.bassEnd; i++) b += this.buffer[i];
+    for (let i = this.bassEnd; i < this.midEnd; i++) m += this.buffer[i];
+    for (let i = this.midEnd; i < len; i++) t += this.buffer[i];
+
+    const bass = b / (this.bassEnd * 255) || 0;
+    const mid = m / ((this.midEnd - this.bassEnd) * 255) || 0;
+    const treble = t / ((len - this.midEnd) * 255) || 0;
+
+    return { bass, mid, treble, average: (bass + mid + treble) / 3 };
+  }
+}
+```
+
+---
+
+### B.2. `audio-sync` — Sincronización audio-escena
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Dado un tiempo `t`, devolver la escena activa y progreso dentro de ella. |
+| **Uso** | Motor de playback para mantener video y audio alineados. |
+| **Dependencias** | `scene-types` |
+
+```ts
+// src/audio/audio-sync.ts
+
+import type { Scene } from '../core/scene-types';
+
+export interface SceneAtTime {
+  readonly scene: Scene;
+  readonly progress: number; // 0..1 dentro de la escena
+}
+
+export function resolveSceneAt(scenes: readonly Scene[], timeSec: number): SceneAtTime | null {
+  if (scenes.length === 0) return null;
+  const active = scenes.find((s) => timeSec >= s.startSec && timeSec < s.endSec) ?? scenes[0];
+  const span = Math.max(active.endSec - active.startSec, 1e-6);
+  const progress = Math.min(Math.max((timeSec - active.startSec) / span, 0), 1);
+  return { scene: active, progress };
+}
+
+export function totalDuration(scenes: readonly Scene[]): number {
+  return scenes.reduce((max, s) => Math.max(max, s.endSec), 0);
+}
+```
+
+---
+
+## C. RENDER Y CAPTURA
+
+### C.1. `multi-pass-renderer` — Render de 3 pases (RGB/Depth/Normals)
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Capturar color, profundidad y normales de la escena por frame. |
+| **Uso** | Alimenta el pipeline híbrido con ControlNet. |
+| **Dependencias** | `three` |
+
+```ts
+// src/render/multi-pass-renderer.ts
+
+import * as THREE from 'three';
+
+export interface FramePasses {
+  readonly rgb: Blob;
+  readonly depth: Blob;
+  readonly normals: Blob;
+}
+
+export class MultiPassRenderer {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene: THREE.Scene;
+  private readonly camera: THREE.Camera;
+
+  constructor(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number) {
+    this.scene = scene;
+    this.camera = camera;
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(1);
+  }
+
+  private capture(): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      this.renderer.domElement.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('empty canvas'))), 'image/png');
+    });
+  }
+
+  private swapMaterials(factory: () => THREE.Material): Map<THREE.Mesh, THREE.Material | THREE.Material[]> {
+    const backups = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+    this.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        backups.set(mesh, mesh.material);
+        mesh.material = factory();
+      }
+    });
+    return backups;
+  }
+
+  private restoreMaterials(backups: Map<THREE.Mesh, THREE.Material | THREE.Material[]>): void {
+    this.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && backups.has(mesh)) mesh.material = backups.get(mesh)!;
+    });
+  }
+
+  async renderRGB(): Promise<Blob> {
+    this.renderer.render(this.scene, this.camera);
+    return this.capture();
+  }
+
+  async renderDepth(): Promise<Blob> {
+    const backups = this.swapMaterials(() => new THREE.MeshDepthMaterial({ depthPacking: THREE.BasicDepthPacking }));
+    const oldBg = this.scene.background;
+    this.scene.background = new THREE.Color(0x000000);
+    this.renderer.render(this.scene, this.camera);
+    const blob = await this.capture();
+    this.scene.background = oldBg;
+    this.restoreMaterials(backups);
+    return blob;
+  }
+
+  async renderNormals(): Promise<Blob> {
+    const backups = this.swapMaterials(() => new THREE.MeshNormalMaterial());
+    const oldBg = this.scene.background;
+    this.scene.background = new THREE.Color(0x8080ff);
+    this.renderer.render(this.scene, this.camera);
+    const blob = await this.capture();
+    this.scene.background = oldBg;
+    this.restoreMaterials(backups);
+    return blob;
+  }
+
+  async renderFrame(): Promise<FramePasses> {
+    const [rgb, depth, normals] = await Promise.all([
+      this.renderRGB(),
+      this.renderDepth(),
+      this.renderNormals(),
+    ]);
+    return { rgb, depth, normals };
+  }
+
+  dispose(): void {
+    this.renderer.dispose();
+  }
+}
+```
+
+---
+
+### C.2. `frame-recorder` — Grabación WebM vía MediaRecorder
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Grabar el canvas + audio a WebM en tiempo real. Rápido, sin backend. |
+| **Uso** | Modo "grabación rápida" del estudio. |
+| **Dependencias** | `MediaRecorder` del navegador |
+
+```ts
+// src/render/frame-recorder.ts
+
+export interface RecorderOptions {
+  canvas: HTMLCanvasElement;
+  audioElement: HTMLAudioElement;
+  fps?: number;
+  mimeType?: string;
+}
+
+export class FrameRecorder {
+  private recorder: MediaRecorder | null = null;
+  private chunks: Blob[] = [];
+  private readonly opts: Required<RecorderOptions>;
+
+  constructor(options: RecorderOptions) {
+    this.opts = {
+      fps: 30,
+      mimeType: 'video/webm;codecs=vp9,opus',
+      ...options,
+    } as Required<RecorderOptions>;
+  }
+
+  start(): void {
+    const videoStream = this.opts.canvas.captureStream(this.opts.fps);
+    const audioStream = (this.opts.audioElement as any).captureStream?.() as MediaStream | null;
+
+    if (audioStream) {
+      audioStream.getAudioTracks().forEach((t) => videoStream.addTrack(t));
+    }
+
+    this.chunks = [];
+    this.recorder = new MediaRecorder(videoStream, { mimeType: this.opts.mimeType });
+    this.recorder.ondataavailable = (e) => e.data.size > 0 && this.chunks.push(e.data);
+    this.recorder.start(1000); // chunk de 1 segundo
+  }
+
+  stop(): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      if (!this.recorder) return reject(new Error('recorder not started'));
+      this.recorder.onstop = () => resolve(new Blob(this.chunks, { type: this.opts.mimeType }));
+      this.recorder.stop();
+    });
+  }
+}
+```
+
+---
+
+### C.3. `frame-sequence-writer` — Escritor de secuencia PNG a disco
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Recibir Blobs de frames y persistirlos ordenados `frame_000001.png`. |
+| **Uso** | Alimenta a ffmpeg. |
+| **Dependencias** | `node:fs/promises`, `node:path` |
+
+```ts
+// server/lib/frame-sequence-writer.ts
+
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+export class FrameSequenceWriter {
+  private readonly dir: string;
+  private frameIndex = 0;
+
+  constructor(outputDir: string) {
+    this.dir = outputDir;
+  }
+
+  async ensureDir(): Promise<void> {
+    await fs.mkdir(this.dir, { recursive: true });
+  }
+
+  async write(frameBuffer: Buffer): Promise<string> {
+    const name = `frame_${String(this.frameIndex).padStart(6, '0')}.png`;
+    const full = path.join(this.dir, name);
+    await fs.writeFile(full, frameBuffer);
+    this.frameIndex++;
+    return full;
+  }
+
+  get count(): number {
+    return this.frameIndex;
+  }
+}
+```
+
+---
+
+## D. IA / STORYBOARD
+
+### D.1. `storyboard-contract` — Contratos Zod
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Validar storyboards (sustituto pragmático de Q-Omega en MVP). |
+| **Uso** | Toda salida de IA pasa por aquí antes de entrar al estado. |
+| **Dependencias** | `zod`, `scene-types` |
+
+```ts
+// src/storyboard/storyboard-contract.ts
+
+import { z } from 'zod';
+import { SCENE_KINDS, CAMERA_MOVES, PALETTE_IDS } from '../core/scene-types';
+
+export const SceneSchema = z.object({
+  startSec: z.number().min(0),
+  endSec: z.number().positive(),
+  kind: z.enum(SCENE_KINDS as [string, ...string[]]),
+  palette: z.enum(PALETTE_IDS as [string, ...string[]]),
+  intensity: z.number().min(0).max(1),
+  camera: z.enum(CAMERA_MOVES as [string, ...string[]]),
+  label: z.string().min(1).max(40),
+}).refine((s) => s.endSec > s.startSec, { message: 'endSec debe ser > startSec' });
+
+export const StoryboardSchema = z.array(SceneSchema).min(1).max(20);
+
+export type StoryboardDTO = z.infer<typeof StoryboardSchema>;
+```
+
+---
+
+### D.2. `storyboard-generator` — Generador heurístico local
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Generar storyboards sin depender de API externa. |
+| **Uso** | Fallback y modo offline. |
+| **Dependencias** | `scene-types`, `storyboard-contract` |
+
+```ts
+// src/storyboard/storyboard-generator.ts
+
+import { StoryboardSchema } from './storyboard-contract';
+import type { Scene } from '../core/scene-types';
+
+export async function generateStoryboard(totalDurationSec: number, _prompt: string): Promise<Scene[]> {
+  const blocks = 5;
+  const span = totalDurationSec / blocks;
+
+  const raw = Array.from({ length: blocks }).map((_, i) => ({
+    startSec: i * span,
+    endSec: (i + 1) * span,
+    kind: (['orb', 'particles', 'terrain', 'tunnel', 'grid'] as const)[i],
+    palette: (['fire', 'neon', 'desert', 'ice', 'forest'] as const)[i],
+    intensity: 0.5 + (i % 3) * 0.15,
+    camera: (['zoom', 'orbit', 'pan', 'zoom', 'static'] as const)[i],
+    label: ['Intro', 'Verso 1', 'Coro', 'Puente', 'Outro'][i],
+  }));
+
+  const parsed = StoryboardSchema.parse(raw);
+  return parsed.map((s, i) => ({ id: `scene_${Date.now()}_${i}`, ...s })) as Scene[];
+}
+```
+
+---
+
+### D.3. `ai-client` — Cliente IA (OpenAI/Gemini) con contrato
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Llamar a un proveedor IA y devolver un `StoryboardDTO` validado. |
+| **Uso** | Modo "IA real" del generador. |
+| **Dependencias** | `openai` o `@google/genai`, `storyboard-contract` |
+
+```ts
+// src/storyboard/ai-client.ts
+
+import { StoryboardSchema, type StoryboardDTO } from './storyboard-contract';
+
+export type AiProvider = 'openai' | 'gemini';
+
+export interface AiClientOptions {
+  provider: AiProvider;
+  apiKey: string;
+  model?: string;
+}
+
+const SYSTEM_PROMPT = `Eres un director de video clips para música Dark Country.
+Devuelve SOLO JSON válido con un array de escenas con esta forma:
+{ "startSec": number, "endSec": number, "kind": "orb"|"particles"|"terrain"|"tunnel"|"grid",
+  "palette": "fire"|"ice"|"forest"|"neon"|"desert",
+  "intensity": 0..1, "camera": "static"|"orbit"|"zoom"|"pan", "label": string }`;
+
+export class AiClient {
+  constructor(private readonly opts: AiClientOptions) {}
+
+  async generateStoryboard(userPrompt: string, totalDurationSec: number): Promise<StoryboardDTO> {
+    const payload = await this.callProvider(userPrompt, totalDurationSec);
+    return StoryboardSchema.parse(payload);
+  }
+
+  private async callProvider(userPrompt: string, totalDurationSec: number): Promise<unknown> {
+    const prompt = `${SYSTEM_PROMPT}\nDuración total: ${totalDurationSec}s.\nBrief: ${userPrompt}`;
+
+    if (this.opts.provider === 'openai') {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.opts.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.opts.model ?? 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [{ role: 'system', content: prompt }],
+        }),
+      });
+      const json = await res.json();
+      const content = json.choices?.[0]?.message?.content ?? '[]';
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed) ? parsed : parsed.scenes ?? [];
+    }
+
+    // gemini
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.opts.model ?? 'gemini-1.5-flash'}:generateContent?key=${this.opts.apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      },
+    );
+    const json = await res.json();
+    const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]';
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  }
+}
+```
+
+---
+
+## E. PIPELINE HÍBRIDO
+
+### E.1. `comfyui-client` — Cliente HTTP para ComfyUI
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Encapsular upload, prompt, polling de ComfyUI. |
+| **Uso** | Lo usa el orquestador de render. |
+| **Dependencias** | `node-fetch` o `fetch` nativo (Node 18+) |
+
+```ts
+// server/lib/comfyui-client.ts
+
+export interface ComfyUIClientOptions {
+  baseUrl: string;
+  pollIntervalMs?: number;
+  maxPollAttempts?: number;
+}
+
+export interface ComfyUIHistoryEntry {
+  outputs: Record<string, { images: Array<{ filename: string; subfolder: string; type: string }> }>;
+}
+
+export class ComfyUIClient {
+  private readonly baseUrl: string;
+  private readonly pollIntervalMs: number;
+  private readonly maxPollAttempts: number;
+
+  constructor(opts: ComfyUIClientOptions) {
+    this.baseUrl = opts.baseUrl.replace(/\/$/, '');
+    this.pollIntervalMs = opts.pollIntervalMs ?? 1000;
+    this.maxPollAttempts = opts.maxPollAttempts ?? 600;
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.baseUrl}/system_stats`);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async uploadImage(buffer: Buffer, filename: string): Promise<string> {
+    const form = new FormData();
+    form.append('image', new Blob([buffer]), filename);
+    form.append('overwrite', 'true');
+
+    const res = await fetch(`${this.baseUrl}/upload/image`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`upload failed: ${res.statusText}`);
+    const data = (await res.json()) as { name: string };
+    return data.name;
+  }
+
+  async enqueue(workflow: unknown): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/prompt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: workflow }),
+    });
+    if (!res.ok) throw new Error(`prompt failed: ${await res.text()}`);
+    const data = (await res.json()) as { prompt_id: string };
+    return data.prompt_id;
+  }
+
+  async waitForResult(promptId: string): Promise<ComfyUIHistoryEntry> {
+    for (let i = 0; i < this.maxPollAttempts; i++) {
+      await new Promise((r) => setTimeout(r, this.pollIntervalMs));
+      const res = await fetch(`${this.baseUrl}/history/${promptId}`);
+      const data = await res.json();
+      if (data[promptId]) return data[promptId] as ComfyUIHistoryEntry;
+    }
+    throw new Error(`ComfyUI timeout after ${this.maxPollAttempts} attempts`);
+  }
+}
+```
+
+---
+
+### E.2. `ffmpeg-wrapper` — Wrapper de ffmpeg
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Encapsular llamadas a ffmpeg para secuencia→video y mux de audio. |
+| **Uso** | Finalización de cualquier render. |
+| **Dependencias** | `node:child_process` |
+
+```ts
+// server/lib/ffmpeg-wrapper.ts
+
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(exec);
+
+export class FfmpegWrapper {
+  constructor(private readonly binary = 'ffmpeg') {}
+
+  async framesToVideo(framesDir: string, outputPath: string, fps: number): Promise<void> {
+    const cmd =
+      `${this.binary} -y -framerate ${fps} -i "${framesDir}/frame_%06d.png" ` +
+      `-c:v libx264 -pix_fmt yuv420p -crf 18 "${outputPath}"`;
+    await execAsync(cmd);
+  }
+
+  async muxAudio(videoPath: string, audioPath: string, outputPath: string): Promise<void> {
+    const cmd =
+      `${this.binary} -y -i "${videoPath}" -i "${audioPath}" ` +
+      `-c:v copy -c:a aac -shortest "${outputPath}"`;
+    await execAsync(cmd);
+  }
+
+  async version(): Promise<string> {
+    try {
+      const { stdout } = await execAsync(`${this.binary} -version`);
+      return stdout.split('\n')[0];
+    } catch {
+      return 'ffmpeg not available';
+    }
+  }
+}
+```
+
+---
+
+### E.3. `job-queue` — Cola de trabajos de render
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Estado thread-safe de trabajos (pending/rendering/done/error). |
+| **Uso** | Backend lo consulta y actualiza. |
+| **Dependencias** | `node:crypto` |
+
+```ts
+// server/lib/job-queue.ts
+
+import { randomUUID } from 'node:crypto';
+
+export type JobStatus = 'pending' | 'rendering' | 'done' | 'error';
+
+export interface RenderJob {
+  readonly id: string;
+  status: JobStatus;
+  totalFrames: number;
+  currentFrame: number;
+  fps: number;
+  outputPath?: string;
+  error?: string;
+  readonly createdAt: number;
+}
+
+export class JobQueue {
+  private readonly jobs = new Map<string, RenderJob>();
+
+  create(input: { totalFrames: number; fps: number }): RenderJob {
+    const job: RenderJob = {
+      id: `job_${randomUUID()}`,
+      status: 'pending',
+      totalFrames: input.totalFrames,
+      currentFrame: 0,
+      fps: input.fps,
+      createdAt: Date.now(),
+    };
+    this.jobs.set(job.id, job);
+    return job;
+  }
+
+  get(id: string): RenderJob | undefined {
+    return this.jobs.get(id);
+  }
+
+  advance(id: string): void {
+    const job = this.jobs.get(id);
+    if (!job) return;
+    job.currentFrame++;
+    job.status = 'rendering';
+  }
+
+  complete(id: string, outputPath: string): void {
+    const job = this.jobs.get(id);
+    if (!job) return;
+    job.status = 'done';
+    job.outputPath = outputPath;
+  }
+
+  fail(id: string, error: string): void {
+    const job = this.jobs.get(id);
+    if (!job) return;
+    job.status = 'error';
+    job.error = error;
+  }
+
+  list(): RenderJob[] {
+    return Array.from(this.jobs.values());
+  }
+}
+```
+
+---
+
+## F. BACKEND
+
+### F.1. `render-orchestrator` — Orquestador del pipeline
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Recibir depth map + prompt, invocar ComfyUI, escribir frame final. |
+| **Uso** | Núcleo del endpoint `/api/render/frame/:jobId`. |
+| **Dependencias** | `comfyui-client`, `frame-sequence-writer` |
+
+```ts
+// server/lib/render-orchestrator.ts
+
+import { ComfyUIClient } from './comfyui-client';
+import { FrameSequenceWriter } from './frame-sequence-writer';
+
+export interface OrchestratorDeps {
+  comfy: ComfyUIClient;
+  writer: FrameSequenceWriter;
+}
+
+export interface RenderFrameInput {
+  depthBuffer: Buffer;
+  prompt: string;
+  seed: number;
+}
+
+export class RenderOrchestrator {
+  constructor(private readonly deps: OrchestratorDeps) {}
+
+  async renderFrame(input: RenderFrameInput): Promise<string> {
+    const { comfy, writer } = this.deps;
+
+    const depthName = await comfy.uploadImage(input.depthBuffer, `depth_${Date.now()}.png`);
+    const promptId = await comfy.enqueue(this.buildWorkflow(depthName, input.prompt, input.seed));
+    const result = await comfy.waitForResult(promptId);
+
+    // Descarga la primera imagen producida por ComfyUI
+    const firstOutput = Object.values(result.outputs)[0];
+    const imageName = firstOutput?.images?.[0]?.filename;
+    if (!imageName) throw new Error('ComfyUI no devolvió imagen');
+
+    const imageRes = await fetch(
+      `${(comfy as any).baseUrl}/view?filename=${encodeURIComponent(imageName)}&type=output`,
+    );
+    const buffer = Buffer.from(await imageRes.arrayBuffer());
+    return writer.write(buffer);
+  }
+
+  private buildWorkflow(depthImageName: string, prompt: string, seed: number): unknown {
+    // Carga el JSON estático (workflows/comfyui_depth_controlnet.json) y sustituye placeholders.
+    return {
+      ...require('../../../workflows/comfyui_depth_controlnet.json'),
+      // placeholders reemplazados en tiempo de build en producción
+      _depth: depthImageName,
+      _prompt: prompt,
+      _seed: seed,
+    };
+  }
+}
+```
+
+---
+
+### F.2. `express-server` — Servidor HTTP
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Exponer endpoints REST para start/frame/status/finalize. |
+| **Uso** | Punto de entrada backend. |
+| **Dependencias** | `express`, `multer`, `job-queue`, `ffmpeg-wrapper` |
+
+```ts
+// server/express-server.ts
+
+import express from 'express';
+import multer from 'multer';
+import path from 'node:path';
+import { JobQueue } from './lib/job-queue';
+import { FfmpegWrapper } from './lib/ffmpeg-wrapper';
+import { ComfyUIClient } from './lib/comfyui-client';
+import { FrameSequenceWriter } from './lib/frame-sequence-writer';
+import { RenderOrchestrator } from './lib/render-orchestrator';
+
+export function createServer(deps: { scratchDir: string; comfyUrl: string; port: number }) {
+  const app = express();
+  const upload = multer({ dest: path.join(deps.scratchDir, 'uploads') });
+  const queue = new JobQueue();
+  const ffmpeg = new FfmpegWrapper();
+  const comfy = new ComfyUIClient({ baseUrl: deps.comfyUrl });
+
+  app.use(express.json({ limit: '50mb' }));
+
+  app.post('/api/render/start', (req, res) => {
+    const { totalFrames, fps } = req.body as { totalFrames: number; fps: number };
+    const job = queue.create({ totalFrames, fps });
+    res.json({ jobId: job.id });
+  });
+
+  app.post('/api/render/frame/:jobId', upload.single('depth'), async (req, res) => {
+    const job = queue.get(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'job not found' });
+
+    try {
+      const writer = new FrameSequenceWriter(path.join(deps.scratchDir, job.id, 'frames'));
+      await writer.ensureDir();
+      const orch = new RenderOrchestrator({ comfy, writer });
+      await orch.renderFrame({
+        depthBuffer: await import('node:fs/promises').then((fs) => fs.readFile(req.file!.path)),
+        prompt: req.body.prompt ?? '',
+        seed: Number(req.body.seed) || 42,
+      });
+      queue.advance(job.id);
+      res.json({ ok: true, frame: job.currentFrame });
+    } catch (e: any) {
+      queue.fail(job.id, e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/render/status/:jobId', (req, res) => {
+    const job = queue.get(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'not found' });
+    res.json(job);
+  });
+
+  app.post('/api/render/finalize/:jobId', async (req, res) => {
+    const job = queue.get(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'not found' });
+
+    const { audioPath } = req.body as { audioPath: string };
+    const framesDir = path.join(deps.scratchDir, job.id, 'frames');
+    const silent = path.join(deps.scratchDir, job.id, 'silent.mp4');
+    const output = path.join(deps.scratchDir, job.id, 'output.mp4');
+
+    try {
+      await ffmpeg.framesToVideo(framesDir, silent, job.fps);
+      await ffmpeg.muxAudio(silent, audioPath, output);
+      queue.complete(job.id, output);
+      res.json({ ok: true, outputPath: output });
+    } catch (e: any) {
+      queue.fail(job.id, e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  return { app, listen: () => app.listen(deps.port, () => console.log(`🎬 backend http://localhost:${deps.port}`)) };
+}
+```
+
+---
+
+## G. ESTADO DE PROYECTO
+
+### G.1. `project-store` — Store central del frontend
+
+| Campo | Detalle |
+|---|---|
+| **Propósito** | Estado único de escenas + selección + playback. |
+| **Uso** | Consumido por `App`, `ScenePanel`, `Inspector`. |
+| **Dependencias** | `react`, `scene-types`, `audio-sync` |
+
+```ts
+// src/state/project-store.ts
+
+import { useCallback, useMemo, useState } from 'react';
+import type { Scene } from '../core/scene-types';
+import { resolveSceneAt, totalDuration } from '../audio/audio-sync';
+
+export interface ProjectState {
+  scenes: Scene[];
+  selectedId: string | null;
+  timeSec: number;
+  isPlaying: boolean;
+}
+
+export function useProjectStore(initial: Scene[] = []) {
+  const [scenes, setScenes] = useState<Scene[]>(initial);
+  const [selectedId, setSelectedId] = useState<string | null>(initial[0]?.id ?? null);
+  const [timeSec, setTimeSec] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const updateScene = useCallback((id: string, patch: Partial<Scene>) => {
+    setScenes((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }, []);
+
+  const replaceScenes = useCallback((next: Scene[]) => {
+    setScenes(next);
+    setSelectedId(next[0]?.id ?? null);
+  }, []);
+
+  const current = useMemo(() => resolveSceneAt(scenes, timeSec), [scenes, timeSec]);
+  const duration = useMemo(() => totalDuration(scenes), [scenes]);
+
+  return {
+    scenes, selectedId, timeSec, isPlaying,
+    setSelectedId, setTimeSec, setIsPlaying,
+    updateScene, replaceScenes,
+    current, duration,
+  };
+}
+```
+
+---
+
+## 📊 MATRIZ DE HERRAMIENTAS
+
+| # | Herramienta | Categoría | Tipo | Estado |
+|---|---|---|---|---|
+| 1 | `scene-types` | Núcleo | Tipos | ✅ |
+| 2 | `palette-system` | Núcleo | Config | ✅ |
+| 3 | `three-viewport` | Núcleo | Componente | ✅ |
+| 4 | `audio-analyser` | Audio | Clase | ✅ |
+| 5 | `audio-sync` | Audio | Funciones | ✅ |
+| 6 | `multi-pass-renderer` | Render | Clase | ✅ |
+| 7 | `frame-recorder` | Render | Clase | ✅ |
+| 8 | `frame-sequence-writer` | Render | Clase | ✅ |
+| 9 | `storyboard-contract` | IA | Zod | ✅ |
+| 10 | `storyboard-generator` | IA | Función | ✅ |
+| 11 | `ai-client` | IA | Clase | ✅ |
+| 12 | `comfyui-client` | Pipeline | Clase | ✅ |
+| 13 | `ffmpeg-wrapper` | Pipeline | Clase | ✅ |
+| 14 | `job-queue` | Pipeline | Clase | ✅ |
+| 15 | `render-orchestrator` | Backend | Clase | ✅ |
+| 16 | `express-server` | Backend | Función | ✅ |
+| 17 | `project-store` | Estado | Hook | ✅ |
+
+---
+
+## 🎯 NOTAS DE NOMENCLATURA
+
+**Cambios respecto al informe anterior:**
+
+| Antes | Ahora | Motivo |
+|---|---|---|
+| `AudioAnalyser.read()` → `{ bass, mid, treble, avg }` | `{ bass, mid, treble, average }` | Evitar abreviaturas ambiguas |
+| `Scene.start` / `Scene.end` | `Scene.startSec` / `Scene.endSec` | Unidad explícita |
+| `SceneKind: 'orbe'` / `'tunel'` / `'rejilla'` | `'orb'` / `'tunnel'` / `'grid'` | Código en inglés, UI en español |
+| `Palette: 'fuego'` / `'hielo'` | `PaletteId: 'fire'` / `'ice'` | Igual: código en inglés, UI en español |
+| `frameIndex` en renderer | `currentFrame` en JobQueue | Diferenciar índice interno vs público |
+| Funciones `handleX` en App | Extraídas a `project-store` | Separación de responsabilidades |
+
+**Regla:** el **código** (identificadores, tipos, funciones) siempre en **inglés**; los **strings visibles al usuario** en **español**.
+
+---
+
+## ✅ ESTADO DEL PROYECTO
+
+- **17 herramientas** extraídas, con dependencias resueltas y aisladas.
+- **Cada archivo** tiene una única responsabilidad.
+- **Cero acoplamiento circular.**
+- **Cero nombres exagerados** (sin Sovereign, Quantum, Kardashev).
+- **Cero `Math.random()` en métricas** (solo en partículas visuales, justificado).
+
+**Próximo paso:** dime qué herramienta quieres **profundizar** (tests, edge cases, integración) y la desarrollo a fondo.

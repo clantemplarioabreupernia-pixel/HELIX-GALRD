@@ -42,6 +42,8 @@ export interface HelixRegisteredTool {
   };
   hlxSource: string;
   parents?: string[];
+  generation?: number;
+  lineageLeaves?: readonly HelixRegisteredTool[];
   keywords: string[];
 }
 
@@ -160,6 +162,32 @@ function classifyCanonicalCell(cell: HelixCell): {
       return { domain: 'IA Acotada y Orquestación', engineId: 'annealing_optimizer' };
     case 'crypto_audit':
       return { domain: 'Finanzas y Criptografía', engineId: 'crypto_ed25519_merkle' };
+    case 'cauchy_optic':
+      return { domain: 'Materia Digital y Fluidos', engineId: 'cauchy_optical_sss' };
+    case 'nano_brus':
+      return { domain: 'Materia Digital y Fluidos', engineId: 'nanotech_biopixel_quantum' };
+    case 'tensor_vm':
+      return { domain: 'Materia Digital y Fluidos', engineId: 'cauchy_tensor_von_mises' };
+    case 'galdr_synth':
+      return { domain: 'Cinematografía y Audio', engineId: 'audio_p33_cymatic' };
+    case 'lipsync_dsp':
+      return { domain: 'Cinematografía y Audio', engineId: 'lipsync_3band_dsp' };
+    case 'disney_kin12':
+      return { domain: 'Cinematografía y Audio', engineId: 'sintergia_cinema_spline' };
+    case 'orbit_kepler':
+      return { domain: 'Espacio y Gravitación', engineId: 'orbital_kepler_verlet' };
+    case 'kinetic_p33':
+      return { domain: 'Espacio y Gravitación', engineId: 'kinetic_p33_rational' };
+    case 'qasm_state':
+      return { domain: 'Computación Cuántica', engineId: 'quantum_statevector_qasm' };
+    case 'terrain_fbm':
+      return { domain: 'Videojuegos y Mundos 3D', engineId: 'terrain_fbm_mulberry' };
+    case 'rigid_collide':
+      return { domain: 'Videojuegos y Mundos 3D', engineId: 'rigid_collision_3d' };
+    case 'ledger_merkle':
+      return { domain: 'Finanzas y Criptografía', engineId: 'ledger_p33_merkle' };
+    case 'chem_thermo':
+      return { domain: 'Química y Termodinámica', engineId: 'chemistry_quantum_thermodynamics' };
     default:
       return { domain: 'Kernel, Red y Telemetría', engineId: 'kinetic_p33_rational' };
   }

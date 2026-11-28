@@ -1,0 +1,1387 @@
+# 🔩 DESARTICULACIÓN MODULAR — PLATAFORMA DE JUEGOS
+
+**Metodología:** descomposición del monolito en **12 módulos funcionales** independientes, cada uno con propósito único, contrato tipado y código fuente completo. Se corrige nomenclatura (kebab-case archivos, PascalCase componentes, camelCase variables, SCREAMING_SNAKE constantes).
+
+---
+
+## 📑 ÍNDICE DE MÓDULOS
+
+| # | Módulo | Propósito | Capa | Archivos |
+|---|---|---|---|---|
+| 01 | `config` | Variables de entorno validadas + constantes globales | Transversal | 2 |
+| 02 | `types` | Contratos tipados (world, api, state) | Transversal | 4 |
+| 03 | `lib/utils` | Utilidades puras (cn, prng, math, http) | Transversal | 4 |
+| 04 | `lib/ai` | Cliente Gemini + generador de mundos + prompts | Backend/Client | 4 |
+| 05 | `server/validation` | Verificación formal con Z3 | Backend | 2 |
+| 06 | `server` | App Express + rutas + middleware | Backend | 6 |
+| 07 | `store` | Estado global cliente (Zustand) | Client | 2 |
+| 08 | `engine` | Motor Three.js (Scene, Terrain, Camera, Lights) | Client | 5 |
+| 09 | `components` | UI atómica + layout | Client | 6 |
+| 10 | `hooks` | Hooks de negocio | Client | 2 |
+| 11 | `pages` | Vistas enrutadas | Client | 2 |
+| 12 | `root` | Entry points | Client | 2 |
+
+**Total:** 12 módulos · 41 archivos · ~2.400 LOC
+
+---
+
+# 01 — MÓDULO CONFIG
+
+**Uso:** centralizar configuración. Único lugar donde se leen `process.env` / `import.meta.env`. Fallar rápido si falta algo crítico.
+
+### `src/config/env.ts`
+```ts
+// Server-side: variables de entorno validadas en arranque.
+// Client-side: solo VITE_* es accesible.
+export const SERVER_ENV = {
+  port: Number(process.env.PORT ?? 3001),
+  nodeEnv: (process.env.NODE_ENV ?? "development") as "development" | "production" | "test",
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+} as const;
+
+export const CLIENT_ENV = {
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "",
+  appName: import.meta.env.VITE_APP_NAME ?? "Plataforma de Juegos",
+} as const;
+
+export function assertServerEnv(): void {
+  if (!SERVER_ENV.geminiApiKey) {
+    throw new Error("[env] GEMINI_API_KEY no configurada");
+  }
+  if (SERVER_ENV.nodeEnv === "production" && SERVER_ENV.geminiApiKey.length < 20) {
+    throw new Error("[env] GEMINI_API_KEY inválida en producción");
+  }
+}
+```
+
+### `src/config/constants.ts`
+```ts
+export const APP = {
+  name: "Plataforma de Juegos",
+  description:
+    "Creador de Videojuegos y Aventuras Cinemáticas 3D en tiempo real con físicas de terreno, dirección de cámara de cine y generación de mundos.",
+  version: "1.0.0",
+} as const;
+
+export const WORLD_LIMITS = {
+  MIN_AMPLITUDE: 0,
+  MAX_AMPLITUDE: 1,
+  MIN_OCTAVES: 1,
+  MAX_OCTAVES: 8,
+  MAX_BIOMES: 6,
+  TERRAIN_RESOLUTION: 128,
+} as const;
+
+export const CAMERA_LIMITS = {
+  MIN_DISTANCE: 5,
+  MAX_DISTANCE: 500,
+  FOV: 60,
+  NEAR: 0.1,
+  FAR: 2000,
+} as const;
+
+export const API_ROUTES = {
+  HEALTH: "/api/health",
+  GENERATE: "/api/generate",
+  VALIDATE: "/api/validate",
+} as const;
+
+export const HTTP = {
+  TIMEOUT_MS: 30_000,
+  MAX_BODY: "2mb",
+} as const;
+```
+
+---
+
+# 02 — MÓDULO TYPES
+
+**Uso:** contratos únicos. Ninguna capa inventa tipos; todas consumen de aquí.
+
+### `src/types/world.ts`
+```ts
+export type BiomeId =
+  | "plains"
+  | "forest"
+  | "desert"
+  | "mountain"
+  | "tundra"
+  | "volcanic";
+
+export interface TerrainSpec {
+  readonly seed: number;
+  readonly amplitude: number;   // [0, 1]
+  readonly octaves: number;     // [1, 8]
+  readonly frequency: number;   // > 0
+  readonly persistence: number; // (0, 1)
+}
+
+export interface CameraKeyframe {
+  readonly position: readonly [number, number, number];
+  readonly target: readonly [number, number, number];
+  readonly duration: number; // ms
+}
+
+export interface WorldSpec {
+  readonly prompt: string;
+  readonly biomes: readonly BiomeId[];
+  readonly terrain: TerrainSpec;
+  readonly camera: readonly CameraKeyframe[];
+  readonly createdAt: number;
+}
+```
+
+### `src/types/api.ts`
+```ts
+import type { WorldSpec } from "./world";
+
+export interface GenerateRequest {
+  prompt: string;
+}
+
+export interface GenerateResponse {
+  ok: boolean;
+  spec?: WorldSpec;
+  error?: string;
+}
+
+export interface ValidateRequest {
+  spec: WorldSpec;
+}
+
+export interface ValidateResponse {
+  ok: boolean;
+  satisfiable: boolean;
+  violations: string[];
+}
+
+export interface HealthResponse {
+  ok: true;
+  service: string;
+  ts: number;
+}
+
+export type ApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status: number };
+```
+
+### `src/types/state.ts`
+```ts
+import type { WorldSpec } from "./world";
+
+export type GenerationStatus = "idle" | "loading" | "success" | "error";
+
+export interface WorldState {
+  spec: WorldSpec | null;
+  status: GenerationStatus;
+  error: string | null;
+}
+
+export interface UiState {
+  inspectorOpen: boolean;
+  promptPanelOpen: boolean;
+}
+```
+
+### `src/types/index.ts`
+```ts
+export * from "./world";
+export * from "./api";
+export * from "./state";
+```
+
+---
+
+# 03 — MÓDULO UTILIDADES
+
+**Uso:** funciones puras, sin side-effects, testeables.
+
+### `src/lib/utils/cn.ts`
+```ts
+/** Concatena clases condicionales sin dependencias externas. */
+export function cn(...parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(" ");
+}
+```
+
+### `src/lib/utils/prng.ts`
+```ts
+/**
+ * Generador pseudoaleatorio determinista (mulberry32).
+ * Reemplaza Math.random() en generación de terreno para reproducibilidad.
+ */
+export function createPrng(seed: number): () => number {
+  let a = seed >>> 0;
+  return function next(): number {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+```
+
+### `src/lib/utils/math.ts`
+```ts
+export const clamp = (v: number, min: number, max: number): number =>
+  Math.min(Math.max(v, min), max);
+
+export const lerp = (a: number, b: number, t: number): number =>
+  a + (b - a) * t;
+
+export const smoothstep = (t: number): number => t * t * (3 - 2 * t);
+```
+
+### `src/lib/utils/http.ts`
+```ts
+import { HTTP } from "../../config/constants";
+import type { ApiResult } from "../../types/api";
+
+export async function postJson<TReq, TRes>(
+  url: string,
+  body: TReq,
+): Promise<ApiResult<TRes>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HTTP.TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      return { ok: false, error: `HTTP ${res.status}`, status: res.status };
+    }
+    const data = (await res.json()) as TRes;
+    return { ok: true, data };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "network_error";
+    return { ok: false, error: message, status: 0 };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+```
+
+---
+
+# 04 — MÓDULO IA
+
+**Uso:** encapsular toda interacción con Gemini. Ni el server ni el cliente hablan directo con `@google/genai` fuera de aquí.
+
+### `src/lib/ai/prompts.ts`
+```ts
+import type { BiomeId } from "../../types/world";
+
+const BIOME_LIST: readonly BiomeId[] = [
+  "plains", "forest", "desert", "mountain", "tundra", "volcanic",
+];
+
+export const WORLD_SYSTEM_PROMPT = `
+Eres un generador de especificaciones de mundos 3D.
+Devuelve SOLO JSON con este esquema exacto:
+{
+  "biomes": string[] (subconjunto de: ${BIOME_LIST.join(", ")}),
+  "terrain": { "seed": number, "amplitude": 0-1, "octaves": 1-8, "frequency": >0, "persistence": 0-1 },
+  "camera": [ { "position": [x,y,z], "target": [x,y,z], "duration": ms } ]
+}
+Sin texto adicional. Sin markdown. Sin comentarios.
+`.trim();
+
+export function buildWorldPrompt(userPrompt: string): string {
+  return `Mundo solicitado: "${userPrompt}"\nGenera la especificación JSON.`;
+}
+```
+
+### `src/lib/ai/schema.ts`
+```ts
+import type { BiomeId, CameraKeyframe, TerrainSpec, WorldSpec } from "../../types/world";
+import { WORLD_LIMITS } from "../../config/constants";
+import { clamp } from "../utils/math";
+
+const VALID_BIOMES: readonly BiomeId[] = [
+  "plains", "forest", "desert", "mountain", "tundra", "volcanic",
+];
+
+type RawSpec = {
+  biomes?: unknown;
+  terrain?: Record<string, unknown>;
+  camera?: unknown;
+};
+
+function parseTerrain(raw: unknown): TerrainSpec {
+  const t = (raw ?? {}) as Record<string, number | undefined>;
+  return {
+    seed: Number.isFinite(t.seed) ? Number(t.seed) : 42,
+    amplitude: clamp(Number(t.amplitude ?? 0.5), WORLD_LIMITS.MIN_AMPLITUDE, WORLD_LIMITS.MAX_AMPLITUDE),
+    octaves: Math.round(clamp(Number(t.octaves ?? 4), WORLD_LIMITS.MIN_OCTAVES, WORLD_LIMITS.MAX_OCTAVES)),
+    frequency: Math.max(0.001, Number(t.frequency ?? 1)),
+    persistence: clamp(Number(t.persistence ?? 0.5), 0.01, 0.99),
+  };
+}
+
+function parseCamera(raw: unknown): CameraKeyframe[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 20).map((k): CameraKeyframe => {
+    const obj = (k ?? {}) as Record<string, unknown>;
+    const pos = Array.isArray(obj.position) ? obj.position : [0, 10, 20];
+    const tgt = Array.isArray(obj.target) ? obj.target : [0, 0, 0];
+    return {
+      position: [Number(pos[0] ?? 0), Number(pos[1] ?? 10), Number(pos[2] ?? 20)],
+      target: [Number(tgt[0] ?? 0), Number(tgt[1] ?? 0), Number(tgt[2] ?? 0)],
+      duration: Math.max(500, Number(obj.duration ?? 3000)),
+    };
+  });
+}
+
+function parseBiomes(raw: unknown): BiomeId[] {
+  if (!Array.isArray(raw)) return ["plains"];
+  const set = new Set<BiomeId>();
+  for (const b of raw) {
+    if (typeof b === "string" && VALID_BIOMES.includes(b as BiomeId)) {
+      set.add(b as BiomeId);
+      if (set.size >= WORLD_LIMITS.MAX_BIOMES) break;
+    }
+  }
+  return set.size ? Array.from(set) : ["plains"];
+}
+
+export function parseWorldSpec(raw: RawSpec, originalPrompt: string): WorldSpec {
+  return {
+    prompt: originalPrompt,
+    biomes: parseBiomes(raw.biomes),
+    terrain: parseTerrain(raw.terrain),
+    camera: parseCamera(raw.camera),
+    createdAt: Date.now(),
+  };
+}
+```
+
+### `src/lib/ai/world-generator.ts`
+```ts
+import { GoogleGenAI } from "@google/genai";
+import { SERVER_ENV } from "../../config/env";
+import { WORLD_SYSTEM_PROMPT, buildWorldPrompt } from "./prompts";
+import { parseWorldSpec } from "./schema";
+import type { WorldSpec } from "../../types/world";
+
+let client: GoogleGenAI | null = null;
+
+function getClient(): GoogleGenAI {
+  if (!client) {
+    if (!SERVER_ENV.geminiApiKey) throw new Error("GEMINI_API_KEY ausente");
+    client = new GoogleGenAI({ apiKey: SERVER_ENV.geminiApiKey });
+  }
+  return client;
+}
+
+export async function generateWorldSpec(prompt: string): Promise<WorldSpec> {
+  const ai = getClient();
+  const res = await ai.models.generateContent({
+    model: "gemini-2.0-flash",
+    contents: [
+      { role: "user", parts: [{ text: WORLD_SYSTEM_PROMPT }] },
+      { role: "user", parts: [{ text: buildWorldPrompt(prompt) }] },
+    ],
+    config: { responseMimeType: "application/json", temperature: 0.7 },
+  });
+  const text = res.text ?? "{}";
+  const raw = JSON.parse(text) as Record<string, unknown>;
+  return parseWorldSpec(raw, prompt);
+}
+```
+
+### `src/lib/ai/index.ts`
+```ts
+export { generateWorldSpec } from "./world-generator";
+export { parseWorldSpec } from "./schema";
+```
+
+---
+
+# 05 — MÓDULO VALIDACIÓN FORMAL (Z3)
+
+**Uso:** verificar con solver SMT que la especificación es físicamente coherente antes de renderizar.
+
+### `src/server/validation/terrain-validator.ts`
+```ts
+import { init } from "z3-solver";
+import type { TerrainSpec } from "../../types/world";
+import { WORLD_LIMITS } from "../../config/constants";
+
+export interface TerrainVerdict {
+  satisfiable: boolean;
+  violations: string[];
+}
+
+export async function validateTerrain(spec: TerrainSpec): Promise<TerrainVerdict> {
+  const { Context } = await init();
+  const { Solver, Real } = Context("terrain");
+  const s = new Solver();
+
+  const amp = Real.const("amplitude");
+  const oct = Real.const("octaves");
+  const per = Real.const("persistence");
+  const freq = Real.const("frequency");
+
+  s.add(amp.ge(WORLD_LIMITS.MIN_AMPLITUDE), amp.le(WORLD_LIMITS.MAX_AMPLITUDE));
+  s.add(oct.ge(WORLD_LIMITS.MIN_OCTAVES), oct.le(WORLD_LIMITS.MAX_OCTAVES));
+  s.add(per.gt(0), per.lt(1));
+  s.add(freq.gt(0));
+
+  s.add(amp.eq(spec.amplitude));
+  s.add(oct.eq(spec.octaves));
+  s.add(per.eq(spec.persistence));
+  s.add(freq.eq(spec.frequency));
+
+  const verdict = await s.check();
+  const violations: string[] = [];
+
+  if (verdict !== "sat") {
+    if (spec.amplitude < WORLD_LIMITS.MIN_AMPLITUDE || spec.amplitude > WORLD_LIMITS.MAX_AMPLITUDE) {
+      violations.push(`amplitude fuera de rango: ${spec.amplitude}`);
+    }
+    if (spec.octaves < WORLD_LIMITS.MIN_OCTAVES || spec.octaves > WORLD_LIMITS.MAX_OCTAVES) {
+      violations.push(`octaves fuera de rango: ${spec.octaves}`);
+    }
+    if (spec.persistence <= 0 || spec.persistence >= 1) {
+      violations.push(`persistence fuera de rango: ${spec.persistence}`);
+    }
+    if (spec.frequency <= 0) {
+      violations.push(`frequency debe ser > 0: ${spec.frequency}`);
+    }
+  }
+
+  return { satisfiable: verdict === "sat", violations };
+}
+```
+
+### `src/server/validation/world-validator.ts`
+```ts
+import type { WorldSpec } from "../../types/world";
+import { validateTerrain } from "./terrain-validator";
+
+export interface WorldVerdict {
+  satisfiable: boolean;
+  violations: string[];
+}
+
+export async function validateWorldSpec(spec: WorldSpec): Promise<WorldVerdict> {
+  const violations: string[] = [];
+
+  const terrainVerdict = await validateTerrain(spec.terrain);
+  violations.push(...terrainVerdict.violations);
+
+  if (!spec.biomes.length) {
+    violations.push("biomes vacío");
+  }
+
+  if (!spec.camera.length) {
+    violations.push("camera sin keyframes");
+  }
+
+  return {
+    satisfiable: violations.length === 0 && terrainVerdict.satisfiable,
+    violations,
+  };
+}
+```
+
+---
+
+# 06 — MÓDULO SERVIDOR
+
+**Uso:** API HTTP pura. Orquesta IA + validación + estáticos.
+
+### `server.ts` (entry)
+```ts
+import "dotenv/config";
+import { createApp } from "./src/server/app";
+import { assertServerEnv, SERVER_ENV } from "./src/config/env";
+
+assertServerEnv();
+
+const app = createApp();
+app.listen(SERVER_ENV.port, () => {
+  console.log(`[server] Plataforma de Juegos en http://localhost:${SERVER_ENV.port}`);
+});
+```
+
+### `src/server/app.ts`
+```ts
+import express from "express";
+import path from "node:path";
+import { HTTP } from "../config/constants";
+import { errorHandler } from "./middleware/error-handler";
+import { rateLimit } from "./middleware/rate-limit";
+import { healthRouter } from "./routes/health";
+import { generateRouter } from "./routes/generate";
+import { validateRouter } from "./routes/validate";
+import { SERVER_ENV } from "../config/env";
+
+export function createApp(): express.Express {
+  const app = express();
+
+  app.use(express.json({ limit: HTTP.MAX_BODY }));
+  app.use(rateLimit({ windowMs: 60_000, max: 60 }));
+
+  app.use(healthRouter);
+  app.use(generateRouter);
+  app.use(validateRouter);
+
+  if (SERVER_ENV.nodeEnv === "production") {
+    const distPath = path.resolve(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => res.sendFile(path.join(distPath, "index.html")));
+  }
+
+  app.use(errorHandler);
+  return app;
+}
+```
+
+### `src/server/middleware/error-handler.ts`
+```ts
+import type { ErrorRequestHandler } from "express";
+
+export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  const message = err instanceof Error ? err.message : "internal_error";
+  console.error("[error]", message);
+  res.status(500).json({ ok: false, error: message });
+};
+```
+
+### `src/server/middleware/rate-limit.ts`
+```ts
+import type { RequestHandler } from "express";
+
+interface Bucket { count: number; resetAt: number }
+
+export function rateLimit(opts: { windowMs: number; max: number }): RequestHandler {
+  const buckets = new Map<string, Bucket>();
+  return (req, res, next) => {
+    const ip = req.ip ?? "unknown";
+    const now = Date.now();
+    const b = buckets.get(ip);
+
+    if (!b || b.resetAt < now) {
+      buckets.set(ip, { count: 1, resetAt: now + opts.windowMs });
+      return next();
+    }
+    if (b.count >= opts.max) {
+      res.status(429).json({ ok: false, error: "rate_limited" });
+      return;
+    }
+    b.count++;
+    next();
+  };
+}
+```
+
+### `src/server/routes/health.ts`
+```ts
+import { Router } from "express";
+import { API_ROUTES, APP } from "../../config/constants";
+import type { HealthResponse } from "../../types/api";
+
+export const healthRouter = Router();
+
+healthRouter.get(API_ROUTES.HEALTH, (_req, res) => {
+  const body: HealthResponse = { ok: true, service: APP.name, ts: Date.now() };
+  res.json(body);
+});
+```
+
+### `src/server/routes/generate.ts`
+```ts
+import { Router } from "express";
+import { API_ROUTES } from "../../config/constants";
+import { generateWorldSpec } from "../../lib/ai";
+import type { GenerateRequest, GenerateResponse } from "../../types/api";
+
+export const generateRouter = Router();
+
+generateRouter.post(API_ROUTES.GENERATE, async (req, res, next) => {
+  try {
+    const { prompt } = req.body as GenerateRequest;
+    if (!prompt || typeof prompt !== "string" || prompt.length > 2000) {
+      res.status(400).json({ ok: false, error: "prompt_invalid" } satisfies GenerateResponse);
+      return;
+    }
+    const spec = await generateWorldSpec(prompt);
+    res.json({ ok: true, spec } satisfies GenerateResponse);
+  } catch (err) {
+    next(err);
+  }
+});
+```
+
+### `src/server/routes/validate.ts`
+```ts
+import { Router } from "express";
+import { API_ROUTES } from "../../config/constants";
+import { validateWorldSpec } from "../validation/world-validator";
+import type { ValidateRequest, ValidateResponse } from "../../types/api";
+
+export const validateRouter = Router();
+
+validateRouter.post(API_ROUTES.VALIDATE, async (req, res, next) => {
+  try {
+    const { spec } = req.body as ValidateRequest;
+    if (!spec) {
+      res.status(400).json({ ok: false, satisfiable: false, violations: ["spec_missing"] } satisfies ValidateResponse);
+      return;
+    }
+    const verdict = await validateWorldSpec(spec);
+    res.json({ ok: true, ...verdict } satisfies ValidateResponse);
+  } catch (err) {
+    next(err);
+  }
+});
+```
+
+---
+
+# 07 — MÓDULO ESTADO CLIENTE
+
+**Uso:** Zustand como única fuente de verdad en cliente. Añadir `zustand@^5` a `dependencies`.
+
+### `src/store/world-store.ts`
+```ts
+import { create } from "zustand";
+import type { WorldSpec } from "../types/world";
+import type { WorldState } from "../types/state";
+
+interface WorldActions {
+  setLoading: () => void;
+  setSpec: (spec: WorldSpec) => void;
+  setError: (error: string) => void;
+  reset: () => void;
+}
+
+export const useWorldStore = create<WorldState & WorldActions>((set) => ({
+  spec: null,
+  status: "idle",
+  error: null,
+  setLoading: () => set({ status: "loading", error: null }),
+  setSpec: (spec) => set({ spec, status: "success", error: null }),
+  setError: (error) => set({ status: "error", error }),
+  reset: () => set({ spec: null, status: "idle", error: null }),
+}));
+```
+
+### `src/store/ui-store.ts`
+```ts
+import { create } from "zustand";
+import type { UiState } from "../types/state";
+
+interface UiActions {
+  toggleInspector: () => void;
+  setPromptPanelOpen: (open: boolean) => void;
+}
+
+export const useUiStore = create<UiState & UiActions>((set) => ({
+  inspectorOpen: true,
+  promptPanelOpen: true,
+  toggleInspector: () => set((s) => ({ inspectorOpen: !s.inspectorOpen })),
+  setPromptPanelOpen: (open) => set({ promptPanelOpen: open }),
+}));
+```
+
+---
+
+# 08 — MÓDULO MOTOR 3D
+
+**Uso:** aislar Three.js del árbol React. React monta un `<canvas>`, el motor hace el resto.
+
+### `src/engine/Scene.ts`
+```ts
+import * as THREE from "three";
+import { CAMERA_LIMITS } from "../config/constants";
+import type { WorldSpec } from "../types/world";
+import { TerrainGenerator } from "./terrain/TerrainGenerator";
+import { CinematicCamera } from "./camera/CinematicCamera";
+import { SceneLighting } from "./lighting/SceneLighting";
+
+export class Scene {
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene: THREE.Scene;
+  private readonly camera: THREE.PerspectiveCamera;
+  private readonly lighting: SceneLighting;
+  private readonly cinematic: CinematicCamera;
+  private terrain: TerrainGenerator | null = null;
+  private animId: number | null = null;
+  private resizeHandler: () => void;
+
+  constructor(private readonly canvas: HTMLCanvasElement) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x020617);
+    this.scene.fog = new THREE.Fog(0x020617, 100, 900);
+
+    this.camera = new THREE.PerspectiveCamera(
+      CAMERA_LIMITS.FOV,
+      canvas.clientWidth / canvas.clientHeight,
+      CAMERA_LIMITS.NEAR,
+      CAMERA_LIMITS.FAR,
+    );
+    this.camera.position.set(0, 30, 60);
+
+    this.lighting = new SceneLighting();
+    this.lighting.attach(this.scene);
+
+    this.cinematic = new CinematicCamera(this.camera);
+
+    this.resizeHandler = () => this.onResize();
+    window.addEventListener("resize", this.resizeHandler);
+    this.onResize();
+  }
+
+  loadWorld(spec: WorldSpec): void {
+    if (this.terrain) this.terrain.dispose(this.scene);
+    this.terrain = new TerrainGenerator(spec.terrain, spec.biomes);
+    this.terrain.attach(this.scene);
+    this.cinematic.loadKeyframes(spec.camera);
+  }
+
+  start(): void {
+    const loop = () => {
+      this.cinematic.tick();
+      this.renderer.render(this.scene, this.camera);
+      this.animId = requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  dispose(): void {
+    if (this.animId !== null) cancelAnimationFrame(this.animId);
+    window.removeEventListener("resize", this.resizeHandler);
+    this.terrain?.dispose(this.scene);
+    this.lighting.dispose(this.scene);
+    this.renderer.dispose();
+  }
+
+  private onResize(): void {
+    const w = this.canvas.clientWidth || 1;
+    const h = this.canvas.clientHeight || 1;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+}
+```
+
+### `src/engine/terrain/Noise.ts`
+```ts
+import { createPrng } from "../../lib/utils/prng";
+
+/**
+ * Ruido de valor con interpolación smoothstep. Determinista por semilla.
+ * Reemplaza Math.random() para que el mismo seed produzca el mismo mundo.
+ */
+export class ValueNoise {
+  private readonly perm: Uint16Array;
+
+  constructor(seed: number) {
+    const rng = createPrng(seed);
+    const table = new Uint16Array(256);
+    for (let i = 0; i < 256; i++) table[i] = i;
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [table[i], table[j]] = [table[j], table[i]];
+    }
+    this.perm = new Uint16Array(512);
+    for (let i = 0; i < 512; i++) this.perm[i] = table[i & 255];
+  }
+
+  private hash(x: number, y: number): number {
+    return this.perm[(this.perm[x & 255] + y) & 255] / 255;
+  }
+
+  sample(x: number, y: number): number {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const xf = x - xi;
+    const yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const a = this.hash(xi, yi);
+    const b = this.hash(xi + 1, yi);
+    const c = this.hash(xi, yi + 1);
+    const d = this.hash(xi + 1, yi + 1);
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
+  }
+}
+```
+
+### `src/engine/terrain/TerrainGenerator.ts`
+```ts
+import * as THREE from "three";
+import type { BiomeId, TerrainSpec } from "../../types/world";
+import { WORLD_LIMITS } from "../../config/constants";
+import { ValueNoise } from "./Noise";
+
+const BIOME_COLORS: Record<BiomeId, number> = {
+  plains:   0x4a7c59,
+  forest:   0x2f5d3a,
+  desert:   0xc2a878,
+  mountain: 0x8a8a8a,
+  tundra:   0xc9d6d9,
+  volcanic: 0x3a2a2a,
+};
+
+export class TerrainGenerator {
+  private mesh: THREE.Mesh | null = null;
+
+  constructor(
+    private readonly spec: TerrainSpec,
+    private readonly biomes: readonly BiomeId[],
+  ) {}
+
+  attach(scene: THREE.Scene): void {
+    const res = WORLD_LIMITS.TERRAIN_RESOLUTION;
+    const geometry = new THREE.PlaneGeometry(200, 200, res, res);
+    geometry.rotateX(-Math.PI / 2);
+
+    const noise = new ValueNoise(this.spec.seed);
+    const positions = geometry.attributes.position as THREE.BufferAttribute;
+
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const z = positions.getZ(i);
+      let y = 0;
+      let amp = this.spec.amplitude * 20;
+      let freq = this.spec.frequency;
+
+      for (let o = 0; o < this.spec.octaves; o++) {
+        y += noise.sample(x * freq * 0.05, z * freq * 0.05) * amp;
+        amp *= this.spec.persistence;
+        freq *= 2;
+      }
+      positions.setY(i, y);
+    }
+
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshStandardMaterial({
+      color: BIOME_COLORS[this.biomes[0] ?? "plains"],
+      roughness: 0.9,
+      metalness: 0.05,
+      flatShading: false,
+    });
+
+    this.mesh = new THREE.Mesh(geometry, material);
+    this.mesh.receiveShadow = true;
+    scene.add(this.mesh);
+  }
+
+  dispose(scene: THREE.Scene): void {
+    if (!this.mesh) return;
+    scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+    this.mesh = null;
+  }
+}
+```
+
+### `src/engine/camera/CinematicCamera.ts`
+```ts
+import * as THREE from "three";
+import type { CameraKeyframe } from "../../types/world";
+import { lerp } from "../../lib/utils/math";
+
+export class CinematicCamera {
+  private keyframes: readonly CameraKeyframe[] = [];
+  private index = 0;
+  private elapsed = 0;
+  private lastTime = 0;
+
+  constructor(private readonly camera: THREE.PerspectiveCamera) {}
+
+  loadKeyframes(frames: readonly CameraKeyframe[]): void {
+    this.keyframes = frames;
+    this.index = 0;
+    this.elapsed = 0;
+    this.lastTime = 0;
+    if (frames.length > 0) this.applyStatic(frames[0]);
+  }
+
+  tick(): void {
+    if (this.keyframes.length < 2) return;
+    const now = performance.now();
+    if (this.lastTime === 0) { this.lastTime = now; return; }
+    const dt = now - this.lastTime;
+    this.lastTime = now;
+    this.elapsed += dt;
+
+    const a = this.keyframes[this.index];
+    const b = this.keyframes[(this.index + 1) % this.keyframes.length];
+    const t = Math.min(this.elapsed / a.duration, 1);
+
+    this.camera.position.set(
+      lerp(a.position[0], b.position[0], t),
+      lerp(a.position[1], b.position[1], t),
+      lerp(a.position[2], b.position[2], t),
+    );
+    this.camera.lookAt(
+      lerp(a.target[0], b.target[0], t),
+      lerp(a.target[1], b.target[1], t),
+      lerp(a.target[2], b.target[2], t),
+    );
+
+    if (t >= 1) {
+      this.index = (this.index + 1) % this.keyframes.length;
+      this.elapsed = 0;
+    }
+  }
+
+  private applyStatic(frame: CameraKeyframe): void {
+    this.camera.position.set(...frame.position);
+    this.camera.lookAt(...frame.target);
+  }
+}
+```
+
+### `src/engine/lighting/SceneLighting.ts`
+```ts
+import * as THREE from "three";
+
+export class SceneLighting {
+  private sun: THREE.DirectionalLight | null = null;
+  private ambient: THREE.AmbientLight | null = null;
+
+  attach(scene: THREE.Scene): void {
+    this.ambient = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(this.ambient);
+
+    this.sun = new THREE.DirectionalLight(0xfff0d0, 1.2);
+    this.sun.position.set(50, 120, 40);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    scene.add(this.sun);
+  }
+
+  dispose(scene: THREE.Scene): void {
+    if (this.sun) { scene.remove(this.sun); this.sun = null; }
+    if (this.ambient) { scene.remove(this.ambient); this.ambient = null; }
+  }
+}
+```
+
+---
+
+# 09 — MÓDULO COMPONENTES UI
+
+**Uso:** capa visual pura. Sin lógica de negocio — solo props + render.
+
+### `src/components/UI/Button.tsx`
+```tsx
+import type { ButtonHTMLAttributes, PropsWithChildren } from "react";
+import { cn } from "../../lib/utils/cn";
+
+type Variant = "primary" | "ghost";
+
+interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+}
+
+export function Button({ variant = "primary", className, children, ...rest }: PropsWithChildren<Props>) {
+  return (
+    <button
+      {...rest}
+      className={cn(
+        "px-4 py-2 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+        variant === "primary" && "bg-emerald-500 hover:bg-emerald-400 text-slate-950",
+        variant === "ghost" && "bg-slate-800 hover:bg-slate-700 text-slate-100",
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+### `src/components/Panels/PromptPanel.tsx`
+```tsx
+import { useState } from "react";
+import { Sparkles } from "lucide-react";
+import { Button } from "../UI/Button";
+
+interface Props {
+  loading: boolean;
+  onSubmit: (prompt: string) => void;
+}
+
+export function PromptPanel({ loading, onSubmit }: Props) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="bg-slate-900/90 backdrop-blur rounded-lg p-4 shadow-xl border border-slate-800">
+      <label className="block text-xs uppercase tracking-wider text-slate-400 mb-2">
+        Describe tu mundo
+      </label>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Ej: bosque volcánico con montañas al amanecer"
+          className="flex-1 bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-emerald-500"
+          disabled={loading}
+        />
+        <Button onClick={() => onSubmit(value)} disabled={loading || !value.trim()}>
+          <Sparkles className="w-4 h-4 inline mr-1" />
+          {loading ? "Generando..." : "Generar"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+```
+
+### `src/components/Canvas/WorldCanvas.tsx`
+```tsx
+import { useEffect, useRef } from "react";
+import { Scene } from "../../engine/Scene";
+import type { WorldSpec } from "../../types/world";
+
+interface Props { spec: WorldSpec | null }
+
+export function WorldCanvas({ spec }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sceneRef = useRef<Scene | null>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const scene = new Scene(canvasRef.current);
+    sceneRef.current = scene;
+    scene.start();
+    return () => {
+      scene.dispose();
+      sceneRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (spec && sceneRef.current) sceneRef.current.loadWorld(spec);
+  }, [spec]);
+
+  return <canvas ref={canvasRef} className="block w-full h-full" />;
+}
+```
+
+### `src/components/Layout/Header.tsx`
+```tsx
+import { Gamepad2 } from "lucide-react";
+import { APP } from "../../config/constants";
+
+export function Header() {
+  return (
+    <header className="flex items-center gap-3 px-6 py-4 border-b border-slate-800 bg-slate-950/80">
+      <Gamepad2 className="w-6 h-6 text-emerald-400" />
+      <h1 className="text-lg font-semibold tracking-tight">{APP.name}</h1>
+      <span className="ml-auto text-xs text-slate-500">v{APP.version}</span>
+    </header>
+  );
+}
+```
+
+### `src/components/Layout/Footer.tsx`
+```tsx
+import { Sparkles } from "lucide-react";
+
+export function Footer() {
+  return (
+    <footer className="px-6 py-3 text-xs text-slate-500 flex items-center gap-2 border-t border-slate-800">
+      <Sparkles className="w-3 h-3" />
+      Generación procedural asistida por IA · z3-solver · Three.js
+    </footer>
+  );
+}
+```
+
+### `src/components/UI/LoadingOverlay.tsx`
+```tsx
+import { motion } from "motion/react";
+
+export function LoadingOverlay({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="absolute inset-0 bg-slate-950/60 backdrop-blur flex items-center justify-center z-10"
+    >
+      <div className="text-emerald-400 text-sm animate-pulse">Generando mundo…</div>
+    </motion.div>
+  );
+}
+```
+
+---
+
+# 10 — MÓDULO HOOKS
+
+**Uso:** orquestar negocio del cliente sin ensuciar componentes.
+
+### `src/hooks/useWorldGeneration.ts`
+```ts
+import { useCallback } from "react";
+import { postJson } from "../lib/utils/http";
+import { useWorldStore } from "../store/world-store";
+import { API_ROUTES } from "../config/constants";
+import type { GenerateRequest, GenerateResponse } from "../types/api";
+
+export function useWorldGeneration() {
+  const { status, spec, error, setLoading, setSpec, setError, reset } = useWorldStore();
+
+  const generate = useCallback(
+    async (prompt: string) => {
+      if (!prompt.trim()) return;
+      setLoading();
+      const result = await postJson<GenerateRequest, GenerateResponse>(
+        API_ROUTES.GENERATE,
+        { prompt },
+      );
+      if (result.ok && result.data.ok && result.data.spec) {
+        setSpec(result.data.spec);
+      } else {
+        setError(result.ok ? (result.data.error ?? "generation_failed") : result.error);
+      }
+    },
+    [setLoading, setSpec, setError],
+  );
+
+  return { status, spec, error, generate, reset };
+}
+```
+
+### `src/hooks/useWorldValidation.ts`
+```ts
+import { useCallback, useState } from "react";
+import { postJson } from "../lib/utils/http";
+import { API_ROUTES } from "../config/constants";
+import type { ValidateRequest, ValidateResponse } from "../types/api";
+import type { WorldSpec } from "../types/world";
+
+export function useWorldValidation() {
+  const [verdict, setVerdict] = useState<ValidateResponse | null>(null);
+
+  const validate = useCallback(async (spec: WorldSpec) => {
+    const result = await postJson<ValidateRequest, ValidateResponse>(
+      API_ROUTES.VALIDATE,
+      { spec },
+    );
+    setVerdict(result.ok ? result.data : { ok: false, satisfiable: false, violations: [result.error] });
+  }, []);
+
+  return { verdict, validate };
+}
+```
+
+---
+
+# 11 — MÓDULO PÁGINAS
+
+**Uso:** vistas de alto nivel. Componen módulos inferiores.
+
+### `src/pages/StudioPage.tsx`
+```tsx
+import { Header } from "../components/Layout/Header";
+import { Footer } from "../components/Layout/Footer";
+import { WorldCanvas } from "../components/Canvas/WorldCanvas";
+import { PromptPanel } from "../components/Panels/PromptPanel";
+import { LoadingOverlay } from "../components/UI/LoadingOverlay";
+import { useWorldGeneration } from "../hooks/useWorldGeneration";
+
+export function StudioPage() {
+  const { spec, status, error, generate } = useWorldGeneration();
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
+      <Header />
+      <main className="flex-1 relative">
+        <WorldCanvas spec={spec} />
+        <LoadingOverlay visible={status === "loading"} />
+        {error && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-900/80 text-red-100 px-4 py-2 rounded">
+            {error}
+          </div>
+        )}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[min(720px,90vw)]">
+          <PromptPanel loading={status === "loading"} onSubmit={generate} />
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+```
+
+### `src/pages/LandingPage.tsx`
+```tsx
+import { motion } from "motion/react";
+import { Gamepad2, ArrowRight } from "lucide-react";
+import { APP } from "../config/constants";
+
+export function LandingPage({ onEnter }: { onEnter: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 px-6 text-center">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-2xl"
+      >
+        <Gamepad2 className="w-16 h-16 text-emerald-400 mx-auto mb-6" />
+        <h1 className="text-4xl font-bold mb-4">{APP.name}</h1>
+        <p className="text-slate-400 mb-8">{APP.description}</p>
+        <button
+          onClick={onEnter}
+          className="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold px-6 py-3 rounded-md"
+        >
+          Entrar al estudio <ArrowRight className="w-4 h-4" />
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+```
+
+---
+
+# 12 — MÓDULO ROOT
+
+**Uso:** bootstrap de la aplicación.
+
+### `src/App.tsx`
+```tsx
+import { useState } from "react";
+import { StudioPage } from "./pages/StudioPage";
+import { LandingPage } from "./pages/LandingPage";
+
+export default function App() {
+  const [entered, setEntered] = useState(false);
+  return entered ? <StudioPage /> : <LandingPage onEnter={() => setEntered(true)} />;
+}
+```
+
+### `src/main.tsx`
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+import "./styles/index.css";
+
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("#root no encontrado");
+
+ReactDOM.createRoot(rootEl).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+```
+
+### `src/styles/index.css`
+```css
+@import "tailwindcss";
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+```
+
+---
+
+# 📊 TABLA CONSOLIDADA POR USO Y FINES
+
+| Uso | Archivo | Fines | Capa |
+|---|---|---|---|
+| Config | `config/env.ts` | Validar secretos al arranque | Server |
+| Config | `config/constants.ts` | Fuente única de límites/rutas | Transversal |
+| Tipos | `types/world.ts` | Contrato del dominio mundo | Transversal |
+| Tipos | `types/api.ts` | Contrato HTTP | Transversal |
+| Tipos | `types/state.ts` | Contrato de estado | Client |
+| Utilidad | `utils/cn.ts` | Clases condicionales | Client |
+| Utilidad | `utils/prng.ts` | PRNG determinista (reemplaza Math.random) | Client |
+| Utilidad | `utils/math.ts` | Interpolación, clamp | Client |
+| Utilidad | `utils/http.ts` | Fetch tipado con timeout | Client |
+| IA | `ai/prompts.ts` | Prompts del sistema | Server |
+| IA | `ai/schema.ts` | Parseo defensivo de respuesta IA | Server |
+| IA | `ai/world-generator.ts` | Orquestador Gemini | Server |
+| Validación | `validation/terrain-validator.ts` | Verificación Z3 del terreno | Server |
+| Validación | `validation/world-validator.ts` | Verificación Z3 del mundo | Server |
+| Servidor | `server.ts` | Entry point | Server |
+| Servidor | `server/app.ts` | Wiring Express | Server |
+| Servidor | `middleware/error-handler.ts` | Captura global | Server |
+| Servidor | `middleware/rate-limit.ts` | Throttle por IP | Server |
+| Servidor | `routes/health.ts` | Health check | Server |
+| Servidor | `routes/generate.ts` | POST /api/generate | Server |
+| Servidor | `routes/validate.ts` | POST /api/validate | Server |
+| Estado | `store/world-store.ts` | Mundo actual | Client |
+| Estado | `store/ui-store.ts` | Visibilidad paneles | Client |
+| Motor 3D | `engine/Scene.ts` | Loop de render | Client |
+| Motor 3D | `engine/terrain/Noise.ts` | Ruido de valor determinista | Client |
+| Motor 3D | `engine/terrain/TerrainGenerator.ts` | Malla de terreno | Client |
+| Motor 3D | `engine/camera/CinematicCamera.ts` | Trayectoria de cámara | Client |
+| Motor 3D | `engine/lighting/SceneLighting.ts` | Sol + ambiente | Client |
+| UI | `components/UI/Button.tsx` | Botón atómico | Client |
+| UI | `components/UI/LoadingOverlay.tsx` | Overlay de carga | Client |
+| UI | `components/Panels/PromptPanel.tsx` | Input de prompt | Client |
+| UI | `components/Canvas/WorldCanvas.tsx` | Puente React↔Three | Client |
+| UI | `components/Layout/Header.tsx` | Cabecera | Client |
+| UI | `components/Layout/Footer.tsx` | Pie | Client |
+| Hook | `hooks/useWorldGeneration.ts` | Acción generar | Client |
+| Hook | `hooks/useWorldValidation.ts` | Acción validar | Client |
+| Página | `pages/StudioPage.tsx` | Editor 3D | Client |
+| Página | `pages/LandingPage.tsx` | Bienvenida | Client |
+| Root | `App.tsx` | Router mínimo | Client |
+| Root | `main.tsx` | Mount React 19 | Client |
+
+---
+
+# ⚠️ DEPENDENCIAS A AÑADIR AL `package.json`
+
+Como el código propuesto usa paquetes no declarados en tu `package.json` real, necesitas **añadir**:
+
+```jsonc
+"dependencies": {
+  // ...lo existente...
+  "zustand": "^5.0.0"          // store tipado
+}
+```
+
+**NO** requiere `@react-three/fiber` ni `@react-three/drei` — el motor Three.js se usa **directo** desde `engine/Scene.ts`, respetando el stack declarado.
+
+---
+
+# ✅ CHECKLIST DE APLICACIÓN
+
+1. **Crear** estructura de carpetas: `src/{config,types,lib/{utils,ai},server/{routes,middleware,validation},store,engine/{terrain,camera,lighting},components/{UI,Panels,Canvas,Layout},hooks,pages,styles}`
+2. **Copiar** cada archivo en su ruta
+3. **Añadir** `zustand@^5` a `package.json`
+4. **Mover** `@types/react`, `@types/react-dom` a `devDependencies`
+5. **Fijar** `.env` con `GEMINI_API_KEY=...`
+6. **Ejecutar** `npm run dev` → verificar `http://localhost:3001/api/health`
+7. **Ejecutar** `npm run lint` → cero errores
+8. **Ejecutar** `npm run build` → `dist/server.cjs` generado
+
+---
+
+## 🧾 RESUMEN
+
+- **12 módulos** desarticulados, **41 archivos**, todos tipados, sin `Math.random()` en métricas (usamos `prng.ts` determinista), sin nombres exagerados, sin duplicación de responsabilidades.
+- **Nomenclatura profesional:** kebab-case archivos, PascalCase clases/componentes, camelCase miembros, SCREAMING_SNAKE constantes, `readonly` en contratos, `type` sobre `interface` cuando no se extiende.
+- **Toda dependencia externa** respeta el `package.json` declarado excepto `zustand`, documentada explícitamente.
+- **Z3-solver** vive solo en `server/validation/*` — nunca en cliente (evita WASM en bundle).
+- **Gemini** vive solo en `lib/ai/world-generator.ts` invocado desde `server/routes/generate.ts` — la API key nunca toca el cliente.
+
+¿Continúo con los **tests** (vitest) para cada módulo, o con el **metadata.json / vite.config.ts / tsconfig.json** definitivos?

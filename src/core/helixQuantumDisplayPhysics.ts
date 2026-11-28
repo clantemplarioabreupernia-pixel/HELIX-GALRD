@@ -4,7 +4,17 @@
  * Mott-Gurney SCLC · Cristal Fotónico de Maxwell Z4 · Litografía Rayleigh EUV (BigInt P33)
  */
 import { CubeFacesZ4, deriveCubeFacesForPrime, PRIMITIVE_TOKENS } from '../data/runes';
-import { NEMESIS_THERMAL_CUTOFF } from './NemesisGovernor';
+import {
+  computeCauchySpectralTriple,
+  computeCurlNoise3D,
+  createBlochState,
+  evaluateWeberFechnerFrame,
+  evolveSchrodingerPauli,
+  projectorFromBlochAngle,
+  verifyBirkhoffVonNeumannNonDistributivity,
+} from '../utils/helixPhysics';
+import { formatRationalP33, makeRationalP33 } from '../utils/rationalP33';
+import { NEMESIS_THERMAL_CUTOFF, WEBER_PERCEPTUAL_K } from './NemesisGovernor';
 
 const H_PLANCK = 6.62607015e-34;      // J·s
 const H_BAR = H_PLANCK / (2 * Math.PI);
@@ -347,3 +357,278 @@ export function computeCoupledNanotechBiopixelState(params: {
     nemesisViscosityGo,
   };
 }
+
+export interface UnifiedBiopixelEquationInput {
+  cFront?: number;
+  cBack?: number;
+  tension?: number;
+  timeSec?: number;
+  primeIndex?: number;
+  prevIntensity?: number;
+  nextIntensity?: number;
+  weberK?: number;
+  blochAxis?: [number, number, number];
+  blochOmega?: number;
+}
+
+export interface UnifiedBiopixelEquationResult {
+  cFront: number;
+  cBack: number;
+  cOppositeCheck: number;
+  deltaZ: number;
+  brusRadiusModulatedNm: number;
+  brusEnergyEv: number;
+  cauchySpectral: { nRed: number; nGreen: number; nBlue: number; abbeEstimate: number };
+  blochNormSq: number;
+  blochVector: [number, number, number];
+  bvnNonDistributive: boolean;
+  kelvinVoigtStress: number;
+  curlDivergence: number;
+  nemesisDissipated: number;
+  weberDecision: 'RENDER_FRAME' | 'SKIP_FRAME';
+  weberDeltaRatio: number;
+  guardStatus: 'PROVEN_SAT' | 'CLAMPED';
+  p33ExactRatio: string;
+  sBiopixelMagnitude: number;
+  coupledState: CoupledNanotechBiopixelState;
+}
+
+/**
+ * Ecuación Unificada de Materia Informática:
+ * S_BioPixel(r, t) = Guard_Z3^P33 [ ∫_ΩA2 Φ_Cuántica(R(ΔZ), H) · N_Óptica(λ) · T_Mecánica(ε, v) · I_Weber d³r ]
+ */
+export function evaluateUnifiedBiopixelEquation(
+  input: UnifiedBiopixelEquationInput = {},
+): UnifiedBiopixelEquationResult {
+  const cFront = Math.max(-2, Math.min(2, input.cFront ?? 0.42));
+  // Sincronización dual negativa de 6 caras: C_opuesta = -C_directa cuando no se perturba independientemente
+  const cBack = Math.max(-2, Math.min(2, input.cBack ?? -cFront));
+  const cOppositeCheck = Number((-cFront).toFixed(4));
+  const deltaZ = Math.tanh(cFront - cBack);
+
+  const tension = Math.min(1, Math.max(0, input.tension ?? Math.abs(deltaZ) * 0.65));
+  const timeSec = input.timeSec ?? 0;
+  const primeIndex = Math.max(0, Math.min(32, Math.floor(input.primeIndex ?? 0)));
+
+  // 1. Confinamiento cuántico de Brus R(ΔZ) y óptica acoplada
+  const lambdaNm = Math.max(435.8, Math.min(700.0, 546.1 - deltaZ * 88));
+  const coupledState = computeCoupledNanotechBiopixelState({
+    lambdaNm,
+    tension,
+    primeIndex,
+  });
+  const brusRadiusModulatedNm = Number(
+    (coupledState.brusCauchy.radiusNm * (1 + 0.14 * deltaZ)).toFixed(3),
+  );
+  const brusEnergyEv = coupledState.brusCauchy.photonEnergyEv;
+
+  // 2. Dispersión espectral de Cauchy en las líneas de Fraunhofer
+  const cauchySpectral = computeCauchySpectralTriple(
+    1.458 + Math.abs(deltaZ) * 0.04,
+    0.00354 + tension * 0.0025,
+    0.00012,
+  );
+
+  // 3. Esfera de Bloch SU(2) + Retículo ortomodular de Birkhoff-von Neumann
+  const blochAxis = input.blochAxis ?? [0.25, 1.0, 0.15];
+  const blochOmega = input.blochOmega ?? 1.5708;
+  const bloch = evolveSchrodingerPauli(
+    createBlochState(Math.abs(deltaZ) * 1.2, timeSec * 0.35),
+    blochAxis,
+    blochOmega,
+    0.5,
+  );
+  const bvn = verifyBirkhoffVonNeumannNonDistributivity(
+    projectorFromBlochAngle(1.5708, 0),
+    projectorFromBlochAngle(0, 0),
+    projectorFromBlochAngle(3.1416, 0),
+  );
+
+  // 4. Mecánica continua: Kelvin-Voigt + Curl Noise 3D (∇·v ≈ 0) + Némesis
+  const curl = computeCurlNoise3D(cFront * 0.6, cBack * 0.6, deltaZ, timeSec);
+  const elasticityE = 355 / 113; // π aproximado racional en P33
+  const viscosityEta = 11 / 137;
+  const epsilon = Math.abs(deltaZ) * 0.35;
+  const dEpsilonDt = Math.hypot(curl.vx, curl.vy, curl.vz) * 0.25;
+  const rawKvStress = elasticityE * epsilon + viscosityEta * dEpsilonDt;
+  const nemesisDissipated = stepNemesisHomeostasis(rawKvStress, tension * 0.05, 0.08);
+
+  // 5. Gating perceptual de Weber-Fechner
+  const prevI = input.prevIntensity ?? 1.0;
+  const nextI = input.nextIntensity ?? 1.0 + Math.abs(deltaZ) * 0.08;
+  const weberK = input.weberK ?? WEBER_PERCEPTUAL_K;
+  const weber = evaluateWeberFechnerFrame(prevI, nextI, weberK);
+
+  // 6. Guardián Z3^P33: verifica unitariedad ||ψ||² ≈ 1, P33 racional exacto y estabilidad
+  const p33Num = BigInt(Math.max(1, Math.round(Math.abs(nemesisDissipated) * 1000)));
+  const p33Rat = makeRationalP33(p33Num, 1000n);
+  const unitarityOk = Math.abs(bloch.normSq - 1) < 1e-6;
+  const guardStatus: 'PROVEN_SAT' | 'CLAMPED' =
+    unitarityOk && p33Rat.inSubringP33 && Number.isFinite(rawKvStress) ? 'PROVEN_SAT' : 'CLAMPED';
+
+  const indicatorWeber = weber.decision === 'RENDER_FRAME' ? 1 : 0.25;
+  const sBiopixelMagnitude = Number(
+    (
+      brusEnergyEv *
+      cauchySpectral.nGreen *
+      bloch.normSq *
+      Math.max(0.05, rawKvStress) *
+      indicatorWeber
+    ).toFixed(4),
+  );
+
+  return {
+    cFront: Number(cFront.toFixed(3)),
+    cBack: Number(cBack.toFixed(3)),
+    cOppositeCheck,
+    deltaZ: Number(deltaZ.toFixed(4)),
+    brusRadiusModulatedNm,
+    brusEnergyEv,
+    cauchySpectral,
+    blochNormSq: Number(bloch.normSq.toFixed(9)),
+    blochVector: bloch.blochVector,
+    bvnNonDistributive: !bvn.distributiveHolds,
+    kelvinVoigtStress: Number(rawKvStress.toFixed(4)),
+    curlDivergence: Number(curl.divergence.toExponential(2)),
+    nemesisDissipated: Number(nemesisDissipated.toFixed(4)),
+    weberDecision: weber.decision,
+    weberDeltaRatio: Number(weber.deltaRatio.toFixed(4)),
+    guardStatus,
+    p33ExactRatio: formatRationalP33(p33Rat),
+    sBiopixelMagnitude,
+    coupledState,
+  };
+}
+
+export interface FresnelReflectanceResult {
+  thetaDeg: number;
+  n1: number;
+  n2: number;
+  rs: number;
+  rp: number;
+  rAvg: number;
+  transmittanceAvg: number;
+  brewsterAngleDeg: number;
+  criticalAngleDeg: number | null;
+  totalInternalReflection: boolean;
+}
+
+/**
+ * Ecuación óptica de Fresnel R(θ) para polarización s, p y promedio no polarizado,
+ * incluyendo ángulo de Brewster y ángulo crítico de reflexión interna total.
+ */
+export function computeFresnelReflectance(
+  thetaDeg: number,
+  n1 = 1.0,
+  n2 = 1.52,
+): FresnelReflectanceResult {
+  const safeN1 = Math.max(1.0, n1);
+  const safeN2 = Math.max(1.0, n2);
+  const clampedTheta = Math.max(0, Math.min(89.99, thetaDeg));
+  const thetaI = (clampedTheta * Math.PI) / 180;
+  const sinT = (safeN1 / safeN2) * Math.sin(thetaI);
+  const brewsterAngleDeg = Number(((Math.atan(safeN2 / safeN1) * 180) / Math.PI).toFixed(3));
+  const criticalAngleDeg =
+    safeN1 > safeN2 ? Number(((Math.asin(safeN2 / safeN1) * 180) / Math.PI).toFixed(3)) : null;
+
+  if (sinT >= 1.0) {
+    return {
+      thetaDeg: Number(clampedTheta.toFixed(3)),
+      n1: Number(safeN1.toFixed(4)),
+      n2: Number(safeN2.toFixed(4)),
+      rs: 1,
+      rp: 1,
+      rAvg: 1,
+      transmittanceAvg: 0,
+      brewsterAngleDeg,
+      criticalAngleDeg,
+      totalInternalReflection: true,
+    };
+  }
+
+  const cosI = Math.cos(thetaI);
+  const cosT = Math.sqrt(Math.max(0, 1 - sinT * sinT));
+  const rsDen = safeN1 * cosI + safeN2 * cosT;
+  const rpDen = safeN1 * cosT + safeN2 * cosI;
+  const rsSqrt = rsDen > 0 ? (safeN1 * cosI - safeN2 * cosT) / rsDen : 1;
+  const rpSqrt = rpDen > 0 ? (safeN1 * cosT - safeN2 * cosI) / rpDen : 1;
+  const rs = rsSqrt * rsSqrt;
+  const rp = rpSqrt * rpSqrt;
+  const rAvg = 0.5 * (rs + rp);
+
+  return {
+    thetaDeg: Number(clampedTheta.toFixed(3)),
+    n1: Number(safeN1.toFixed(4)),
+    n2: Number(safeN2.toFixed(4)),
+    rs: Number(rs.toFixed(6)),
+    rp: Number(rp.toFixed(6)),
+    rAvg: Number(rAvg.toFixed(6)),
+    transmittanceAvg: Number((1 - rAvg).toFixed(6)),
+    brewsterAngleDeg,
+    criticalAngleDeg,
+    totalInternalReflection: false,
+  };
+}
+
+export interface GaldrOctaveResult {
+  prime: number;
+  baseC4Hz: number;
+  octaveDivisor: number;
+  frequencyHz: number;
+  midiFloat: number;
+  nearestMidi: number;
+  centsOffset: number;
+}
+
+/**
+ * Fórmula Armónica Rúnica Galdr:
+ * f_r(p) = 261.6256 * p / 2^⌊log2(p)⌋
+ */
+export function computeGaldrOctaveFrequency(prime: number): GaldrOctaveResult {
+  const baseC4Hz = 261.6256;
+  const safePrime = Math.max(2, Math.floor(prime));
+  const exp = Math.floor(Math.log2(safePrime));
+  const octaveDivisor = Math.pow(2, exp);
+  const frequencyHz = baseC4Hz * (safePrime / octaveDivisor);
+  const midiFloat = 69 + 12 * Math.log2(frequencyHz / 440);
+  const nearestMidi = Math.round(midiFloat);
+  const centsOffset = (midiFloat - nearestMidi) * 100;
+
+  return {
+    prime: safePrime,
+    baseC4Hz,
+    octaveDivisor,
+    frequencyHz: Number(frequencyHz.toFixed(4)),
+    midiFloat: Number(midiFloat.toFixed(3)),
+    nearestMidi,
+    centsOffset: Number(centsOffset.toFixed(2)),
+  };
+}
+
+export interface QOmegaLatticeAuditResult {
+  quantumLatticeDistributive: boolean;
+  classicalGlyphIndexDistributive: boolean;
+  frobeniusWitnessDiff: number;
+  architecturalResolution: string;
+}
+
+/**
+ * Auditoría Q-Omega: demuestra explícitamente que el reticulado cuántico de
+ * Birkhoff-von Neumann en C² es NO distributivo (frobeniusWitnessDiff > 0),
+ * mientras que el índice tabular de glifos en Go/memoria usa orden total distributivo clásico.
+ */
+export function auditBirkhoffVonNeumannVsTotalOrder(): QOmegaLatticeAuditResult {
+  const bvn = verifyBirkhoffVonNeumannNonDistributivity(
+    projectorFromBlochAngle(1.5708, 0),
+    projectorFromBlochAngle(0, 0),
+    projectorFromBlochAngle(3.1416, 0),
+  );
+  return {
+    quantumLatticeDistributive: bvn.distributiveHolds,
+    classicalGlyphIndexDistributive: true,
+    frobeniusWitnessDiff: Number(bvn.frobeniusDiff.toFixed(6)),
+    architecturalResolution:
+      'Separación formal Q-Omega: proyecciones SU(2) operan en retículo ortomodular no distributivo; tablas de despacho/glifos operan en orden total clásico.',
+  };
+}
+

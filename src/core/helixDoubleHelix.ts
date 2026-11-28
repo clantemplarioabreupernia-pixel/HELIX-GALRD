@@ -126,7 +126,7 @@ export function runDoubleHelixAutopoiesis(intent: string, providedSeal: bigint =
 
   const synthesizedHlx =
     recombination?.synthesizedHlx ??
-    'ᛇᚢ\nᛗᚦ sys_admin\nSOA_INIT 32\nCURL_STEP 0.35 0.016\nNEMESIS_DECAY 0.08\nBLOCH_ROT 0 1 0 1.05 1\nWEBER_GUARD 0.02\nGEOM_SEAL 1.0\nᚳᛏ';
+    'ᛇᚢ\nᛗᚦ sys_admin\nSOA_INIT 32\nCURL_STEP 0.35 0.016\nNEMESIS_DECAY 0.08\nBLOCH_ROT 0 1 0 1.05 1\nGEOM_SEAL TORUS_T2 PHI_FIBONACCI 457.84\nWEBER_GUARD 0.015 1.0 1.05 wf_render\nᚳᛏ';
   const p33 = validateHelixProgram33Tokens(synthesizedHlx, {
     vocabulary: INITIAL_COMPOUND_VOCABULARY,
     cells: DEFAULT_HELIX_CELLS,

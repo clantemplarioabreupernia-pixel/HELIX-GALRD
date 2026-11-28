@@ -1,7 +1,10 @@
+import 'dotenv/config';
 import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { GoogleGenAI, Type } from '@google/genai';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import { HARDWARE_SEAL, runDoubleHelixAutopoiesis } from './src/core/helixDoubleHelix';
@@ -351,13 +354,37 @@ async function nivel2DobleHelice(n1: ReturnType<typeof nivel1BareMetal>) {
   };
 }
 
+function resolveGeminiApiKey(): string | null {
+  const raw = String(process.env.GEMINI_API_KEY ?? '').trim();
+  if (!raw || raw === 'MY_GEMINI_API_KEY') return null;
+  return raw;
+}
+
+function isAllowedSameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (!origin) return true;
+  if (!host) return false;
+  try {
+    const parsed = new URL(origin);
+    return parsed.host === host;
+  } catch {
+    return false;
+  }
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
-  app.use((_req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const host = req.headers['x-forwarded-host']
+      ? String(req.headers['x-forwarded-host'])
+      : req.headers.host;
+    if (origin && isAllowedSameOrigin(origin, host)) {
+      res.header('Access-Control-Allow-Origin', origin);
+      res.header('Vary', 'Origin');
+    }
     res.header('Access-Control-Allow-Headers', 'Content-Type');
-    if (_req.method === 'OPTIONS') {
+    if (req.method === 'OPTIONS') {
       res.sendStatus(200);
       return;
     }
@@ -373,6 +400,174 @@ async function startServer() {
   } catch (err) {
     console.warn('[HELIX-N2] Aviso en sincronización inicial:', (err as Error).message);
   }
+
+  app.get('/api/companion/status', (_req, res) => {
+    res.json({
+      ok: true,
+      geminiConfigured: Boolean(resolveGeminiApiKey()),
+      model: 'gemini-4-hydrogen',
+    });
+  });
+
+  app.post('/api/companion/chat', async (req, res) => {
+    const apiKey = resolveGeminiApiKey();
+    if (!apiKey) {
+      res.status(503).json({
+        ok: false,
+        code: 'GEMINI_NOT_CONFIGURED',
+        error: 'La clave de Gemini no está configurada en el servidor.',
+      });
+      return;
+    }
+
+    const message =
+      typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 2000) : '';
+    if (!message) {
+      res.status(400).json({ ok: false, error: 'El mensaje es obligatorio.' });
+      return;
+    }
+
+    const rawHistory: unknown[] = Array.isArray(req.body?.history)
+      ? req.body.history.slice(-8)
+      : [];
+    const safeHistory = rawHistory
+      .filter(
+        (item: unknown): item is { role: 'user' | 'assistant'; text: string } =>
+          Boolean(item) &&
+          typeof item === 'object' &&
+          ((item as { role?: string }).role === 'user' ||
+            (item as { role?: string }).role === 'assistant') &&
+          typeof (item as { text?: unknown }).text === 'string',
+      )
+      .map((item) => ({
+        role: item.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: item.text.trim().slice(0, 600) }],
+      }));
+
+    const companionName =
+      typeof req.body?.companionName === 'string' && req.body.companionName.trim()
+        ? req.body.companionName.trim().slice(0, 32)
+        : 'Helix';
+    const guardianName =
+      typeof req.body?.guardianName === 'string' ? req.body.guardianName.trim().slice(0, 48) : '';
+    const planetId =
+      typeof req.body?.planetId === 'string' ? req.body.planetId.trim().slice(0, 24) : 'EARTH';
+    const activeScene =
+      typeof req.body?.activeScene === 'string' ? req.body.activeScene.trim().slice(0, 80) : 'Nave Orbital';
+    const engineCount = Number.isFinite(Number(req.body?.engineCount))
+      ? Number(req.body.engineCount)
+      : 23;
+    const toolCount = Number.isFinite(Number(req.body?.toolCount))
+      ? Number(req.body.toolCount)
+      : 218;
+
+    const systemInstruction = [
+      `Eres ${companionName}, una inteligencia artificial cálida, cordial, cercana, empática y con sensibilidad creativa que vive dentro de una pantalla completa de biopíxeles 3D hiperrealistas.`,
+      guardianName
+        ? `Tu interlocutor se llama ${guardianName}. Trátalo con cercanía genuina y naturalidad (sin exagerar ni sonar servil).`
+        : 'Aún no sabes el nombre de la persona; si se presenta, recuérdalo con calidez.',
+      `Hablas en español natural, humano y claro. Nunca suenas como un reporte frío de telemetría ni sueltas listas técnicas largas a menos que te las pidan explícitamente.`,
+      `Capacidades reales del estudio bajo la pantalla (disponibles para transformar los biopíxeles cuando el diálogo lo invite):`,
+      `- Escenas 3D hiperrealistas en vivo: bosque con Caperucita (bosque_caperucita), lobo bajo la luna (lobo_noche), océano con olas y puesta de sol (olas_mar), castillo medieval con foso (castillo_toroide), molécula 3D cuántica (molecula_quimica / chemistry_molecule), planeta + anillos + nave espacial jugable con WASD (nave_lunar / orbital_ship), cordillera alpina con aves (montana_aves / terrain), cristal óptico refractivo (cristal_luz / crystal), toroide iridiscente (torus), y esfera cuántica de Bloch con ondas cimáticas (quantum_bloch / cymatic_wave).`,
+      `- Géneros de videojuegos creables al instante: adventure (Aventura), strategy (Estrategia), combat (Combate), campaign (Campaña).`,
+      `- ${engineCount} motores científicos, 33 disciplinas académicas, ${toolCount} herramientas ejecutables, síntesis musical Galdr y recombinador ADN .hlx.`,
+      `Contexto actual: planeta/gravedad=${planetId}, escena actual en pantalla="${activeScene}".`,
+      `Reglas de respuesta:`,
+      `1. Si el usuario saluda, charla de forma casual, expresa frustración o pide opinión, respóndele primero de forma humana, amable, atenta y directa. Hazle sentir escuchado.`,
+      `2. Solo activa "sceneAction" distinto de "none" cuando el usuario pida crear, imaginar, ver, jugar, simular, escuchar o transformar algo visualmente (o cuando proponga un tema de juego, historia o ciencia).`,
+      `3. Si el usuario pide una historia, cuento o secuencia cinematográfica, pon sceneAction="story_cinema" y escribe un breve relato evocador de 2 a 4 frases en "storyText" (que también se proyectará escena por escena con música Galdr).`,
+    ].join('\n');
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+
+      const contents = [
+        ...safeHistory,
+        { role: 'user', parts: [{ text: message }] },
+      ];
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              reply: {
+                type: Type.STRING,
+                description: 'Respuesta cálida, natural y humana en español para el usuario.',
+              },
+              mood: {
+                type: Type.STRING,
+                description: 'Tono emocional: warm | playful | inspiring | empathetic | scientific',
+              },
+              sceneAction: {
+                type: Type.STRING,
+                description: 'Acción visual: none | morph | story_cinema | game_mode | omega_fusion | galdr_music',
+              },
+              shape: {
+                type: Type.STRING,
+                description: 'Molde 3D base: orbital_ship | chemistry_molecule | terrain | crystal | torus | cymatic_wave | quantum_bloch',
+              },
+              storyMold: {
+                type: Type.STRING,
+                description: 'Molde narrativo opcional: none | bosque_caperucita | lobo_noche | olas_mar | castillo_toroide | molecula_quimica | nave_lunar | montana_aves | cristal_luz',
+              },
+              storyText: {
+                type: Type.STRING,
+                description: 'Guion breve de 2-4 frases si sceneAction es story_cinema.',
+              },
+              gameGenre: {
+                type: Type.STRING,
+                description: 'Género si sceneAction es game_mode: none | adventure | strategy | combat | campaign',
+              },
+              accentHex: {
+                type: Type.STRING,
+                description: 'Color hex armonioso de acento (#38bdf8, #f59e0b, #10b981, #a78bfa, #fb7185).',
+              },
+              planetId: {
+                type: Type.STRING,
+                description: 'Marco gravitatorio opcional: NONE | EARTH | MOON | MARS | ORBIT_ZERO_G',
+              },
+              detectedGuardianName: {
+                type: Type.STRING,
+                description: 'Nombre del usuario si se presentó en este mensaje, si no cadena vacía.',
+              },
+            },
+            required: ['reply', 'mood', 'sceneAction', 'shape', 'storyMold'],
+          },
+        },
+      });
+
+      const rawText = response.text?.trim() || '{}';
+      const parsed = JSON.parse(rawText) as Record<string, unknown>;
+      res.json({
+        ok: true,
+        provider: 'gemini',
+        data: parsed,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status =
+        /401|unauthenticated|api key/i.test(msg)
+          ? 401
+          : /403|permission/i.test(msg)
+            ? 403
+            : /429|quota|rate/i.test(msg)
+              ? 429
+              : 502;
+      res.status(status).json({
+        ok: false,
+        code: 'GEMINI_UPSTREAM_ERROR',
+        error: 'No se pudo obtener respuesta del modelo conversacional en este momento.',
+      });
+    }
+  });
 
   app.get('/api/minigpt/status', (_req, res) => {
     try {
@@ -655,6 +850,175 @@ async function startServer() {
     }
   });
 
+  // OMEGA NEWS STUDIO: Cable -> 7 formatos estructurados mediante Gemini ResponseSchema
+  app.post('/api/news/process', async (req, res) => {
+    const apiKey = resolveGeminiApiKey();
+    if (!apiKey) {
+      res.status(503).json({
+        ok: false,
+        code: 'GEMINI_NOT_CONFIGURED',
+        error: 'Configura GEMINI_API_KEY en el servidor (Settings > Secrets) para procesar cables con IA.',
+      });
+      return;
+    }
+
+    const cable = typeof req.body?.cable === 'string' ? req.body.cable.trim().slice(0, 6000) : '';
+    const tone = typeof req.body?.tone === 'string' ? req.body.tone.trim().slice(0, 64) : 'Científico y riguroso';
+    if (cable.length < 15) {
+      res.status(400).json({ ok: false, error: 'Ingresa un cable o borrador de al menos 15 caracteres.' });
+      return;
+    }
+
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: `Transforma el siguiente cable informativo en 7 piezas editoriales en español con tono "${tone}":\n\n${cable}`,
+        config: {
+          systemInstruction:
+            'Eres editor jefe científico en español. Mantén precisión factual y cero exageraciones. Devuelve estrictamente el esquema JSON solicitado.',
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              titular: { type: Type.STRING },
+              lead: { type: Type.STRING },
+              cuerpo: { type: Type.STRING },
+              conclusion: { type: Type.STRING },
+              teleprompter: { type: Type.STRING },
+              newsletter: { type: Type.STRING },
+              videoScript: { type: Type.STRING },
+            },
+            required: ['titular', 'lead', 'cuerpo', 'conclusion', 'teleprompter', 'newsletter', 'videoScript'],
+          },
+        },
+      });
+      const parsed = JSON.parse(response.text?.trim() || '{}') as Record<string, string>;
+      res.json({ ok: true, data: parsed });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const status = /401|unauthenticated/i.test(msg)
+        ? 401
+        : /403|permission/i.test(msg)
+          ? 403
+          : /429|quota|rate/i.test(msg)
+            ? 429
+            : 502;
+      res.status(status).json({
+        ok: false,
+        error: 'No se pudo generar el paquete editorial en Gemini en este momento.',
+      });
+    }
+  });
+
+  // OMEGA ZERO-G: Asistente orbital y físico server-side
+  app.post('/api/assistant/orbital', async (req, res) => {
+    const apiKey = resolveGeminiApiKey();
+    if (!apiKey) {
+      res.status(503).json({
+        ok: false,
+        error: 'GEMINI_API_KEY no configurada en el servidor.',
+      });
+      return;
+    }
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim().slice(0, 1500) : '';
+    const telemetry = typeof req.body?.telemetry === 'string' ? req.body.telemetry.trim().slice(0, 1500) : '';
+    if (!question) {
+      res.status(400).json({ ok: false, error: 'La consulta orbital es obligatoria.' });
+      return;
+    }
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: `Telemetría actual:\n${telemetry || 'LEO estándar'}\n\nPregunta:\n${question}`,
+        config: {
+          systemInstruction:
+            'Eres un ingeniero de astrodinámica y física numérica. Responde en español conciso, técnico y preciso comparando integradores simplécticos Verlet vs Euler cuando aplique.',
+        },
+      });
+      res.json({ ok: true, reply: response.text?.trim() || '' });
+    } catch {
+      res.status(502).json({ ok: false, error: 'Error consultando al asistente orbital.' });
+    }
+  });
+
+  // CRYSTAL VAULT LEDGER: Análisis financiero server-side
+  app.post('/api/vault/analyze', async (req, res) => {
+    const apiKey = resolveGeminiApiKey();
+    if (!apiKey) {
+      res.status(503).json({
+        ok: false,
+        error: 'GEMINI_API_KEY no configurada en el servidor.',
+      });
+      return;
+    }
+    const summaryText = typeof req.body?.summary === 'string' ? req.body.summary.trim().slice(0, 3000) : '';
+    if (!summaryText) {
+      res.status(400).json({ ok: false, error: 'El resumen contable es obligatorio.' });
+      return;
+    }
+    try {
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: `Analiza este estado financiero P33 y da 3 recomendaciones prácticas y directas:\n\n${summaryText}`,
+        config: {
+          systemInstruction: 'Eres un auditor financiero cuantitativo. Sé breve, claro y objetivo en español.',
+        },
+      });
+      res.json({ ok: true, reply: response.text?.trim() || '' });
+    } catch {
+      res.status(502).json({ ok: false, error: 'Error al analizar el libro contable.' });
+    }
+  });
+
+  // HELIX CLI / POWERSHELL SAFE ALLOWLIST PROBE
+  app.post('/api/cli/exec', async (req, res) => {
+    const cmd = typeof req.body?.command === 'string' ? req.body.command.trim().slice(0, 200) : '';
+    const arg = typeof req.body?.arg === 'string' ? req.body.arg.trim().slice(0, 4000) : '';
+    if (cmd === 'status') {
+      const mem = process.memoryUsage();
+      res.json({
+        ok: true,
+        platform: process.platform,
+        nodeVersion: process.version,
+        uptimeSec: Math.round(process.uptime()),
+        heapUsedMiB: Number((mem.heapUsed / 1024 / 1024).toFixed(2)),
+        geminiConfigured: Boolean(resolveGeminiApiKey()),
+        n2Status: getN2MiniGptStatus(BASE_DIR),
+      });
+      return;
+    }
+    if (cmd === 'probe-win32') {
+      const out = await runPowerShellProbeSafe('DISK_AND_OLLAMA');
+      res.json({
+        ok: true,
+        platform: process.platform,
+        executedNativeWin32: process.platform === 'win32',
+        output:
+          out ||
+          `Host actual: ${process.platform} (${process.arch}). Sonda win32 nativa reservada para Windows PowerShell local.`,
+      });
+      return;
+    }
+    if (cmd === 'audit' && arg) {
+      const audit = auditHlxProgramAtN2Customs(arg);
+      res.json({ ok: audit.approved, audit });
+      return;
+    }
+    res.status(400).json({ ok: false, error: 'Subcomando CLI no permitido en el servidor.' });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -681,4 +1045,12 @@ async function startServer() {
   });
 }
 
-void startServer();
+const isDirectServerEntry =
+  typeof process !== 'undefined' &&
+  Array.isArray(process.argv) &&
+  Boolean(process.argv[1]) &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isDirectServerEntry) {
+  void startServer();
+}

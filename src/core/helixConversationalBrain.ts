@@ -33,10 +33,12 @@ export interface ConversationTurnContext {
   userName?: string;
   turnCount?: number;
   confirmed?: boolean;
+  vocalEnergyRms?: number;
+  vocalPitchVariance?: number;
 }
 
 const ACTION_CREATION_RE =
-  /\b(crea|crear|creame|créame|simul|calcul|diseñ|disen|construy|genera|haz|hagam|esculp|proyecta|cambia|cambialo|cámbialo|ajusta|ponle|agrega|añade|combina|mezcla|mueve|anima|dibuja|modela|transforma|deforma|ejecuta|prueba|escanea|escanear|cuento|historia|relato|bosque|lobo|caperucita|castillo|mar|olas|videojuego|juego|nave|espaci|gravedad|asteroide|enemigo|obst[aá]culo|velocidad|color|brillo|órbita|orbita|cohete|satelit|planeta|luna|marte|martes|radar|montaña|montana|terreno|fluido|onda|cuántic|cuantic|videoclip|música|musica|balance|financier|saldo|quimic|químic|molecul|molécul|reaccion|reacción|nernst|gibbs|morse|imagen|foto|laboratorio)\b/i;
+  /\b(crea|crear|creame|créame|simul|calcul|diseñ|disen|construy|genera|haz|hagam|esculp|proyecta|cambia|cambialo|cámbialo|ajusta|ponle|agrega|añade|combina|mezcla|mueve|anima|dibuja|modela|transforma|deforma|ejecuta|prueba|escanea|escanear|cuento|historia|relato|bosque|lobo|caperucita|castillo|mar|olas|videojuego|juego|nave|espaci|gravedad|asteroide|enemigo|obst[aá]culo|velocidad|color|brillo|órbita|orbita|cohete|satelit|planeta|luna|marte|martes|radar|montaña|montana|terreno|fluido|onda|cuántic|cuantic|videoclip|música|musica|balance|financier|saldo|quimic|químic|molecul|molécul|reaccion|reacción|nernst|gibbs|morse|imagen|foto|laboratorio|pentile|rgbw|stripe|monocrom|grises|atascado|caliente|reparar|galdr|fonema|ecuaci[oó]n\s*unificada|s_biopixel|cinematograf[ií]a|runas|disney|omega|recombin)\b/i;
 
 const PHYSICAL_VALUE_RE =
   /\b\d+(?:[.,]\d+)?\s*(?:km|m\/s|hz|ghz|mpa|kg|fps|qubits?|bpm|lpm|mg\/dl|mmhg|°c|\$|usd)\b/i;
@@ -121,7 +123,7 @@ export function classifyConversationIntent(raw: string): ConversationalIntentKin
   }
 
   if (
-    /\b(doble helice|recombinador|biblioteca|17\s*bytes|17b|qpsk|aduana|pcc|minigpt|mini-gpt|exocortex|pantalla liquida|36000|contenedores|biopixel|nanotec|6 caras)\b/.test(
+    /\b(doble helice|recombinador|biblioteca|17\s*bytes|17b|qpsk|aduana|pcc|minigpt|mini-gpt|exocortex|pantalla liquida|36000|contenedores|biopixel|nanotec|6 caras|pitagoras|33 primos|p33|pentile|rgbw|rgb stripe|cmyk|monocromatico|8 bits|1 bit|24 bits|pixel muerto|pixel atascado|pixel caliente|pixel fisico|pixel logico|ppi|cauchy_optic|galdr_synth|disney|12 principios|celulas.*33)\b/.test(
       norm,
     )
   ) {
@@ -421,7 +423,11 @@ export function buildHumanConversationReply(
   isAction: boolean,
   context: ConversationTurnContext = {},
 ): string {
-  const _prosody = analyzeVocalAndTextProsody(raw, 0, 0.05);
+  const _prosody = analyzeVocalAndTextProsody(
+    raw,
+    context.vocalEnergyRms ?? 0,
+    context.vocalPitchVariance ?? 0.05,
+  );
   const _lead = _prosody.mood === 'worried' ? _prosody.empathyPrefix : '';
   const norm = normalizeEs(raw);
   const tools = getLiveTools(context);
@@ -462,46 +468,65 @@ export function buildHumanConversationReply(
   if (kind === 'architecture_explain') {
     return (
       _lead +
-      'Todo el núcleo determinista de HELIX corre en esta consola híbrida autárquica sin depender de la nube: Pauli-SoA de 28 bytes/biopíxel (4K UHD), 36,000 contenedores holográficos, 23 motores matemáticos/físicos/químicos/cuánticos, raymarching SDF, red hexagonal Voronoi A₂ y descomposición/recombinación autopoiética de ADN (.hlx).'
+      'HELIX integra sobre biopíxeles 4K (Pauli-SoA 28 B/biopíxel): 23 motores reales con sus células .hlx firmadas para las 33 disciplinas P₃₃ (QPSK 17 bytes), cinemática Disney de 12 principios (det(S)=1, arcos Bézier y follow-through RK2), síntesis acústica Galdr por formantes (F1, F2 y notas musicales), separación RGB Stripe / PenTile / RGBW, profundidades 24/8/1-bit y métrica aritmética modular P₃₃ anti-muaré de Halton.'
     );
+  }
+
+  const who = context.userName ? `, ${context.userName}` : '';
+  const introNameMatch = raw.match(/(?:me\s+llamo|mi\s+nombre\s+es|soy)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)/i);
+  const justIntroduced =
+    introNameMatch?.[1] && !/^(hel|un|una|el|la|tu|nuevo|estudiante|profesor)/i.test(introNameMatch[1])
+      ? introNameMatch[1]
+      : '';
+
+  if (justIntroduced && kind === 'open_chat') {
+    return `${_lead}¡Mucho gusto, ${justIntroduced}! Qué bueno conocerte. Aquí estoy contigo para conversar de verdad, imaginar un videojuego o un cuento en 3D, o probar cualquier idea científica sobre toda esta pantalla de biopíxeles. ¿Qué te gustaría explorar primero?`;
+  }
+
+  if (/\b(no hay comunicacion|no hablas|frio|robot|maquina|aburrido|no me entiendes|seca|cordial|humana)\b/.test(norm)) {
+    return `${_lead}Tienes toda la razón${who}, y te agradezco que me lo digas con franqueza. Quiero hablar contigo como una persona cercana, no soltarte datos fríos. Cuéntame qué tienes en mente —un juego, una historia, una duda o simplemente charlar— y lo construimos juntos paso a paso.`;
+  }
+
+  if (/\b(como estas|que tal estas|todo bien|como te sientes)\b/.test(norm)) {
+    return `${_lead}¡Muy bien${who}, con muchas ganas de conversar y crear contigo! ¿Y tú cómo estás hoy? Si quieres, podemos inventar un mundo desde cero, escuchar música con una escena en 3D o simplemente charlar un rato.`;
   }
 
   if (kind === 'identity') {
     const alsoGreeting = /\b(hola|buenas|hey|hello|hi)\b/.test(norm);
     if (en) {
-      return `${_lead}${alsoGreeting ? 'Hello! ' : ''}I am Helix, your universal science, research, and entertainment console. Ask me anything and watch the 4K liquid biopixels transform live.`;
+      return `${_lead}${alsoGreeting ? 'Hello! ' : ''}I am Helix, your creative companion inside this full-screen 3D biopixel studio. We can talk naturally, design worlds and games, turn stories into living cinema, or explore science together.`;
     }
-    return `${_lead}${alsoGreeting ? '¡Hola! ' : ''}Soy Helix, tu consola universal de educación, investigación y entretenimiento para la Tierra, la Luna o Marte. Puedo explicar cualquier ley científica, descomponer y recombinar herramientas con su ADN y transformar esta pantalla líquida 4K en tiempo real. ¿Qué quieres descubrir?`;
+    return `${_lead}${alsoGreeting ? '¡Hola! ' : ''}Soy Helix${who}, tu compañero creativo dentro de esta pantalla de biopíxeles 3D. Me encanta conversar con naturalidad y dar forma visual en tiempo real a lo que imagines: desde un cuento o un videojuego hasta química, física u óptica. ¿Qué te apetece hacer hoy?`;
   }
 
   if (kind === 'greeting') {
     if (en) {
-      return _lead + 'Hello! Tell me what you want to explore — molecules, a trip to the Moon, 3D geometry, or interactive stories — and I will shape the 4K screen live.';
+      return _lead + 'Hello! Great to have you here. How is your day going, and what would you like to imagine or create together?';
     }
-    return _lead + '¡Hola! Qué alegría verte. Dime qué quieres explorar hoy —una molécula química, una nave hacia la Luna, geometría SDF en 3D, ondas cuánticas o un cuento interactivo— y lo formo en vivo en los biopíxeles 4K.';
+    return _lead + `¡Hola${who}! Qué gusto verte por aquí. ¿Cómo va tu día? Cuéntame qué te gustaría conversar o ver cobrar vida en la pantalla hoy.`;
   }
 
   if (kind === 'capabilities') {
     if (en) {
-      return `${_lead}I combine Education, Research, and Entertainment in one 4K liquid screen: orbital flight games, chemistry thermodynamics, quantum Bloch spheres, story-to-math scanning, and an interactive DNA tool recombinator.`;
+      return `${_lead}I am a creative studio companion on a full-screen 3D biopixel display: we can chat naturally, craft adventure/strategy/combat games, turn stories into 3D animated cinema with Galdr music, explore chemistry and space physics, or recombine laws in ADN / Lab.`;
     }
-    return `${_lead}Sirvo como una consola universal de Educación, Investigación y Entretenimiento: puedes explorar moléculas y reacciones químicas, pilotar una nave orbital con W/A/S/D, probar geometría raymarched SDF + red hexagonal A₂, escanear cuentos en partituras 3D o abrir la pestaña ADN / Lab para descomponer código y recombinar cualquiera de las 190+ herramientas en vivo.`;
+    return `${_lead}Más que una consola técnica, soy tu estudio creativo a pantalla completa${who}: podemos conversar abiertamente, crear secuencias hiperrealistas de juegos (Aventura, Estrategia, Combate o Campaña), transformar relatos en cine 3D con música Galdr, o experimentar con 33 disciplinas científicas y el Recombinador ADN. ¿Por dónde te gustaría empezar?`;
   }
 
   if (kind === 'gratitude') {
     return en
-      ? 'You are welcome! What shall we morph on the screen next?'
-      : '¡Con mucho gusto! ¿Qué quieres que transformemos ahora en la pantalla?';
+      ? 'You are very welcome! Always glad to create with you—what shall we dream up next?'
+      : `¡Con todo cariño${who}! Para eso estoy aquí. ¿Seguimos charlando o probamos otra escena en vivo?`;
   }
 
   if (kind === 'creation_or_simulation') {
     const isSpace = /\b(nave|espaci|orbit|órbita|luna|marte|planeta|cohete|satel)\b/.test(norm);
     const controlHint = isSpace
-      ? ' Puedes girar la escena con el ratón y pilotar la nave con las teclas W, A, S, D.'
-      : ' Puedes rotar y acercar el modelo 3D directamente en la pantalla líquida.';
-    const metricsHint = outputHint ? ` Datos vivos en este instante${outputHint}.` : '';
+      ? ' Puedes pilotar la nave directamente con W, A, S, D o mover el cursor sobre la escena.'
+      : ' Puedes mover el cursor sobre los biopíxeles o hacer zoom con la rueda para sentir el relieve en vivo.';
+    const metricsHint = outputHint ? ` También dejé calculados los datos reales (${outputHint.replace(/^\s*\(|\)\s*$/g, '')}).` : '';
 
-    return `${_lead}Transformé la materia de la pantalla en «${shapeLabel}» en tiempo real.${metricsHint}${controlHint} Dime qué parte quieres cambiar, acelerar o investigar.`;
+    return `${_lead}Listo${who}, acabo de dar forma a «${shapeLabel}» en toda la pantalla.${metricsHint}${controlHint} ¿Qué te parece así o qué te gustaría ajustar?`;
   }
 
   // 2. Seguimiento contextual ("más detalles", "y las demás?", "continúa")
@@ -520,7 +545,7 @@ export function buildHumanConversationReply(
       if (dom) return formatDomainToolList(dom, tools);
       const { matchedTools } = searchMatchingKnowledge(lastTopic, tools);
       if (matchedTools.length > 0) {
-        return `${_lead}Sobre tu consulta anterior, estas son las herramientas relacionadas más relevantes:\n${matchedTools
+        return `${_lead}Siguiendo con lo que hablábamos, aquí tienes las herramientas que mejor encajan con esa idea:\n${matchedTools
           .slice(0, 5)
           .map((t, i) => `${i + 1}. ${t.title} (${t.domain}): ${t.formulaSummary}`)
           .join('\n')}`;
@@ -534,7 +559,7 @@ export function buildHumanConversationReply(
     const parts: string[] = [];
     if (matchedTools.length > 0) {
       parts.push(
-        `Sobre eso tengo ${matchedTools.length} herramientas directas en mi catálogo:\n` +
+        `Mira${who}, sobre ese tema tengo herramientas listas para usar contigo:\n` +
           matchedTools
             .slice(0, 4)
             .map((t) => `• ${t.title} (${t.domain}): ${t.formulaSummary}`)
@@ -543,7 +568,7 @@ export function buildHumanConversationReply(
     }
     if (matchedDisciplines.length > 0) {
       parts.push(
-        `Disciplinas relacionadas:\n` +
+        `Disciplinas conectadas:\n` +
           matchedDisciplines
             .slice(0, 3)
             .map((d) => `• ${d.name} (${d.faculty}) — ${d.canonicalEquation}`)
@@ -556,29 +581,29 @@ export function buildHumanConversationReply(
           matchedEngines.map(([, m]) => `• ${m.label}: ${m.formulaSummary}`).join('\n'),
       );
     }
-    parts.push('Si quieres que ejecute una simulación o te explique una en detalle, dime cuál prefieres.');
+    parts.push('¿Quieres que lo proyecte en vivo en los biopíxeles o prefieres que te lo explique de forma sencilla?');
     return parts.join('\n\n');
   }
 
   if (kind === 'learning' || /\b(aprender|enseña|ensename|ciencia|ciencias|fisica|física|matematicas|matemáticas|quimica|química|astronomia|astronomía)\b/.test(norm)) {
     return [
-      `¡Excelente! Empecemos tu sesión interactiva en la consola HELIX (Educación · Investigación · Entretenimiento):`,
-      `1. Química y Energía Molecular: Simulamos gases ideales (PV=nRT), Gibbs (ΔG), Arrhenius, Nernst y enlaces anarmónicos de Morse en 3D.`,
-      `2. Física Espacial y Geometría: Órbitas Kepler/Verlet, raymarching SDF, teselación hexagonal Voronoi A₂ y ondas de Helmholtz-Bessel.`,
-      `3. Cuántica y Recombinación ADN: Esfera de Bloch SU(2), Statevector OpenQASM 2.0 y síntesis autopoiética A×B desde la pestaña ADN / Lab.`,
-      `Dime qué tema quieres probar (por ejemplo: "simula una molécula con Morse", "pilota la nave a la Luna" o "recombina óptica con cuántica").`
+      `¡Me encanta esa curiosidad${who}! Podemos aprender juntos de forma visual y sin enredos:`,
+      `1. Química y Energía Molecular: Vemos átomos reales y enlaces de Morse vibrando en 3D.`,
+      `2. Espacio y Naturaleza: Pilotamos naves en órbita, océanos con olas o cordilleras con aves.`,
+      `3. Juegos e Historias: Me cuentas una idea de aventura o cuento y la convertimos en cine interactivo.`,
+      `Dime qué tema te llama más la atención y arrancamos juntos.`
     ].join('\n');
   }
 
   if (kind === 'feedback') {
-    return `${_lead}Te sigo. Si quieres comprobar algo en vivo, puedes preguntarme por cualquiera de las ${tools.length} herramientas disponibles o pedirme que calcule y proyecte una escena sobre «${shapeLabel}».`;
+    return `${_lead}Te escucho con atención${who}. Me importa que esto se sienta fluido, útil y cercano para ti. Si quieres ajustar la escena «${shapeLabel}», inventar una historia nueva o charlar sobre tu proyecto, dime con total confianza.`;
   }
 
   if (en) {
-    return _lead + 'I understand. You can ask me to list all my tools and functions, explain any scientific topic, or run a live simulation on the screen.';
+    return _lead + 'I am listening! Tell me more about what you have in mind—whether it is a story, a game world, a science question, or just an open conversation.';
   }
 
-  return `${_lead}Te entiendo. Si buscas una capacidad concreta, puedo listarte todas mis herramientas y funciones (${tools.length} en total), explicarte cualquier disciplina o ejecutar una simulación ahora mismo sobre «${shapeLabel}». ¿Qué te gustaría hacer?`;
+  return `${_lead}Te sigo${who}. Cuéntame un poco más de lo que tienes en mente: podemos desarrollarlo juntos en conversación, convertirlo en una secuencia visual sobre toda la pantalla o explorarlo con herramientas del estudio. ¿Hacia dónde lo llevamos?`;
 }
 
 export interface HumanCineReplyResult {

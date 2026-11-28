@@ -1,0 +1,1764 @@
+# 📦 CATÁLOGO DE HERRAMIENTAS — Cauchy Sandbox (desarticulado)
+
+Desarticulo el proyecto en **21 herramientas independientes**, agrupadas por fase y propósito. Cada una puede extraerse y reusarse por separado.
+
+---
+
+## 🗺️ Mapa de dependencias
+
+```
+                          ┌─────────────────┐
+                          │ T01 Vector Math │
+                          └────────┬────────┘
+                                   │
+              ┌────────────────────┼────────────────────┐
+              ▼                    ▼                    ▼
+       ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+       │ T02 Types    │    │ T03 Stress   │    │ T04 Geometry │
+       │              │    │   Magnitude  │    │  Generators  │
+       └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+              │                   │                    │
+              └─────────┬─────────┴────────────────────┘
+                        ▼
+                ┌─────────────────┐
+                │ T05 Engine      │◄──── T06 Impulse
+                └────────┬────────┘
+                         │
+        ┌────────────────┼──────────────────┬───────────────┐
+        ▼                ▼                  ▼               ▼
+ ┌─────────────┐  ┌─────────────┐   ┌─────────────┐  ┌─────────────┐
+ │ T07 Color   │  │ T10 Heatmap │   │ T12 Metrics │  │ T11 Raycast │
+ │   Ramp      │  │   Renderer  │   │  Collector  │  │  Controller │
+ └──────┬──────┘  └──────┬──────┘   └──────┬──────┘  └──────┬──────┘
+        ▼                │                  │                │
+ ┌─────────────┐         │                  │                │
+ │ T08 Point   │         │                  │                │
+ │ Cloud       │         │                  │                │
+ └──────┬──────┘         │                  │                │
+        ▼                │                  │                │
+ ┌─────────────┐         │                  │                │
+ │ T09 Three   │         │                  │                │
+ │ Scene       │         │                  │                │
+ └──────┬──────┘         │                  │                │
+        │                │                  │                │
+        └────────┬───────┴──────────┬───────┴────────────────┘
+                 ▼                  ▼
+         ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+         │ T15–T20 UI    │  │ T13 Go Source │  │ T14 Go Engine │
+         └───────┬───────┘  └───────┬───────┘  └───────────────┘
+                 └──────────┬───────┘
+                            ▼
+                    ┌──────────────┐
+                    │ T21 App      │
+                    └──────────────┘
+```
+
+---
+
+## 📋 Tabla maestra
+
+| ID | Herramienta | Categoría | Uso | Fin | Archivo |
+|----|-------------|-----------|-----|-----|---------|
+| T01 | Vector Math | Núcleo | Operaciones 3D inmutables | Base matemática sin dependencias | `core/vector-math.ts` |
+| T02 | Tensor Types | Núcleo | Tipos de dominio (σ, ε, nodos) | Contrato compartido entre módulos | `core/stress-types.ts` |
+| T03 | Stress Magnitude | Núcleo | Norma de Frobenius, von Mises | Escalar para color y telemetría | `core/stress-magnitude.ts` |
+| T04 | Geometry Generators | Núcleo | Placa / toroide / corazón | Malla de reposo | `geometry/generators.ts` |
+| T05 | Cauchy Stress Engine | Física | Integrador 6-DoF con amortiguación | Motor central | `core/cauchy-stress-engine.ts` |
+| T06 | Impulse Injector | Física | Aplicar impulso localizado | Excitar la malla de forma controlada | `physics/impulse-injector.ts` |
+| T07 | Color Ramp | Render | Escalar → color HSL | Visualización de magnitudes | `rendering/color-ramp.ts` |
+| T08 | Point Cloud Renderer | Render | Nodos como THREE.Points | Malla 3D coloreada | `rendering/point-cloud.ts` |
+| T09 | Three Scene Factory | Render | Crear escena + cámara + luz | Bootstrap Three.js | `rendering/three-scene.ts` |
+| T10 | 2D Heatmap Renderer | Render | Malla → heatmap canvas | Vista 2D de σ | `rendering/heatmap-renderer.ts` |
+| T11 | Raycast Impulse Controller | Interacción | Click → impulso | Manipulación directa | `interaction/raycast-impulse.ts` |
+| T12 | Metrics Collector | Telemetría | Agregar métricas con ventana | Panel de rendimiento real | `telemetry/metrics-collector.ts` |
+| T13 | Go Source Exporter | Export | Constante con fuente Go | Copiar motor nativo | `export/go-source.ts` |
+| T14 | Go Native Engine | Export | Implementación nativa del motor | Reuso fuera del navegador | `omega_cauchy.go` |
+| T15 | ControlPanel | UI | Botones, sliders, geometría | Control de usuario | `ui/ControlPanel.tsx` |
+| T16 | MetricsPanel | UI | Tabla de métricas reales | Diagnóstico en vivo | `ui/MetricsPanel.tsx` |
+| T17 | HeatmapView | UI | Wrapper de T10 | Vista 2D integrada | `ui/HeatmapView.tsx` |
+| T18 | ThreeCanvas | UI | Wrapper de T08 + T09 + T11 | Vista 3D interactiva | `ui/ThreeCanvas.tsx` |
+| T19 | GoCodeViewer | UI | Visor + copia de T13 | Distribución del código nativo | `ui/GoCodeViewer.tsx` |
+| T20 | TechnicalDocs | UI | Doc técnica sin marketing | Honestidad sobre límites | `ui/TechnicalDocs.tsx` |
+| T21 | App | Composición | Orquestador de todo | Punto de entrada | `App.tsx` |
+
+---
+
+## FASE 1 — NÚCLEO MATEMÁTICO
+
+### 🔧 T01 — Vector Math
+
+**Uso:** operaciones básicas de vectores 3D.
+**Fines:** base compartida por física y render, sin dependencias de Three.js en el motor.
+**Archivo:** `src/core/vector-math.ts`
+
+```ts
+// src/core/vector-math.ts
+/**
+ * Vector3 primitives.
+ * Mutable for hot paths (engine loop), plus pure helpers for math.
+ * Vectors are plain objects to avoid THREE.js dependency in the physics core.
+ */
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export function createVec3(x = 0, y = 0, z = 0): Vec3 {
+  return { x, y, z };
+}
+
+export function cloneVec3(v: Vec3): Vec3 {
+  return { x: v.x, y: v.y, z: v.z };
+}
+
+export function addVec3(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+export function subVec3(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+
+export function scaleVec3(v: Vec3, s: number): Vec3 {
+  return { x: v.x * s, y: v.y * s, z: v.z * s };
+}
+
+export function dotVec3(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+export function lengthSqVec3(v: Vec3): number {
+  return v.x * v.x + v.y * v.y + v.z * v.z;
+}
+
+export function lengthVec3(v: Vec3): number {
+  return Math.sqrt(lengthSqVec3(v));
+}
+
+export function distanceSqVec3(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+export function setVec3(target: Vec3, source: Vec3): void {
+  target.x = source.x;
+  target.y = source.y;
+  target.z = source.z;
+}
+
+export function addScaledVec3(target: Vec3, source: Vec3, s: number): void {
+  target.x += source.x * s;
+  target.y += source.y * s;
+  target.z += source.z * s;
+}
+```
+
+---
+
+### 🔧 T02 — Tensor Types
+
+**Uso:** tipos de dominio del tensor de Cauchy y del estado del nodo.
+**Fines:** contrato único entre motor, render y telemetría. Nomenclatura tomada de mecánica del continuo.
+**Archivo:** `src/core/stress-types.ts`
+
+```ts
+// src/core/stress-types.ts
+import type { Vec3 } from './vector-math';
+
+export type { Vec3 };
+
+/**
+ * 6 independent components of a symmetric 2nd-order tensor.
+ * Used for the Cauchy stress tensor σ and the small-strain tensor ε:
+ *
+ *   σ = ⎡ σxx  σxy  σxz ⎤
+ *       ⎢ σxy  σyy  σyz ⎥
+ *       ⎣ σxz  σyz  σzz ⎦
+ */
+export interface SymmetricTensor6 {
+  xx: number;
+  yy: number;
+  zz: number;
+  xy: number;
+  yz: number;
+  xz: number;
+}
+
+export const createZeroTensor6 = (): SymmetricTensor6 => ({
+  xx: 0,
+  yy: 0,
+  zz: 0,
+  xy: 0,
+  yz: 0,
+  xz: 0,
+});
+
+/** A single node of the simulated membrane. */
+export interface MeshNode {
+  readonly id: number;
+  readonly rest: Vec3;
+  position: Vec3;
+  velocity: Vec3;
+  force: Vec3;
+  stress: SymmetricTensor6;
+  energy: number;
+}
+
+export type GeometryKind = 'plate' | 'torus' | 'heart';
+
+export interface MaterialProperties {
+  /** Young's modulus E (Pa). */
+  youngsModulus: number;
+  /** Poisson's ratio ν (−1 < ν < 0.5). */
+  poissonRatio: number;
+  /** Mass per node (kg). */
+  nodeMass: number;
+}
+
+export interface IntegrationConfig {
+  /** Damping coefficient λ (1/s) in E(t) = E₀·exp(−λ·t). */
+  dampingCoefficient: number;
+}
+
+export interface MeshConfig {
+  /** Number of nodes per side (gridSize² total nodes). */
+  gridSize: number;
+  /** Node spacing (m). */
+  spacing: number;
+}
+
+export interface EngineConfig {
+  mesh: MeshConfig;
+  material: MaterialProperties;
+  integration: IntegrationConfig;
+}
+
+/** Real, runtime-measured metrics reported after each step. */
+export interface SimulationMetrics {
+  stepCount: number;
+  elapsedTimeSec: number;
+  /** Wall-clock latency of the last step (ms). */
+  stepLatencyMs: number;
+  /** Sum of ½·m·v² across all nodes (J). */
+  totalKineticEnergy: number;
+  /** max |σ|_F over all nodes (in-plane components). */
+  maxStressMagnitude: number;
+  /** Mean displacement magnitude from rest position (m). */
+  avgDisplacement: number;
+}
+```
+
+---
+
+### 🔧 T03 — Stress Magnitude
+
+**Uso:** convertir un tensor en un escalar para color y telemetría.
+**Fines:** evitar duplicar la fórmula de la norma en múltiples componentes UI.
+**Archivo:** `src/core/stress-magnitude.ts`
+
+```ts
+// src/core/stress-magnitude.ts
+import type { SymmetricTensor6 } from './stress-types';
+
+/**
+ * Frobenius norm of the in-plane stress components:
+ *   |σ| = √(σxx² + σyy² + σxy²)
+ * Used for visualization and max-stress reporting.
+ */
+export function frobeniusNormInPlane(s: SymmetricTensor6): number {
+  return Math.sqrt(s.xx * s.xx + s.yy * s.yy + s.xy * s.xy);
+}
+
+/** Full Frobenius norm over all 6 components. */
+export function frobeniusNormFull(s: SymmetricTensor6): number {
+  return Math.sqrt(
+    s.xx * s.xx +
+      s.yy * s.yy +
+      s.zz * s.zz +
+      s.xy * s.xy +
+      s.yz * s.yz +
+      s.xz * s.xz,
+  );
+}
+
+/** Von Mises equivalent stress (3D). */
+export function vonMisesStress(s: SymmetricTensor6): number {
+  const d1 = s.xx - s.yy;
+  const d2 = s.yy - s.zz;
+  const d3 = s.zz - s.xx;
+  return Math.sqrt(
+    0.5 * (d1 * d1 + d2 * d2 + d3 * d3) +
+      3 * (s.xy * s.xy + s.yz * s.yz + s.xz * s.xz),
+  );
+}
+```
+
+---
+
+### 🔧 T04 — Geometry Generators
+
+**Uso:** producir la posición de reposo de cada nodo en cada geometría.
+**Fines:** desacoplar la definición de formas del motor y del render.
+**Archivo:** `src/geometry/generators.ts`
+
+```ts
+// src/geometry/generators.ts
+import { createVec3, type Vec3 } from '../core/vector-math';
+import type { GeometryKind } from '../core/stress-types';
+
+export interface GeometryGenerator {
+  readonly kind: GeometryKind;
+  computeRestPosition(u: number, v: number, i: number, j: number): Vec3;
+}
+
+class PlateGenerator implements GeometryGenerator {
+  readonly kind = 'plate' as const;
+  constructor(private gridSize: number, private spacing: number) {}
+  computeRestPosition(_u: number, _v: number, i: number, j: number): Vec3 {
+    const c = (this.gridSize - 1) / 2;
+    return createVec3((i - c) * this.spacing, (j - c) * this.spacing, 0);
+  }
+}
+
+class TorusGenerator implements GeometryGenerator {
+  readonly kind = 'torus' as const;
+  constructor(
+    private majorRadius = 5.5,
+    private minorRadius = 2.0,
+  ) {}
+  computeRestPosition(u: number, v: number): Vec3 {
+    const theta = u * Math.PI * 2;
+    const phi = v * Math.PI * 2;
+    const r = this.majorRadius + this.minorRadius * Math.cos(phi);
+    return createVec3(
+      r * Math.cos(theta),
+      r * Math.sin(theta),
+      this.minorRadius * Math.sin(phi),
+    );
+  }
+}
+
+/**
+ * Heart via implicit curve (x² + y² − 1)³ − x²y³ ≤ 0,
+ * projected onto the surface by binary search along the ray.
+ */
+class HeartGenerator implements GeometryGenerator {
+  readonly kind = 'heart' as const;
+  private static isInside(x: number, y: number): boolean {
+    const a = x * x + y * y - 1;
+    return a * a * a - x * x * y * y * y <= 0;
+  }
+  computeRestPosition(u: number, v: number): Vec3 {
+    let x = (u - 0.5) * 3;
+    let y = (v - 0.5) * 3 + 0.25;
+    if (!HeartGenerator.isInside(x, y)) {
+      let lo = 0;
+      let hi = 1;
+      for (let k = 0; k < 14; k++) {
+        const mid = (lo + hi) * 0.5;
+        if (HeartGenerator.isInside(x * mid, y * mid)) lo = mid;
+        else hi = mid;
+      }
+      x *= lo;
+      y *= lo;
+    }
+    return createVec3(x * 3, y * 3, 0);
+  }
+}
+
+export function createGeometryGenerator(
+  kind: GeometryKind,
+  gridSize: number,
+  spacing: number,
+): GeometryGenerator {
+  switch (kind) {
+    case 'plate':
+      return new PlateGenerator(gridSize, spacing);
+    case 'torus':
+      return new TorusGenerator();
+    case 'heart':
+      return new HeartGenerator();
+  }
+}
+```
+
+---
+
+## FASE 2 — MOTOR FÍSICO
+
+### ⚙️ T05 — Cauchy Stress Engine
+
+**Uso:** integrador físico con tensor de Cauchy y amortiguación exponencial.
+**Fines:** núcleo reutilizable; sólo depende de T01–T04.
+**Archivo:** `src/core/cauchy-stress-engine.ts`
+
+```ts
+// src/core/cauchy-stress-engine.ts
+import type {
+  EngineConfig,
+  GeometryKind,
+  MeshNode,
+  SimulationMetrics,
+} from './stress-types';
+import { createZeroTensor6 } from './stress-types';
+import { createVec3, type Vec3 } from './vector-math';
+import { createGeometryGenerator } from '../geometry/generators';
+import { injectImpulse } from '../physics/impulse-injector';
+
+/**
+ * CauchyStressEngine — 6-DoF Cauchy stress simulation on a structured 2D grid.
+ *
+ * Per step:
+ *   1. Strain from central differences
+ *   2. Isotropic Hooke's law (plane stress)
+ *   3. Force = divergence of stress
+ *   4. Damped semi-implicit Euler integration:
+ *        v ← (v + F/m·dt) · exp(−λ·dt)
+ *        u ← u + v·dt
+ */
+export class CauchyStressEngine {
+  private config: EngineConfig;
+  private nodes: MeshNode[] = [];
+  private geometryKind: GeometryKind = 'plate';
+  private time = 0;
+  private stepCount = 0;
+
+  constructor(config: Partial<EngineConfig> = {}) {
+    this.config = {
+      mesh: { gridSize: 24, spacing: 1, ...config.mesh },
+      material: {
+        youngsModulus: 200,
+        poissonRatio: 0.3,
+        nodeMass: 1,
+        ...config.material,
+      },
+      integration: {
+        dampingCoefficient: 0.8,
+        ...config.integration,
+      },
+    };
+    this.regenerateMesh('plate');
+  }
+
+  // ---- Public API ----------------------------------------------------
+
+  get meshNodes(): ReadonlyArray<MeshNode> {
+    return this.nodes;
+  }
+  get currentGeometry(): GeometryKind {
+    return this.geometryKind;
+  }
+  get currentConfig(): Readonly<EngineConfig> {
+    return this.config;
+  }
+
+  setDampingCoefficient(lambda: number): void {
+    this.config.integration.dampingCoefficient = lambda;
+  }
+
+  regenerateMesh(kind: GeometryKind): void {
+    this.geometryKind = kind;
+    this.time = 0;
+    this.stepCount = 0;
+
+    const n = this.config.mesh.gridSize;
+    const h = this.config.mesh.spacing;
+    const generator = createGeometryGenerator(kind, n, h);
+
+    this.nodes = [];
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const u = n > 1 ? i / (n - 1) : 0.5;
+        const v = n > 1 ? j / (n - 1) : 0.5;
+        const rest = generator.computeRestPosition(u, v, i, j);
+        this.nodes.push({
+          id: j * n + i,
+          rest: { ...rest },
+          position: { ...rest },
+          velocity: createVec3(),
+          force: createVec3(),
+          stress: createZeroTensor6(),
+          energy: 0,
+        });
+      }
+    }
+  }
+
+  reset(): void {
+    this.regenerateMesh(this.geometryKind);
+  }
+
+  /** Convenience wrapper around the standalone impulse injector. */
+  applyImpulse(center: Vec3, impulse: Vec3, radius: number): number {
+    return injectImpulse(this.nodes, center, impulse, radius);
+  }
+
+  step(dt: number): SimulationMetrics {
+    const t0 = performance.now();
+    const { gridSize: n, spacing: h } = this.config.mesh;
+    const { youngsModulus: E, poissonRatio: nu, nodeMass: m } = this.config.material;
+    const lambda = this.config.integration.dampingCoefficient;
+
+    this.computeStressField(n, h, E, nu);
+    this.computeForces(n, h);
+    const { kinetic, maxStress, avgDisp } = this.integrateDamped(m, lambda, dt);
+
+    this.time += dt;
+    this.stepCount++;
+
+    return {
+      stepCount: this.stepCount,
+      elapsedTimeSec: this.time,
+      stepLatencyMs: performance.now() - t0,
+      totalKineticEnergy: kinetic,
+      maxStressMagnitude: maxStress,
+      avgDisplacement: avgDisp,
+    };
+  }
+
+  // ---- Internals -----------------------------------------------------
+
+  private index(i: number, j: number): number {
+    return j * this.config.mesh.gridSize + i;
+  }
+
+  private computeStressField(n: number, h: number, E: number, nu: number): void {
+    const c1 = E / (1 - nu * nu);
+    const c2 = E / (1 + nu);
+
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const nd = this.nodes[this.index(i, j)];
+        const iL = Math.max(0, i - 1);
+        const iR = Math.min(n - 1, i + 1);
+        const jD = Math.max(0, j - 1);
+        const jU = Math.min(n - 1, j + 1);
+        const L = this.nodes[this.index(iL, j)];
+        const R = this.nodes[this.index(iR, j)];
+        const D = this.nodes[this.index(i, jD)];
+        const U = this.nodes[this.index(i, jU)];
+        const dx = (iR - iL) * h || h;
+        const dy = (jU - jD) * h || h;
+
+        const dudx = (R.position.x - L.position.x) / dx;
+        const dudy = (U.position.x - D.position.x) / dy;
+        const dvdx = (R.position.y - L.position.y) / dx;
+        const dvdy = (U.position.y - D.position.y) / dy;
+        const dwdx = (R.position.z - L.position.z) / dx;
+        const dwdy = (U.position.z - D.position.z) / dy;
+
+        const exx = dudx;
+        const eyy = dvdy;
+        const exy = 0.5 * (dudy + dvdx);
+        const exz = 0.5 * dwdx;
+        const eyz = 0.5 * dwdy;
+
+        nd.stress.xx = c1 * (exx + nu * eyy);
+        nd.stress.yy = c1 * (eyy + nu * exx);
+        nd.stress.xy = c2 * exy;
+        nd.stress.xz = c2 * exz;
+        nd.stress.yz = c2 * eyz;
+        nd.stress.zz = 0;
+      }
+    }
+  }
+
+  private computeForces(n: number, h: number): void {
+    const inv2h = 1 / (2 * h);
+    for (let j = 1; j < n - 1; j++) {
+      for (let i = 1; i < n - 1; i++) {
+        const nd = this.nodes[this.index(i, j)];
+        const R = this.nodes[this.index(i + 1, j)];
+        const L = this.nodes[this.index(i - 1, j)];
+        const U = this.nodes[this.index(i, j + 1)];
+        const D = this.nodes[this.index(i, j - 1)];
+
+        nd.force.x =
+          (R.stress.xx - L.stress.xx) * inv2h +
+          (U.stress.xy - D.stress.xy) * inv2h;
+        nd.force.y =
+          (R.stress.xy - L.stress.xy) * inv2h +
+          (U.stress.yy - D.stress.yy) * inv2h;
+        nd.force.z =
+          (R.stress.xz - L.stress.xz) * inv2h +
+          (U.stress.yz - D.stress.yz) * inv2h;
+      }
+    }
+  }
+
+  private integrateDamped(
+    m: number,
+    lambda: number,
+    dt: number,
+  ): { kinetic: number; maxStress: number; avgDisp: number } {
+    const damp = Math.exp(-lambda * dt);
+    let kinetic = 0;
+    let maxStress = 0;
+    let sumDisp = 0;
+
+    for (const nd of this.nodes) {
+      nd.velocity.x = (nd.velocity.x + (nd.force.x / m) * dt) * damp;
+      nd.velocity.y = (nd.velocity.y + (nd.force.y / m) * dt) * damp;
+      nd.velocity.z = (nd.velocity.z + (nd.force.z / m) * dt) * damp;
+
+      nd.position.x += nd.velocity.x * dt;
+      nd.position.y += nd.velocity.y * dt;
+      nd.position.z += nd.velocity.z * dt;
+
+      const v2 =
+        nd.velocity.x ** 2 + nd.velocity.y ** 2 + nd.velocity.z ** 2;
+      kinetic += 0.5 * m * v2;
+
+      const s2 = nd.stress.xx ** 2 + nd.stress.yy ** 2 + nd.stress.xy ** 2;
+      const sm = Math.sqrt(s2);
+      if (sm > maxStress) maxStress = sm;
+
+      const dx = nd.position.x - nd.rest.x;
+      const dy = nd.position.y - nd.rest.y;
+      const dz = nd.position.z - nd.rest.z;
+      sumDisp += Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      nd.energy = 0.5 * m * v2 + 0.5 * s2;
+    }
+
+    return {
+      kinetic,
+      maxStress,
+      avgDisp: this.nodes.length ? sumDisp / this.nodes.length : 0,
+    };
+  }
+}
+```
+
+---
+
+### ⚙️ T06 — Impulse Injector
+
+**Uso:** aplicar un impulso con caída radial a un subconjunto de nodos.
+**Fines:** función pura sobre cualquier array de `MeshNode`, reutilizable sin el motor.
+**Archivo:** `src/physics/impulse-injector.ts`
+
+```ts
+// src/physics/impulse-injector.ts
+import type { MeshNode, Vec3 } from '../core/stress-types';
+import { distanceSqVec3 } from '../core/vector-math';
+
+/**
+ * Inject a linear-falloff impulse into all nodes within `radius` of `center`.
+ * Returns the number of affected nodes.
+ */
+export function injectImpulse(
+  nodes: ReadonlyArray<MeshNode>,
+  center: Vec3,
+  impulse: Vec3,
+  radius: number,
+): number {
+  const r2 = radius * radius;
+  let affected = 0;
+
+  for (const node of nodes) {
+    const d2 = distanceSqVec3(node.position, center);
+    if (d2 > r2) continue;
+    const falloff = 1 - Math.sqrt(d2) / radius;
+    node.velocity.x += impulse.x * falloff;
+    node.velocity.y += impulse.y * falloff;
+    node.velocity.z += impulse.z * falloff;
+    affected++;
+  }
+
+  return affected;
+}
+```
+
+---
+
+## FASE 3 — RENDERIZADO
+
+### 🎨 T07 — Color Ramp
+
+**Uso:** mapear un escalar en `[0,1]` a un color RGB.
+**Fines:** unificar la escala de calor entre vista 3D y 2D.
+**Archivo:** `src/rendering/color-ramp.ts`
+
+```ts
+// src/rendering/color-ramp.ts
+export interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
+/**
+ * Map a normalized scalar t ∈ [0, 1] to a hot-to-cold RGB colour.
+ * Hue: 240° (blue) at t=0 → 0° (red) at t=1.
+ */
+export function stressToColor(t: number): RGB {
+  const clamp = Math.min(1, Math.max(0, t));
+  const h = ((1 - clamp) * 240) / 360;
+  return hslToRgb(h, 0.9, 0.5);
+}
+
+function hslToRgb(h: number, s: number, l: number): RGB {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h * 12) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return { r: f(0), g: f(8), b: f(4) };
+}
+```
+
+---
+
+### 🎨 T08 — Point Cloud Renderer
+
+**Uso:** envolver un array de `MeshNode` como `THREE.Points` coloreados.
+**Fines:** aislar la lógica de actualización de la escena.
+**Archivo:** `src/rendering/point-cloud.ts`
+
+```ts
+// src/rendering/point-cloud.ts
+import * as THREE from 'three';
+import type { MeshNode } from '../core/stress-types';
+import { frobeniusNormInPlane } from '../core/stress-magnitude';
+import { stressToColor } from './color-ramp';
+
+export interface PointCloudOptions {
+  pointSize?: number;
+  sizeAttenuation?: boolean;
+}
+
+/**
+ * Renders a node array as colored THREE.Points.
+ * Color maps current in-plane stress magnitude via stressToColor.
+ */
+export class PointCloudRenderer {
+  readonly object3D: THREE.Points;
+  private positions: Float32Array;
+  private colors: Float32Array;
+  private geometry: THREE.BufferGeometry;
+  private material: THREE.PointsMaterial;
+
+  constructor(nodeCount: number, options: PointCloudOptions = {}) {
+    const { pointSize = 0.22, sizeAttenuation = true } = options;
+    this.positions = new Float32Array(nodeCount * 3);
+    this.colors = new Float32Array(nodeCount * 3);
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.positions, 3),
+    );
+    this.geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(this.colors, 3),
+    );
+    this.material = new THREE.PointsMaterial({
+      size: pointSize,
+      vertexColors: true,
+      sizeAttenuation,
+    });
+    this.object3D = new THREE.Points(this.geometry, this.material);
+  }
+
+  resize(nodeCount: number): void {
+    this.positions = new Float32Array(nodeCount * 3);
+    this.colors = new Float32Array(nodeCount * 3);
+    this.geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.positions, 3),
+    );
+    this.geometry.setAttribute(
+      'color',
+      new THREE.BufferAttribute(this.colors, 3),
+    );
+  }
+
+  update(nodes: ReadonlyArray<MeshNode>): void {
+    let maxStress = 1e-6;
+    for (const n of nodes) {
+      const s = frobeniusNormInPlane(n.stress);
+      if (s > maxStress) maxStress = s;
+    }
+
+    for (let k = 0; k < nodes.length; k++) {
+      const n = nodes[k];
+      this.positions[k * 3] = n.position.x;
+      this.positions[k * 3 + 1] = n.position.y;
+      this.positions[k * 3 + 2] = n.position.z;
+
+      const t = frobeniusNormInPlane(n.stress) / maxStress;
+      const { r, g, b } = stressToColor(t);
+      this.colors[k * 3] = r;
+      this.colors[k * 3 + 1] = g;
+      this.colors[k * 3 + 2] = b;
+    }
+
+    (this.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.geometry.dispose();
+    this.material.dispose();
+  }
+}
+```
+
+---
+
+### 🎨 T09 — Three Scene Factory
+
+**Uso:** crear escena, cámara, luces y renderer WebGL listos para usar.
+**Fines:** eliminación de bootstrap duplicado.
+**Archivo:** `src/rendering/three-scene.ts`
+
+```ts
+// src/rendering/three-scene.ts
+import * as THREE from 'three';
+
+export interface ThreeSceneBundle {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  renderer: THREE.WebGLRenderer;
+  resize: (width: number, height: number) => void;
+  dispose: () => void;
+}
+
+export interface ThreeSceneOptions {
+  cameraPosition?: [number, number, number];
+  backgroundColor?: number;
+  fov?: number;
+}
+
+/**
+ * Bootstrap a Three.js scene with lighting and a perspective camera.
+ * Appends the WebGL canvas to `mount`.
+ */
+export function createThreeScene(
+  mount: HTMLElement,
+  options: ThreeSceneOptions = {},
+): ThreeSceneBundle {
+  const {
+    cameraPosition = [18, 14, 22],
+    backgroundColor = 0x0a0a0a,
+    fov = 55,
+  } = options;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(backgroundColor);
+
+  const camera = new THREE.PerspectiveCamera(
+    fov,
+    mount.clientWidth / Math.max(1, mount.clientHeight),
+    0.1,
+    500,
+  );
+  camera.position.set(...cameraPosition);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(mount.clientWidth, mount.clientHeight);
+  mount.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+  dir.position.set(10, 20, 10);
+  scene.add(dir);
+
+  const resize = (w: number, h: number) => {
+    camera.aspect = w / Math.max(1, h);
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  };
+
+  const dispose = () => {
+    renderer.dispose();
+    if (renderer.domElement.parentNode === mount) {
+      mount.removeChild(renderer.domElement);
+    }
+  };
+
+  return { scene, camera, renderer, resize, dispose };
+}
+```
+
+---
+
+### 🎨 T10 — 2D Heatmap Renderer
+
+**Uso:** dibujar la malla como heatmap en un canvas 2D.
+**Fines:** vista complementaria de magnitudes sin cargar Three.js.
+**Archivo:** `src/rendering/heatmap-renderer.ts`
+
+```ts
+// src/rendering/heatmap-renderer.ts
+import type { MeshNode } from '../core/stress-types';
+import { frobeniusNormInPlane } from '../core/stress-magnitude';
+
+export interface HeatmapOptions {
+  size?: number;
+}
+
+export class HeatmapRenderer {
+  private ctx: CanvasRenderingContext2D;
+  private size: number;
+
+  constructor(canvas: HTMLCanvasElement, options: HeatmapOptions = {}) {
+    const size = options.size ?? 256;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('HeatmapRenderer: 2D context unavailable');
+    this.ctx = ctx;
+    this.size = size;
+  }
+
+  render(nodes: ReadonlyArray<MeshNode>, gridSize: number): void {
+    const cell = this.size / gridSize;
+    let maxStress = 1e-6;
+    for (const n of nodes) {
+      const s = frobeniusNormInPlane(n.stress);
+      if (s > maxStress) maxStress = s;
+    }
+
+    for (let j = 0; j < gridSize; j++) {
+      for (let i = 0; i < gridSize; i++) {
+        const s = frobeniusNormInPlane(nodes[j * gridSize + i].stress);
+        const t = Math.min(1, s / maxStress);
+        const hue = 220 * (1 - t);
+        this.ctx.fillStyle = `hsl(${hue}, 85%, ${20 + t * 45}%)`;
+        this.ctx.fillRect(i * cell, j * cell, cell + 1, cell + 1);
+      }
+    }
+  }
+}
+```
+
+---
+
+## FASE 4 — INTERACCIÓN
+
+### 🖱️ T11 — Raycast Impulse Controller
+
+**Uso:** convertir clics del usuario en impulsos en coordenadas de mundo.
+**Fines:** separar interacción de la lógica de render.
+**Archivo:** `src/interaction/raycast-impulse.ts`
+
+```ts
+// src/interaction/raycast-impulse.ts
+import * as THREE from 'three';
+
+export interface ImpulseConfig {
+  impulseMagnitude: number;
+  radius: number;
+}
+
+export type ImpulseCallback = (worldPoint: THREE.Vector3, impulseDir: THREE.Vector3) => void;
+
+/**
+ * Converts canvas clicks into world-space impulses via ray-plane intersection.
+ * The intersection plane is oriented against the camera direction,
+ * so clicks hit the current view plane.
+ */
+export class RaycastImpulseController {
+  private raycaster = new THREE.Raycaster();
+  private mouse = new THREE.Vector2();
+  private plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+  private hit = new THREE.Vector3();
+  private camDir = new THREE.Vector3();
+  private config: ImpulseConfig;
+
+  constructor(
+    private renderer: THREE.WebGLRenderer,
+    private camera: THREE.PerspectiveCamera,
+    config: ImpulseConfig,
+    private onImpulse: ImpulseCallback,
+  ) {
+    this.config = config;
+    this.handleClick = this.handleClick.bind(this);
+    this.renderer.domElement.addEventListener('click', this.handleClick);
+  }
+
+  setConfig(partial: Partial<ImpulseConfig>): void {
+    this.config = { ...this.config, ...partial };
+  }
+
+  dispose(): void {
+    this.renderer.domElement.removeEventListener('click', this.handleClick);
+  }
+
+  private handleClick(event: MouseEvent): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+
+    this.camera.getWorldDirection(this.camDir);
+    this.plane.setFromNormalAndCoplanarPoint(
+      this.camDir.clone().negate(),
+      new THREE.Vector3(),
+    );
+
+    if (this.raycaster.ray.intersectPlane(this.plane, this.hit)) {
+      this.onImpulse(
+        this.hit.clone(),
+        this.camDir.clone().multiplyScalar(this.config.impulseMagnitude),
+      );
+    }
+  }
+}
+```
+
+---
+
+## FASE 5 — TELEMETRÍA
+
+### 📈 T12 — Metrics Collector
+
+**Uso:** acumular métricas con ventana deslizante.
+**Fines:** ofrecer a la UI un promedio real de latencia y la última métrica.
+**Archivo:** `src/telemetry/metrics-collector.ts`
+
+```ts
+// src/telemetry/metrics-collector.ts
+import type { SimulationMetrics } from '../core/stress-types';
+
+export class MetricsCollector {
+  private last: SimulationMetrics | null = null;
+  private latencies: number[] = [];
+  private windowSize: number;
+
+  constructor(windowSize = 60) {
+    this.windowSize = windowSize;
+  }
+
+  push(metrics: SimulationMetrics): void {
+    this.last = metrics;
+    this.latencies.push(metrics.stepLatencyMs);
+    if (this.latencies.length > this.windowSize) this.latencies.shift();
+  }
+
+  get latest(): SimulationMetrics | null {
+    return this.last;
+  }
+
+  get rollingStepLatencyMs(): number {
+    if (this.latencies.length === 0) return 0;
+    return this.latencies.reduce((a, b) => a + b, 0) / this.latencies.length;
+  }
+
+  reset(): void {
+    this.last = null;
+    this.latencies = [];
+  }
+}
+```
+
+---
+
+## FASE 6 — EXPORTACIÓN
+
+### 📤 T13 — Go Source Exporter
+
+**Uso:** exponer la fuente Go como constante copiable.
+**Fines:** distribución del motor en otro lenguaje.
+**Archivo:** `src/export/go-source.ts`
+
+```ts
+// src/export/go-source.ts
+export const GO_ENGINE_SOURCE = `// omega_cauchy.go — 6-DoF Cauchy stress engine
+// Author: Javier Alberto Abreu Molina — Apache-2.0
+package main
+
+import "math"
+
+type Vec3 struct{ X, Y, Z float64 }
+type Stress struct{ XX, YY, ZZ, XY, YZ, XZ float64 }
+
+type Node struct {
+	Rest, Pos, Vel, Force Vec3
+	Stress                Stress
+}
+
+type Config struct{ N int; H, Lam, E, Nu, M float64 }
+
+type Engine struct {
+	Cfg   Config
+	Nodes []Node
+	Time  float64
+	Steps int
+}
+
+func NewEngine(cfg Config) *Engine {
+	e := &Engine{Cfg: cfg}
+	e.Nodes = make([]Node, cfg.N*cfg.N)
+	c := float64(cfg.N-1) / 2
+	for j := 0; j < cfg.N; j++ {
+		for i := 0; i < cfg.N; i++ {
+			p := Vec3{(float64(i) - c) * cfg.H, (float64(j) - c) * cfg.H, 0}
+			e.Nodes[j*cfg.N+i] = Node{Rest: p, Pos: p}
+		}
+	}
+	return e
+}
+
+func (e *Engine) Step(dt float64) {
+	n, h := e.Cfg.N, e.Cfg.H
+	E, nu, m, lam := e.Cfg.E, e.Cfg.Nu, e.Cfg.M, e.Cfg.Lam
+	idx := func(i, j int) int { return j*n + i }
+	c1 := E / (1 - nu*nu)
+	c2 := E / (1 + nu)
+
+	for j := 0; j < n; j++ {
+		for i := 0; i < n; i++ {
+			nd := &e.Nodes[idx(i, j)]
+			iL, iR := max(0, i-1), min(n-1, i+1)
+			jD, jU := max(0, j-1), min(n-1, j+1)
+			L, R := e.Nodes[idx(iL, j)], e.Nodes[idx(iR, j)]
+			D, U := e.Nodes[idx(i, jD)], e.Nodes[idx(i, jU)]
+			dx := float64(iR-iL) * h
+			dy := float64(jU-jD) * h
+			if dx == 0 { dx = h }
+			if dy == 0 { dy = h }
+			exx := (R.Pos.X - L.Pos.X) / dx
+			eyy := (U.Pos.Y - D.Pos.Y) / dy
+			exy := 0.5 * ((U.Pos.X-D.Pos.X)/dy + (R.Pos.Y-L.Pos.Y)/dx)
+			nd.Stress.XX = c1 * (exx + nu*eyy)
+			nd.Stress.YY = c1 * (eyy + nu*exx)
+			nd.Stress.XY = c2 * exy
+		}
+	}
+
+	for j := 1; j < n-1; j++ {
+		for i := 1; i < n-1; i++ {
+			nd := &e.Nodes[idx(i, j)]
+			R, L := e.Nodes[idx(i+1, j)], e.Nodes[idx(i-1, j)]
+			U, D := e.Nodes[idx(i, j+1)], e.Nodes[idx(i, j-1)]
+			inv := 1.0 / (2 * h)
+			nd.Force.X = (R.Stress.XX-L.Stress.XX)*inv + (U.Stress.XY-D.Stress.XY)*inv
+			nd.Force.Y = (R.Stress.XY-L.Stress.XY)*inv + (U.Stress.YY-D.Stress.YY)*inv
+		}
+	}
+
+	damp := math.Exp(-lam * dt)
+	for k := range e.Nodes {
+		nd := &e.Nodes[k]
+		nd.Vel.X = (nd.Vel.X + nd.Force.X/m*dt) * damp
+		nd.Vel.Y = (nd.Vel.Y + nd.Force.Y/m*dt) * damp
+		nd.Vel.Z = (nd.Vel.Z + nd.Force.Z/m*dt) * damp
+		nd.Pos.X += nd.Vel.X * dt
+		nd.Pos.Y += nd.Vel.Y * dt
+		nd.Pos.Z += nd.Vel.Z * dt
+	}
+	e.Time += dt
+	e.Steps++
+}
+
+func min(a, b int) int { if a < b { return a }; return b }
+func max(a, b int) int { if a > b { return a }; return b }
+`;
+```
+
+---
+
+### 📤 T14 — Go Native Engine
+
+**Uso:** ejecutable autónomo con `go run`.
+**Fines:** validar el mismo modelo en otra plataforma.
+**Archivo:** `omega_cauchy.go`
+
+> Es exactamente el mismo bloque de T13 más un `func main()`:
+
+```go
+// omega_cauchy.go (extracto final)
+package main
+
+import "fmt"
+
+func main() {
+	e := NewEngine(Config{N: 24, H: 1, Lam: 0.8, E: 200, Nu: 0.3, M: 1})
+	for i := 0; i < 60; i++ {
+		e.Step(1.0 / 60.0)
+	}
+	fmt.Printf("steps=%d time=%.3fs\n", e.Steps, e.Time)
+}
+```
+
+---
+
+## FASE 7 — UI
+
+### 🎛️ T15 — ControlPanel
+
+**Uso:** botones play/pause/reset, selector de geometría, sliders λ e impulso.
+**Fines:** exponer parámetros físicos al usuario.
+**Archivo:** `src/ui/ControlPanel.tsx`
+
+```tsx
+// src/ui/ControlPanel.tsx
+import { Pause, Play, RotateCcw, Activity } from 'lucide-react';
+import type { GeometryKind } from '../core/stress-types';
+
+interface Props {
+  running: boolean;
+  onToggleRunning: () => void;
+  onReset: () => void;
+  geometry: GeometryKind;
+  onGeometryChange: (g: GeometryKind) => void;
+  damping: number;
+  onDampingChange: (v: number) => void;
+  impulse: number;
+  onImpulseChange: (v: number) => void;
+}
+
+const GEOMETRIES: { id: GeometryKind; label: string }[] = [
+  { id: 'plate', label: 'Placa' },
+  { id: 'torus', label: 'Toroide' },
+  { id: 'heart', label: 'Corazón' },
+];
+
+export default function ControlPanel(props: Props) {
+  return (
+    <div className="flex flex-col gap-4 p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+      <div className="flex items-center gap-2 text-neutral-300 text-sm font-semibold">
+        <Activity size={16} /> Control
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={props.onToggleRunning}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm"
+        >
+          {props.running ? <Pause size={14} /> : <Play size={14} />}
+          {props.running ? 'Pausar' : 'Ejecutar'}
+        </button>
+        <button
+          onClick={props.onReset}
+          className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-sm"
+        >
+          <RotateCcw size={14} /> Reset
+        </button>
+      </div>
+
+      <div>
+        <div className="text-xs text-neutral-400 mb-1">Geometría</div>
+        <div className="grid grid-cols-3 gap-1">
+          {GEOMETRIES.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => props.onGeometryChange(g.id)}
+              className={`px-2 py-1.5 rounded-md text-xs ${
+                props.geometry === g.id
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <label className="text-xs text-neutral-400">
+        Amortiguación λ:{' '}
+        <span className="text-neutral-200">{props.damping.toFixed(2)}</span>
+        <input
+          type="range"
+          min={0}
+          max={3}
+          step={0.05}
+          value={props.damping}
+          onChange={(e) => props.onDampingChange(parseFloat(e.target.value))}
+          className="w-full mt-1"
+        />
+      </label>
+
+      <label className="text-xs text-neutral-400">
+        Impulso:{' '}
+        <span className="text-neutral-200">{props.impulse.toFixed(1)}</span>
+        <input
+          type="range"
+          min={0.5}
+          max={30}
+          step={0.5}
+          value={props.impulse}
+          onChange={(e) => props.onImpulseChange(parseFloat(e.target.value))}
+          className="w-full mt-1"
+        />
+      </label>
+    </div>
+  );
+}
+```
+
+---
+
+### 🎛️ T16 — MetricsPanel
+
+**Uso:** mostrar valores medidos en runtime.
+**Fines:** reemplazar métricas fake por datos reales.
+**Archivo:** `src/ui/MetricsPanel.tsx`
+
+```tsx
+// src/ui/MetricsPanel.tsx
+import type { SimulationMetrics } from '../core/stress-types';
+
+interface Props {
+  metrics: SimulationMetrics | null;
+  rollingLatencyMs: number;
+}
+
+function Row({ label, value, unit }: { label: string; value: string; unit?: string }) {
+  return (
+    <div className="flex justify-between text-xs py-1 border-b border-neutral-800 last:border-0">
+      <span className="text-neutral-400">{label}</span>
+      <span className="text-neutral-100 font-mono">
+        {value}
+        {unit ? <span className="text-neutral-500 ml-1">{unit}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+export default function MetricsPanel({ metrics, rollingLatencyMs }: Props) {
+  return (
+    <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+      <div className="text-neutral-300 text-sm font-semibold mb-2">
+        Telemetría real
+      </div>
+      {!metrics ? (
+        <div className="text-xs text-neutral-500">Ejecuta la simulación…</div>
+      ) : (
+        <div className="flex flex-col">
+          <Row label="Pasos" value={metrics.stepCount.toLocaleString()} />
+          <Row label="Tiempo sim." value={metrics.elapsedTimeSec.toFixed(2)} unit="s" />
+          <Row label="Latencia paso" value={metrics.stepLatencyMs.toFixed(3)} unit="ms" />
+          <Row label="Latencia media" value={rollingLatencyMs.toFixed(3)} unit="ms" />
+          <Row label="Energía cinética" value={metrics.totalKineticEnergy.toFixed(2)} unit="J" />
+          <Row label="|σ| máx." value={metrics.maxStressMagnitude.toFixed(4)} />
+          <Row label="Despl. medio" value={metrics.avgDisplacement.toFixed(4)} unit="m" />
+        </div>
+      )}
+      <p className="mt-2 text-[10px] text-neutral-500 leading-snug">
+        Medido en runtime por <code>MetricsCollector</code>. Sin valores hardcodeados.
+      </p>
+    </div>
+  );
+}
+```
+
+---
+
+### 🎛️ T17 — HeatmapView
+
+**Uso:** envolver `HeatmapRenderer` en React.
+**Fines:** mostrar el heatmap sin acoplar a Three.js.
+**Archivo:** `src/ui/HeatmapView.tsx`
+
+```tsx
+// src/ui/HeatmapView.tsx
+import { useEffect, useRef } from 'react';
+import type { CauchyStressEngine } from '../core/cauchy-stress-engine';
+import { HeatmapRenderer } from '../rendering/heatmap-renderer';
+
+interface Props {
+  engine: CauchyStressEngine;
+  running: boolean;
+}
+
+export default function HeatmapView({ engine, running }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<HeatmapRenderer | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current!;
+    rendererRef.current = new HeatmapRenderer(canvas, { size: 256 });
+    let raf = 0;
+    const draw = () => {
+      raf = requestAnimationFrame(draw);
+      if (!running) return;
+      rendererRef.current!.render(
+        engine.meshNodes,
+        engine.currentConfig.mesh.gridSize,
+      );
+    };
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }, [engine, running]);
+
+  return (
+    <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+      <div className="text-neutral-300 text-sm font-semibold mb-2">
+        Corte XY · |σ| (Cauchy)
+      </div>
+      <canvas
+        ref={canvasRef}
+        className="w-full rounded-md border border-neutral-800"
+      />
+      <p className="mt-2 text-[10px] text-neutral-500">
+        Norma de Frobenius en plano (σ<sub>xx</sub>, σ<sub>yy</sub>, σ<sub>xy</sub>).
+      </p>
+    </div>
+  );
+}
+```
+
+---
+
+### 🎛️ T18 — ThreeCanvas
+
+**Uso:** componer T08 + T09 + T11 en un componente React.
+**Fines:** aislar la vista 3D del resto de la app.
+**Archivo:** `src/ui/ThreeCanvas.tsx`
+
+```tsx
+// src/ui/ThreeCanvas.tsx
+import { useEffect, useRef } from 'react';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { CauchyStressEngine } from '../core/cauchy-stress-engine';
+import type { SimulationMetrics } from '../core/stress-types';
+import { createThreeScene } from '../rendering/three-scene';
+import { PointCloudRenderer } from '../rendering/point-cloud';
+import { RaycastImpulseController } from '../interaction/raycast-impulse';
+
+interface Props {
+  engine: CauchyStressEngine;
+  running: boolean;
+  impulseMagnitude: number;
+  onMetrics: (m: SimulationMetrics) => void;
+}
+
+export default function ThreeCanvas({
+  engine,
+  running,
+  impulseMagnitude,
+  onMetrics,
+}: Props) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const runningRef = useRef(running);
+  const impulseRef = useRef(impulseMagnitude);
+  const onMetricsRef = useRef(onMetrics);
+
+  runningRef.current = running;
+  impulseRef.current = impulseMagnitude;
+  onMetricsRef.current = onMetrics;
+
+  useEffect(() => {
+    const mount = mountRef.current!;
+    const bundle = createThreeScene(mount);
+    const { scene, camera, renderer, resize, dispose } = bundle;
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    const cloud = new PointCloudRenderer(engine.meshNodes.length);
+    scene.add(cloud.object3D);
+
+    const raycast = new RaycastImpulseController(
+      renderer,
+      camera,
+      { impulseMagnitude: impulseRef.current, radius: 3.5 },
+      (point, impulse) => {
+        engine.applyImpulse(point, impulse, 3.5);
+      },
+    );
+
+    const onResize = () =>
+      resize(mount.clientWidth, mount.clientHeight);
+    window.addEventListener('resize', onResize);
+
+    let raf = 0;
+    let last = performance.now();
+
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      const dt = Math.min(0.033, (now - last) / 1000);
+      last = now;
+
+      if (runningRef.current) {
+        const m = engine.step(dt);
+        onMetricsRef.current(m);
+      }
+      raycast.setConfig({ impulseMagnitude: impulseRef.current });
+
+      cloud.update(engine.meshNodes);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    loop();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+      raycast.dispose();
+      cloud.dispose();
+      controls.dispose();
+      dispose();
+    };
+  }, [engine]);
+
+  return <div ref={mountRef} className="w-full h-full" />;
+}
+```
+
+---
+
+### 🎛️ T19 — GoCodeViewer
+
+**Uso:** mostrar y copiar la fuente Go.
+**Fines:** distribución del motor nativo.
+**Archivo:** `src/ui/GoCodeViewer.tsx`
+
+```tsx
+// src/ui/GoCodeViewer.tsx
+import { useState } from 'react';
+import { Copy, Check } from 'lucide-react';
+import { GO_ENGINE_SOURCE } from '../export/go-source';
+
+export default function GoCodeViewer() {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(GO_ENGINE_SOURCE);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* no-op */
+    }
+  };
+  return (
+    <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-neutral-300 text-sm font-semibold">Motor nativo (Go)</div>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200"
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? 'Copiado' : 'Copiar'}
+        </button>
+      </div>
+      <pre className="text-[10px] leading-tight text-neutral-300 bg-neutral-950 p-3 rounded-md overflow-auto max-h-72">
+        <code>{GO_ENGINE_SOURCE}</code>
+      </pre>
+    </div>
+  );
+}
+```
+
+---
+
+### 🎛️ T20 — TechnicalDocs
+
+**Uso:** mostrar el modelo físico y sus límites.
+**Fines:** reemplazar el "Dossier IBM" por documentación honesta.
+**Archivo:** `src/ui/TechnicalDocs.tsx`
+
+```tsx
+// src/ui/TechnicalDocs.tsx
+export default function TechnicalDocs() {
+  return (
+    <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl text-neutral-300 text-sm">
+      <div className="font-semibold text-neutral-100 mb-2">Documentación técnica</div>
+      <div className="space-y-2 text-xs leading-relaxed">
+        <p>
+          <strong className="text-neutral-100">Modelo físico.</strong> Tensor de
+          Cauchy simétrico con 6 componentes independientes:{' '}
+          <code>σxx, σyy, σzz, σxy, σyz, σxz</code>. Tensión plana con ley de
+          Hooke isótropa:
+        </p>
+        <pre className="bg-neutral-950 p-2 rounded text-[10px] overflow-auto">
+{`σxx = E/(1-ν²)·(εxx + ν·εyy)
+σyy = E/(1-ν²)·(εyy + ν·εxx)
+σxy = E/(1+ν)·εxy`}
+        </pre>
+        <p>
+          <strong className="text-neutral-100">Amortiguación.</strong> Factor{' '}
+          <code>exp(-λ·dt)</code> aplicado a la velocidad. La energía mecánica
+          decae como en un oscilador lineal amortiguado.
+        </p>
+        <p>
+          <strong className="text-neutral-100">Integración.</strong> Euler
+          semi-implícito. Fuerza = divergencia del tensor de esfuerzos por
+          diferencias finitas centrales.
+        </p>
+        <p>
+          <strong className="text-neutral-100">Limitaciones.</strong> Modelo
+          lineal elástico, sin plasticidad, sin contacto, sin acoplamiento
+          térmico. No apto para validación estructural real.
+        </p>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+## FASE 8 — COMPOSICIÓN
+
+### 🧩 T21 — App
+
+**Uso:** orquestar todas las herramientas anteriores.
+**Fines:** punto de entrada de la aplicación.
+**Archivo:** `src/App.tsx`
+
+```tsx
+// src/App.tsx
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { CauchyStressEngine } from './core/cauchy-stress-engine';
+import type { GeometryKind, SimulationMetrics } from './core/stress-types';
+import { MetricsCollector } from './telemetry/metrics-collector';
+import ThreeCanvas from './ui/ThreeCanvas';
+import ControlPanel from './ui/ControlPanel';
+import MetricsPanel from './ui/MetricsPanel';
+import HeatmapView from './ui/HeatmapView';
+import GoCodeViewer from './ui/GoCodeViewer';
+import TechnicalDocs from './ui/TechnicalDocs';
+
+export default function App() {
+  const engineRef = useRef<CauchyStressEngine | null>(null);
+  if (!engineRef.current) engineRef.current = new CauchyStressEngine();
+  const engine = engineRef.current;
+
+  const collectorRef = useRef(new MetricsCollector(60));
+  const collector = collectorRef.current;
+
+  const [running, setRunning] = useState(true);
+  const [geometry, setGeometry] = useState<GeometryKind>('plate');
+  const [damping, setDamping] = useState(engine.currentConfig.integration.dampingCoefficient);
+  const [impulse, setImpulse] = useState(8);
+  const [metrics, setMetrics] = useState<SimulationMetrics | null>(null);
+  const [rollingLatency, setRollingLatency] = useState(0);
+
+  const onMetrics = useCallback(
+    (m: SimulationMetrics) => {
+      collector.push(m);
+      setMetrics(m);
+      setRollingLatency(collector.rollingStepLatencyMs);
+    },
+    [collector],
+  );
+
+  const handleGeometry = (g: GeometryKind) => {
+    setGeometry(g);
+    engine.regenerateMesh(g);
+    collector.reset();
+    setMetrics(null);
+  };
+  const handleDamping = (v: number) => {
+    setDamping(v);
+    engine.setDampingCoefficient(v);
+  };
+  const handleReset = () => {
+    engine.reset();
+    collector.reset();
+    setMetrics(null);
+  };
+
+  const layout = useMemo(
+    () => (
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 h-full p-4">
+        <div className="relative rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 min-h-[480px]">
+          <ThreeCanvas
+            engine={engine}
+            running={running}
+            impulseMagnitude={impulse}
+            onMetrics={onMetrics}
+          />
+          <div className="absolute top-3 left-3 text-[10px] text-neutral-400 bg-neutral-900/70 px-2 py-1 rounded">
+            Clic en la malla para inyectar impulso
+          </div>
+        </div>
+        <div className="flex flex-col gap-4 overflow-auto">
+          <ControlPanel
+            running={running}
+            onToggleRunning={() => setRunning((r) => !r)}
+            onReset={handleReset}
+            geometry={geometry}
+            onGeometryChange={handleGeometry}
+            damping={damping}
+            onDampingChange={handleDamping}
+            impulse={impulse}
+            onImpulseChange={setImpulse}
+          />
+          <MetricsPanel metrics={metrics} rollingLatencyMs={rollingLatency} />
+          <HeatmapView engine={engine} running={running} />
+          <GoCodeViewer />
+          <TechnicalDocs />
+        </div>
+      </div>
+    ),
+    [engine, running, geometry, damping, impulse, metrics, rollingLatency, onMetrics],
+  );
+
+  return (
+    <div className="h-full bg-neutral-950">
+      <header className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+        <div>
+          <h1 className="text-sm font-semibold text-neutral-100">Cauchy Sandbox</h1>
+          <p className="text-[11px] text-neutral-500">
+            6-DoF Cauchy stress tensor · amortiguación analítica · Three.js
+          </p>
+        </div>
+        <div className="text-[10px] text-neutral-500">
+          Javier Alberto Abreu Molina · Apache-2.0
+        </div>
+      </header>
+      {layout}
+    </div>
+  );
+}
+```
+
+---
+
+## 📐 Tabla de nomenclatura corregida
+
+| Antes (marketing / ambiguo) | Ahora (profesional) | Razón |
+|---|---|---|
+| `CauchySandboxEngine` | `CauchyStressEngine` | Nombra el modelo físico, no el "producto" |
+| `NodeState` | `MeshNode` | "State" era ambiguo |
+| `buildGeometry` | `regenerateMesh` | "Mesh" es el objeto real |
+| `restPosition` | `computeRestPosition` | Verbo explícito |
+| `applyLoadAt` | `applyImpulse` / `injectImpulse` | Mecánica correcta |
+| `sovereignSeal` | — (eliminado) | Sin significado técnico |
+| `coeficienteNemesis` | `dampingCoefficient` | Mecánica clásica |
+| `1.471881` | — (eliminado) | Constante mágica |
+| `z3SatStatus` | — (eliminado) | No había Z3 real |
+| `dracoRatio`, `gasOptimization`, `vramSavingsPct` | — (eliminados) | Claims sin fuente |
+| `tickLatencyMs: 0.38` | `stepLatencyMs` medido | Real, no hardcodeado |
+| `HackathonDossier` | `TechnicalDocs` | Honesto |
+| `metrics.*` campos en español/mezclados | `SimulationMetrics` con units en JSDoc | Unidades explícitas |
+| `getCols()`, `getRows()` | eliminados (`gridSize` único) | Sin redundancia |
+| `damping` (UI) | `dampingCoefficient` (engine) | Precisión en el dominio |
+
+---
+
+## ✅ Resumen
+
+| Categoría | Herramientas | LOC aprox. |
+|---|---|---|
+| Núcleo matemático | 4 (T01–T04) | ~250 |
+| Motor físico | 2 (T05–T06) | ~280 |
+| Renderizado | 4 (T07–T10) | ~260 |
+| Interacción | 1 (T11) | ~70 |
+| Telemetría | 1 (T12) | ~30 |
+| Exportación | 2 (T13–T14) | ~180 |
+| UI | 6 (T15–T20) | ~450 |
+| Composición | 1 (T21) | ~120 |
+| **Total** | **21 herramientas** | **~1640 LOC** |
+
+Cada herramienta es **extraíble y reutilizable** de forma independiente respetando su grafo de dependencias (sólo hacia abajo). Por ejemplo:
+
+- **Sólo física:** T01 + T02 + T03 + T04 + T05 (+ T06).
+- **Sólo render 2D:** T01 + T02 + T03 + T10.
+- **Sólo render 3D:** T01–T03 + T07–T09 + T11.
+- **Sólo Go:** T13/T14 (autocontenido).
+
+¿Quieres que empaquete esto como un **monorepo con subpath exports** (`@cauchy/core`, `@cauchy/rendering`, `@cauchy/ui`), o que te entregue un `README.md` por herramienta con tests unitarios mínimos?

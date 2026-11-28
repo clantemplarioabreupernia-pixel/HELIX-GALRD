@@ -1,0 +1,1203 @@
+# 📦 Inventario honesto de herramientas
+
+## ⚠️ Aclaración previa (importante)
+
+**No tengo herramientas ocultas.** No hay código "dentro" de mí esperando a ser revelado. Todo lo que existe es **lo que hemos construido en esta conversación** o **lo que los informes mencionaron como plan**.
+
+Lo que hay realmente:
+
+| Herramienta | Estado real | ¿Existe código? |
+|---|---|---|
+| `blockchain-lab` | ✅ **Completo** | Sí — entregado en el mensaje anterior |
+| `Crypto Audit Lab` | 🟡 Plan + código nuevo abajo | **Lo genero ahora** |
+| `WebAssembly Lab` | 🔴 Inviable solo frontend | Explico por qué abajo |
+| `Omega Verification` (Z3) | 🟡 Mención en informe | No existe código |
+| `Q-Omega`, `Cauchy`, `V-Band`, `Exocórtex`, `Collatz`, `Nemesis Academy` | 🔴 Nombres de marketing del informe | No existen |
+
+Los "7 labs Omega" del informe son **combinaciones hipotéticas**, no software. Presentarlos como código sería mentirte. Así que voy a:
+
+1. Confirmar qué es `blockchain-lab`.
+2. **Entregar `Crypto Audit Lab` completo** (criptografía real).
+3. Explicarte por qué `WebAssembly Lab` no se puede hacer solo con frontend.
+4. Darte la tabla de "para qué sirve cada uno".
+
+---
+
+## 1️⃣ `blockchain-lab` — ✅ YA ENTREGADO
+
+**Para qué sirve:** enseñar blockchain con SHA-256 real, PoW y verificación de integridad.
+
+**Archivos (15, ya escritos arriba):**
+
+| Archivo | Función |
+|---|---|
+| `package.json` | Vite + React + TS |
+| `tsconfig.json` / `vite.config.ts` / `index.html` | Config |
+| `src/main.tsx` | Entry point |
+| `src/types.ts` | `Block`, `ChainVerification`, `PoWResult`, `Lesson`, `Exercise` |
+| `src/utils/blockchain.ts` | SHA-256 real, `mineBlock`, `verifyChain`, `truncateAtBreak` |
+| `src/utils/progress.ts` | Persistencia del progreso |
+| `src/data/lessons.ts` | 7 módulos (hash → fork) |
+| `src/data/exercises.ts` | 7 ejercicios (6 MC + 1 código) |
+| `src/components/LessonView.tsx` | Render de lecciones |
+| `src/components/ExerciseView.tsx` | MC + editor de código con tests |
+| `src/components/BlockchainPlayground.tsx` | Crear/minar/alterar/forkear cadenas |
+| `src/components/Certificate.tsx` | Hash SHA-256 del progreso |
+| `src/App.tsx` | Router + progreso |
+
+No lo repito para no inflar. Está en el mensaje anterior.
+
+---
+
+## 2️⃣ `Crypto Audit Lab` — 🟢 COMPLETO AHORA
+
+**Para qué sirve:** enseñar criptografía aplicada a auditoría con **Ed25519 real, HMAC real y Merkle Trees reales** (todo vía Web Crypto API del navegador).
+
+### 2.1 `package.json`
+
+```json
+{
+  "name": "crypto-audit-lab",
+  "version": "1.0.0",
+  "description": "Laboratorio educativo: hash, HMAC, firmas Ed25519, Merkle Trees y sellos de tiempo con Web Crypto API real.",
+  "author": "Javier Alberto Abreu Molina",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
+```
+
+### 2.2 `src/types.ts`
+
+```typescript
+export interface Lesson {
+  id: string;
+  order: number;
+  title: string;
+  goal: string;
+  theory: string;
+  example?: string;
+}
+
+export type Exercise =
+  | {
+      id: string;
+      lessonId: string;
+      kind: 'multiple-choice';
+      prompt: string;
+      options: string[];
+      correctIndex: number;
+      explanation: string;
+    }
+  | {
+      id: string;
+      lessonId: string;
+      kind: 'code';
+      prompt: string;
+      starter: string;
+      tests: { input: string; expected?: string }[];
+      explanation: string;
+    };
+
+export interface MerkleProofStep {
+  hash: string;
+  position: 'left' | 'right';
+}
+
+export interface TimestampedRecord {
+  content: string;
+  timestamp: string;
+  hash: string;
+  signatureHex?: string;
+  publicKeyHex?: string;
+}
+
+export interface Progress {
+  completedLessons: string[];
+  completedExercises: string[];
+}
+```
+
+### 2.3 `src/utils/crypto.ts` — núcleo criptográfico real
+
+```typescript
+// Criptografía real vía Web Crypto API.
+// SHA-256, SHA-512, HMAC-SHA256, Ed25519.
+// Sin simulaciones, sin constantes mágicas.
+
+// ---------- helpers ----------
+
+export function bufToHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export function hexToBuf(hex: string): ArrayBuffer {
+  if (hex.length % 2 !== 0) throw new Error('hex impar');
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes.buffer;
+}
+
+// ---------- hash ----------
+
+export async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return bufToHex(digest);
+}
+
+export async function sha512Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-512', data);
+  return bufToHex(digest);
+}
+
+// ---------- HMAC ----------
+
+export async function hmacSha256(key: string, message: string): Promise<string> {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify'],
+  );
+  const sig = await crypto.subtle.sign(
+    'HMAC',
+    cryptoKey,
+    new TextEncoder().encode(message),
+  );
+  return bufToHex(sig);
+}
+
+export async function verifyHmacSha256(
+  key: string,
+  message: string,
+  expectedHex: string,
+): Promise<boolean> {
+  const computed = await hmacSha256(key, message);
+  // comparación en tiempo constante
+  if (computed.length !== expectedHex.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) {
+    diff |= computed.charCodeAt(i) ^ expectedHex.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+// ---------- Ed25519 ----------
+
+export async function generateEd25519KeyPair(): Promise<CryptoKeyPair> {
+  return crypto.subtle.generateKey({ name: 'Ed25519' }, true, [
+    'sign',
+    'verify',
+  ]) as Promise<CryptoKeyPair>;
+}
+
+export async function exportPublicKeyHex(key: CryptoKey): Promise<string> {
+  const raw = await crypto.subtle.exportKey('raw', key);
+  return bufToHex(raw);
+}
+
+export async function signEd25519(
+  privateKey: CryptoKey,
+  message: string,
+): Promise<string> {
+  const sig = await crypto.subtle.sign(
+    'Ed25519',
+    privateKey,
+    new TextEncoder().encode(message),
+  );
+  return bufToHex(sig);
+}
+
+export async function verifyEd25519(
+  publicKey: CryptoKey,
+  message: string,
+  signatureHex: string,
+): Promise<boolean> {
+  try {
+    return await crypto.subtle.verify(
+      'Ed25519',
+      publicKey,
+      hexToBuf(signatureHex),
+      new TextEncoder().encode(message),
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function importPublicKeyHex(hex: string): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    'raw',
+    hexToBuf(hex),
+    { name: 'Ed25519' },
+    true,
+    ['verify'],
+  );
+}
+```
+
+### 2.4 `src/utils/merkle.ts` — Merkle Tree real
+
+```typescript
+// Merkle Tree real con SHA-256.
+// Construye niveles, genera pruebas y verifica pertenencia.
+
+import { sha256Hex } from './crypto';
+import type { MerkleProofStep } from '../types';
+
+export interface MerkleTree {
+  levels: string[][]; // levels[0] = hojas hasheadas, última = raíz única
+  root: string;
+  leaves: string[]; // contenido original de las hojas
+}
+
+/**
+ * Construye un Merkle Tree.
+ * Si el número de nodos en un nivel es impar, el último se duplica.
+ */
+export async function buildMerkleTree(leaves: string[]): Promise<MerkleTree> {
+  if (leaves.length === 0) {
+    const empty = await sha256Hex('');
+    return { levels: [[empty]], root: empty, leaves: [] };
+  }
+
+  const hashedLeaves = await Promise.all(leaves.map((l) => sha256Hex(l)));
+  const levels: string[][] = [hashedLeaves];
+
+  let current = hashedLeaves;
+  while (current.length > 1) {
+    const next: string[] = [];
+    for (let i = 0; i < current.length; i += 2) {
+      const left = current[i];
+      const right = current[i + 1] ?? current[i]; // duplica si impar
+      next.push(await sha256Hex(left + right));
+    }
+    levels.push(next);
+    current = next;
+  }
+
+  return { levels, root: current[0], leaves };
+}
+
+/**
+ * Genera la prueba de pertenencia para la hoja en `index`.
+ * Devuelve los hashes hermanos con su posición (izquierda/derecha).
+ */
+export function getMerkleProof(tree: MerkleTree, index: number): MerkleProofStep[] {
+  if (index < 0 || index >= tree.levels[0].length) {
+    throw new Error(`Índice ${index} fuera de rango`);
+  }
+  const proof: MerkleProofStep[] = [];
+  let idx = index;
+
+  for (let level = 0; level < tree.levels.length - 1; level++) {
+    const nodes = tree.levels[level];
+    const isRight = idx % 2 === 1;
+    const siblingIdx = isRight ? idx - 1 : idx + 1;
+    const sibling = nodes[siblingIdx] ?? nodes[idx];
+    proof.push({ hash: sibling, position: isRight ? 'left' : 'right' });
+    idx = Math.floor(idx / 2);
+  }
+
+  return proof;
+}
+
+/** Verifica que `leaf` pertenece al árbol con raíz `root`. */
+export async function verifyMerkleProof(
+  leaf: string,
+  proof: MerkleProofStep[],
+  root: string,
+): Promise<boolean> {
+  let current = await sha256Hex(leaf);
+  for (const step of proof) {
+    current =
+      step.position === 'left'
+        ? await sha256Hex(step.hash + current)
+        : await sha256Hex(current + step.hash);
+  }
+  return current === root;
+}
+```
+
+### 2.5 `src/utils/timestamp.ts` — sellos de tiempo
+
+```typescript
+// Sello de tiempo: contenido + timestamp + hash + firma opcional.
+// Uso educativo. No es un TSA RFC 3161 real.
+
+import { sha256Hex, signEd25519, verifyEd25519 } from './crypto';
+import type { TimestampedRecord } from '../types';
+
+export async function createTimestamp(
+  content: string,
+  privateKey?: CryptoKey,
+): Promise<TimestampedRecord> {
+  const timestamp = new Date().toISOString();
+  const hash = await sha256Hex(`${timestamp}|${content}`);
+  const record: TimestampedRecord = { content, timestamp, hash };
+  if (privateKey) {
+    record.signatureHex = await signEd25519(privateKey, hash);
+  }
+  return record;
+}
+
+export async function verifyTimestamp(
+  record: TimestampedRecord,
+  publicKey?: CryptoKey,
+): Promise<{ hashOk: boolean; signatureOk: boolean | null }> {
+  const expected = await sha256Hex(`${record.timestamp}|${record.content}`);
+  const hashOk = expected === record.hash;
+
+  let signatureOk: boolean | null = null;
+  if (publicKey && record.signatureHex) {
+    signatureOk = await verifyEd25519(publicKey, record.hash, record.signatureHex);
+  }
+
+  return { hashOk, signatureOk };
+}
+```
+
+### 2.6 `src/utils/progress.ts`
+
+```typescript
+import type { Progress } from '../types';
+
+const KEY = 'crypto-audit-lab-progress-v1';
+
+export function loadProgress(): Progress {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { completedLessons: [], completedExercises: [] };
+    const p = JSON.parse(raw) as Progress;
+    return {
+      completedLessons: p.completedLessons ?? [],
+      completedExercises: p.completedExercises ?? [],
+    };
+  } catch {
+    return { completedLessons: [], completedExercises: [] };
+  }
+}
+
+export function saveProgress(p: Progress): void {
+  localStorage.setItem(KEY, JSON.stringify(p));
+}
+
+export function markLesson(p: Progress, id: string): Progress {
+  const s = new Set(p.completedLessons);
+  s.add(id);
+  return { ...p, completedLessons: [...s] };
+}
+
+export function markExercise(p: Progress, id: string): Progress {
+  const s = new Set(p.completedExercises);
+  s.add(id);
+  return { ...p, completedExercises: [...s] };
+}
+```
+
+### 2.7 `src/data/lessons.ts` — 6 módulos
+
+```typescript
+import type { Lesson } from '../types';
+
+export const LESSONS: Lesson[] = [
+  {
+    id: 'c1',
+    order: 1,
+    title: 'Funciones hash (SHA-256 / SHA-512)',
+    goal: 'Distinguir SHA-256 de SHA-512 y entender por qué el tamaño importa.',
+    theory: `
+SHA-256 produce 32 bytes (64 hex). SHA-512 produce 64 bytes (128 hex).
+
+Ambos son unidireccionales, deterministas y sensibles a cambios. La diferencia principal es el tamaño del digest y la velocidad relativa según la arquitectura.
+
+Se usan en: integridad de archivos, direcciones Bitcoin, Merkle Trees, HMAC.
+`.trim(),
+    example: `await sha256Hex("crypto")
+// → "f1a1a8b0…"  (64 hex)
+await sha512Hex("crypto")
+// → "…"          (128 hex)`,
+  },
+  {
+    id: 'c2',
+    order: 2,
+    title: 'HMAC (autenticación con clave)',
+    goal: 'Entender HMAC como hash + clave secreta para autenticar mensajes.',
+    theory: `
+**HMAC** = Hash-based Message Authentication Code.
+
+No es cifrado: no oculta el mensaje. Garantiza:
+
+- **Integridad**: si cambia el mensaje, el HMAC cambia.
+- **Autenticidad**: solo quien tiene la clave puede generarlo.
+
+Se usa en JWT (HS256), AWS Signature v4, webhooks.
+
+La verificación debe ser **en tiempo constante** para evitar timing attacks.
+`.trim(),
+    example: `await hmacSha256("clave-secreta", "mensaje")
+// → "…" (64 hex)
+await verifyHmacSha256("clave-secreta", "mensaje", hmac)
+// → true`,
+  },
+  {
+    id: 'c3',
+    order: 3,
+    title: 'Firmas digitales Ed25519',
+    goal: 'Firmar y verificar con Ed25519 vía Web Crypto.',
+    theory: `
+**Ed25519** es un esquema de firma sobre Curve25519.
+
+- Clave privada → firma un mensaje.
+- Clave pública → verifica la firma.
+- Cualquiera puede verificar, solo el dueño puede firmar.
+
+Propiedades: firmas cortas (64 bytes), rápidas, deterministas, sin necesidad de random en la firma.
+
+El navegador las soporta con \`crypto.subtle.generateKey({name: 'Ed25519'}, …)\` (Chrome 113+, Firefox 129+, Safari 17+).
+`.trim(),
+  },
+  {
+    id: 'c4',
+    order: 4,
+    title: 'Merkle Trees',
+    goal: 'Construir un árbol de hashes y probar pertenencia en O(log n).',
+    theory: `
+Un **Merkle Tree** agrupa hojas (datos) y las hashea por pares hasta obtener una raíz única.
+
+- Con N hojas, la raíz cambia si cambia cualquier hoja.
+- Para probar que una hoja pertenece al árbol solo se necesitan \`log₂(N)\` hashes hermanos.
+
+Con 1 000 000 de transacciones, la prueba son ~20 hashes. Eso es lo que usa Bitcoin y Git.
+`.trim(),
+  },
+  {
+    id: 'c5',
+    order: 5,
+    title: 'Sellos de tiempo',
+    goal: 'Crear un registro con contenido + timestamp + hash + firma.',
+    theory: `
+Un **sello de tiempo** prueba que un contenido existía en un momento dado.
+
+Nuestro sello: \`hash(timestamp || contenido)\`. Si además lo firmas con Ed25519, un tercero puede verificar autoría + momento.
+
+Un TSA real (RFC 3161) añade autoridades externas de confianza. Aquí es educativo.
+`.trim(),
+  },
+  {
+    id: 'c6',
+    order: 6,
+    title: 'Auditoría distribuida',
+    goal: 'Detectar qué transacción fue alterada en un lote usando Merkle + HMAC.',
+    theory: `
+Auditoría sobre 1 000 transacciones:
+
+1. HMAC de cada transacción (autenticidad).
+2. Merkle Tree sobre los HMAC (integridad global).
+3. Si alguien altera una transacción: su HMAC cambia → la raíz cambia.
+4. Con la prueba Merkle localizas exactamente cuál fue.
+
+Eso es lo que hacen los sistemas de log distribuido: root hash anclado + pruebas por evento.
+`.trim(),
+  },
+];
+```
+
+### 2.8 `src/data/exercises.ts`
+
+```typescript
+import type { Exercise } from '../types';
+
+export const EXERCISES: Exercise[] = [
+  {
+    id: 'ce1',
+    lessonId: 'c1',
+    kind: 'multiple-choice',
+    prompt: '¿Cuántos bytes produce SHA-512?',
+    options: ['16', '32', '48', '64'],
+    correctIndex: 3,
+    explanation: 'SHA-512 → 512 bits = 64 bytes = 128 hex.',
+  },
+  {
+    id: 'ce2',
+    lessonId: 'c2',
+    kind: 'multiple-choice',
+    prompt: '¿Qué garantiza HMAC que SHA-256 simple no garantiza?',
+    options: [
+      'Que el mensaje no cambia.',
+      'Autenticidad: solo quien tiene la clave puede generarlo.',
+      'Que el mensaje se cifra.',
+      'Que el hash es más corto.',
+    ],
+    correctIndex: 1,
+    explanation:
+      'HMAC introduce una clave secreta. SHA-256 solo garantiza integridad frente a cambios accidentales, no autenticidad.',
+  },
+  {
+    id: 'ce3',
+    lessonId: 'c3',
+    kind: 'multiple-choice',
+    prompt: 'Con Ed25519, ¿qué clave usa el verificador?',
+    options: [
+      'La privada del firmante.',
+      'La pública del firmante.',
+      'Una clave simétrica compartida.',
+      'Ninguna, verifica sin clave.',
+    ],
+    correctIndex: 1,
+    explanation:
+      'El firmante usa su privada; el verificador usa la pública del firmante.',
+  },
+  {
+    id: 'ce4',
+    lessonId: 'c4',
+    kind: 'multiple-choice',
+    prompt: 'Con 1024 hojas en un Merkle Tree, ¿cuántos hashes tiene una prueba de pertenencia?',
+    options: ['10', '32', '512', '1024'],
+    correctIndex: 0,
+    explanation: 'log₂(1024) = 10. La prueba es O(log n).',
+  },
+  {
+    id: 'ce5',
+    lessonId: 'c1',
+    kind: 'code',
+    prompt:
+      'Escribe `solve(input)` que devuelva el HMAC-SHA256 hex de `input` usando la clave `"lab-key"`.',
+    starter: `async function solve(input) {
+  // Usa crypto.subtle.importKey + sign con HMAC SHA-256 y clave "lab-key"
+  return "";
+}`,
+    tests: [
+      { input: 'mensaje' },
+      { input: '' },
+      { input: 'auditoria' },
+    ],
+    explanation:
+      'importKey("raw", keyBytes, {name:"HMAC", hash:"SHA-256"}, false, ["sign"]) y luego sign("HMAC", cryptoKey, dataBytes).',
+  },
+  {
+    id: 'ce6',
+    lessonId: 'c6',
+    kind: 'multiple-choice',
+    prompt: 'Si alteras una transacción de un lote de 1000, ¿qué cambia?',
+    options: [
+      'Solo el HMAC de esa transacción.',
+      'Solo la raíz Merkle.',
+      'El HMAC de esa transacción Y la raíz Merkle.',
+      'Nada, si recalculas la prueba.',
+    ],
+    correctIndex: 2,
+    explanation:
+      'Cambia el HMAC de esa hoja, y ese cambio se propaga hasta la raíz Merkle.',
+  },
+];
+```
+
+### 2.9 `src/components/CryptoLab.tsx` — playground unificado
+
+```tsx
+import { useState } from 'react';
+import {
+  sha256Hex,
+  sha512Hex,
+  hmacSha256,
+  generateEd25519KeyPair,
+  exportPublicKeyHex,
+  signEd25519,
+  importPublicKeyHex,
+  verifyEd25519,
+} from '../utils/crypto';
+import { buildMerkleTree, getMerkleProof, verifyMerkleProof } from '../utils/merkle';
+import type { MerkleTree, MerkleProofStep } from '../types';
+
+type Tab = 'hash' | 'hmac' | 'sign' | 'merkle';
+
+export default function CryptoLab() {
+  const [tab, setTab] = useState<Tab>('hash');
+
+  return (
+    <section>
+      <h2>Crypto Playground</h2>
+      <p style={{ color: '#555', marginTop: 0 }}>
+        Todo se ejecuta con Web Crypto API real. Sin simulaciones.
+      </p>
+
+      <nav style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <TabBtn active={tab === 'hash'} onClick={() => setTab('hash')}>Hash</TabBtn>
+        <TabBtn active={tab === 'hmac'} onClick={() => setTab('hmac')}>HMAC</TabBtn>
+        <TabBtn active={tab === 'sign'} onClick={() => setTab('sign')}>Ed25519</TabBtn>
+        <TabBtn active={tab === 'merkle'} onClick={() => setTab('merkle')}>Merkle</TabBtn>
+      </nav>
+
+      {tab === 'hash' && <HashDemo />}
+      {tab === 'hmac' && <HmacDemo />}
+      {tab === 'sign' && <SignDemo />}
+      {tab === 'merkle' && <MerkleDemo />}
+    </section>
+  );
+}
+
+function HashDemo() {
+  const [input, setInput] = useState('crypto');
+  const [sha256, setSha256] = useState('');
+  const [sha512, setSha512] = useState('');
+
+  const run = async () => {
+    setSha256(await sha256Hex(input));
+    setSha512(await sha512Hex(input));
+  };
+
+  return (
+    <div>
+      <input value={input} onChange={(e) => setInput(e.target.value)} style={inputStyle} />
+      <button onClick={run} style={btnPrimary}>Hashear</button>
+      {sha256 && <p style={mono}><strong>SHA-256:</strong> {sha256}</p>}
+      {sha512 && <p style={mono}><strong>SHA-512:</strong> {sha512}</p>}
+    </div>
+  );
+}
+
+function HmacDemo() {
+  const [key, setKey] = useState('lab-key');
+  const [msg, setMsg] = useState('mensaje');
+  const [mac, setMac] = useState('');
+
+  const run = async () => setMac(await hmacSha256(key, msg));
+
+  return (
+    <div>
+      <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="clave" style={inputStyle} />
+      <input value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="mensaje" style={inputStyle} />
+      <button onClick={run} style={btnPrimary}>Calcular HMAC</button>
+      {mac && <p style={mono}><strong>HMAC-SHA256:</strong> {mac}</p>}
+    </div>
+  );
+}
+
+function SignDemo() {
+  const [msg, setMsg] = useState('contrato v1');
+  const [pubHex, setPubHex] = useState('');
+  const [sigHex, setSigHex] = useState('');
+  const [ok, setOk] = useState<boolean | null>(null);
+  const [keys, setKeys] = useState<CryptoKeyPair | null>(null);
+
+  const gen = async () => {
+    const kp = await generateEd25519KeyPair();
+    setKeys(kp);
+    setPubHex(await exportPublicKeyHex(kp.publicKey));
+    setSigHex('');
+    setOk(null);
+  };
+
+  const sign = async () => {
+    if (!keys) return;
+    setSigHex(await signEd25519(keys.privateKey, msg));
+    setOk(null);
+  };
+
+  const verify = async () => {
+    if (!pubHex || !sigHex) return;
+    const pub = await importPublicKeyHex(pubHex);
+    setOk(await verifyEd25519(pub, msg, sigHex));
+  };
+
+  return (
+    <div>
+      <button onClick={gen} style={btnPrimary}>Generar par Ed25519</button>
+      <input value={msg} onChange={(e) => setMsg(e.target.value)} style={inputStyle} />
+      <button onClick={sign} disabled={!keys} style={btnPrimary}>Firmar</button>
+      <button onClick={verify} disabled={!pubHex || !sigHex} style={btnPrimary}>Verificar</button>
+
+      {pubHex && <p style={mono}><strong>pub:</strong> {pubHex}</p>}
+      {sigHex && <p style={mono}><strong>sig:</strong> {sigHex}</p>}
+      {ok !== null && (
+        <p style={{ color: ok ? '#0a7' : '#c33', fontWeight: 600 }}>
+          {ok ? '✓ Firma válida' : '✗ Firma inválida'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function MerkleDemo() {
+  const [leavesText, setLeavesText] = useState('tx1\ntx2\ntx3\ntx4');
+  const [tree, setTree] = useState<MerkleTree | null>(null);
+  const [proof, setProof] = useState<MerkleProofStep[] | null>(null);
+  const [index, setIndex] = useState(0);
+  const [verified, setVerified] = useState<boolean | null>(null);
+
+  const build = async () => {
+    const leaves = leavesText.split('\n').filter((l) => l.trim().length > 0);
+    const t = await buildMerkleTree(leaves);
+    setTree(t);
+    setProof(null);
+    setVerified(null);
+  };
+
+  const proveAndVerify = async () => {
+    if (!tree) return;
+    const p = getMerkleProof(tree, index);
+    setProof(p);
+    setVerified(await verifyMerkleProof(tree.leaves[index], p, tree.root));
+  };
+
+  return (
+    <div>
+      <p style={{ marginTop: 0 }}>Hojas (una por línea):</p>
+      <textarea
+        value={leavesText}
+        onChange={(e) => setLeavesText(e.target.value)}
+        rows={5}
+        style={{ width: '100%', fontFamily: 'monospace' }}
+      />
+      <button onClick={build} style={btnPrimary}>Construir árbol</button>
+
+      {tree && (
+        <>
+          <p style={mono}><strong>Raíz:</strong> {tree.root}</p>
+          <p style={mono}><strong>Niveles:</strong> {tree.levels.length}</p>
+          <label>
+            Índice a probar:
+            <input
+              type="number"
+              min={0}
+              max={tree.leaves.length - 1}
+              value={index}
+              onChange={(e) => setIndex(Number(e.target.value))}
+              style={{ width: 60, marginLeft: 8 }}
+            />
+          </label>
+          <button onClick={proveAndVerify} style={{ ...btnPrimary, marginLeft: 8 }}>
+            Probar pertenencia
+          </button>
+        </>
+      )}
+
+      {proof && (
+        <>
+          <p style={mono}><strong>Prueba ({proof.length} pasos):</strong></p>
+          <ul style={mono}>
+            {proof.map((p, i) => (
+              <li key={i}>{p.position}: {p.hash.slice(0, 16)}…</li>
+            ))}
+          </ul>
+          {verified !== null && (
+            <p style={{ color: verified ? '#0a7' : '#c33', fontWeight: 600 }}>
+              {verified ? '✓ Pertenencia verificada' : '✗ No pertenece'}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 12px',
+        border: active ? '1px solid #111' : '1px solid #ccc',
+        background: active ? '#111' : '#fff',
+        color: active ? '#fff' : '#111',
+        borderRadius: 4,
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+const inputStyle: React.CSSProperties = { padding: 6, marginRight: 8, minWidth: 200 };
+const btnPrimary: React.CSSProperties = {
+  padding: '6px 12px', background: '#0a7', color: '#fff', border: 'none',
+  borderRadius: 4, cursor: 'pointer', marginRight: 8,
+};
+const mono: React.CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: 12, wordBreak: 'break-all',
+};
+```
+
+### 2.10 `src/components/LessonView.tsx` (versión compacta, idéntica en estructura a blockchain-lab)
+
+```tsx
+import { useState } from 'react';
+import type { Lesson, Exercise } from '../types';
+import ExerciseView from './ExerciseView';
+
+interface Props {
+  lesson: Lesson;
+  exercises: Exercise[];
+  completedExercises: string[];
+  onCompleteLesson: () => void;
+  onCompleteExercise: (id: string) => void;
+}
+
+function renderTheory(text: string) {
+  return text.split('\n\n').map((p, i) => {
+    const html = p
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\n/g, '<br/>');
+    return <p key={i} style={{ lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: html }} />;
+  });
+}
+
+export default function LessonView({
+  lesson, exercises, completedExercises, onCompleteLesson, onCompleteExercise,
+}: Props) {
+  const [show, setShow] = useState(true);
+  const allDone = exercises.length > 0 && exercises.every((e) => completedExercises.includes(e.id));
+
+  return (
+    <article>
+      <h2 style={{ marginBottom: 4 }}>Módulo {lesson.order}. {lesson.title}</h2>
+      <p style={{ color: '#666', marginTop: 0 }}><strong>Objetivo:</strong> {lesson.goal}</p>
+      <button onClick={() => setShow((s) => !s)}>{show ? 'Ocultar teoría' : 'Mostrar teoría'}</button>
+      {show && (
+        <section style={{ marginTop: 12 }}>
+          {renderTheory(lesson.theory)}
+          {lesson.example && <pre style={preBlock}>{lesson.example}</pre>}
+        </section>
+      )}
+      <section style={{ marginTop: 24 }}>
+        <h3>Ejercicios</h3>
+        {exercises.map((ex) => (
+          <ExerciseView
+            key={ex.id}
+            exercise={ex}
+            done={completedExercises.includes(ex.id)}
+            onCorrect={() => onCompleteExercise(ex.id)}
+          />
+        ))}
+      </section>
+      <div style={{ marginTop: 24 }}>
+        <button onClick={onCompleteLesson} disabled={!allDone}>
+          {allDone ? 'Marcar módulo como completado' : 'Completa los ejercicios'}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+const preBlock: React.CSSProperties = {
+  background: '#111', color: '#0f0', padding: 12, borderRadius: 6,
+  fontSize: 12, overflow: 'auto', fontFamily: 'ui-monospace, monospace',
+};
+```
+
+### 2.11 `src/components/ExerciseView.tsx` — reutilizable (misma lógica que blockchain-lab)
+
+```tsx
+import { useState } from 'react';
+import type { Exercise } from '../types';
+import { hmacSha256 } from '../utils/crypto';
+
+interface Props {
+  exercise: Exercise;
+  done: boolean;
+  onCorrect: () => void;
+}
+
+export default function ExerciseView({ exercise, done, onCorrect }: Props) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const [code, setCode] = useState(exercise.kind === 'code' ? exercise.starter : '');
+  const [results, setResults] = useState<{ input: string; ok: boolean }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (exercise.kind === 'multiple-choice') {
+    const correct = selected === exercise.correctIndex;
+    return (
+      <div style={card}>
+        <p><strong>[{exercise.id}]</strong> {exercise.prompt}</p>
+        {exercise.options.map((opt, i) => (
+          <label key={i} style={{ display: 'block', marginBottom: 4 }}>
+            <input
+              type="radio"
+              name={exercise.id}
+              checked={selected === i}
+              onChange={() => setSelected(i)}
+              disabled={done}
+            />{' '}{opt}
+          </label>
+        ))}
+        {!done && (
+          <button
+            disabled={selected === null}
+            onClick={() => { if (correct) onCorrect(); }}
+          >
+            Comprobar
+          </button>
+        )}
+        {done && <p style={{ color: '#0a7' }}>✓ Correcto. {exercise.explanation}</p>}
+        {!done && selected !== null && !correct && (
+          <p style={{ color: '#c33' }}>Incorrecto.</p>
+        )}
+      </div>
+    );
+  }
+
+  const run = async () => {
+    setError(null);
+    setResults(null);
+    try {
+      // eslint-disable-next-line no-new-func
+      const fn = new Function(
+        'hmacSha256',
+        `"use strict"; return (${code});`,
+      )(hmacSha256) as (input: string) => Promise<string>;
+
+      const rows: { input: string; ok: boolean }[] = [];
+      let allOk = true;
+      for (const t of exercise.tests) {
+        const expected = t.expected ?? (await hmacSha256('lab-key', t.input));
+        const got = await fn(t.input);
+        const ok = got === expected;
+        if (!ok) allOk = false;
+        rows.push({ input: t.input, ok });
+      }
+      setResults(rows);
+      if (allOk) onCorrect();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <div style={card}>
+      <p><strong>[{exercise.id}]</strong> {exercise.prompt}</p>
+      <textarea
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        rows={8}
+        disabled={done}
+        style={{ width: '100%', fontFamily: 'monospace', fontSize: 12 }}
+      />
+      {!done && <button onClick={run}>Ejecutar pruebas</button>}
+      {done && <p style={{ color: '#0a7' }}>✓ Superado. {exercise.explanation}</p>}
+      {error && <p style={{ color: '#c33' }}>Error: {error}</p>}
+      {results && (
+        <ul style={{ fontSize: 12 }}>
+          {results.map((r, i) => (
+            <li key={i} style={{ color: r.ok ? '#0a7' : '#c33' }}>
+              {JSON.stringify(r.input)}: {r.ok ? 'OK' : 'FALLO'}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const card: React.CSSProperties = {
+  border: '1px solid #eee', borderRadius: 6, padding: 12,
+  marginBottom: 12, background: '#fafafa',
+};
+```
+
+### 2.12 `src/App.tsx`
+
+```tsx
+import { useEffect, useMemo, useState } from 'react';
+import { LESSONS } from './data/lessons';
+import { EXERCISES } from './data/exercises';
+import LessonView from './components/LessonView';
+import CryptoLab from './components/CryptoLab';
+import { loadProgress, saveProgress, markLesson, markExercise } from './utils/progress';
+import type { Progress } from './types';
+
+type Tab = 'lessons' | 'lab';
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>('lessons');
+  const [current, setCurrent] = useState(LESSONS[0].id);
+  const [progress, setProgress] = useState<Progress>(() => loadProgress());
+
+  useEffect(() => saveProgress(progress), [progress]);
+
+  const lesson = useMemo(
+    () => LESSONS.find((l) => l.id === current) ?? LESSONS[0],
+    [current],
+  );
+  const exercises = useMemo(
+    () => EXERCISES.filter((e) => e.lessonId === lesson.id),
+    [lesson.id],
+  );
+
+  const pct = Math.round((progress.completedLessons.length / LESSONS.length) * 100);
+
+  return (
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: 24, fontFamily: 'system-ui, sans-serif' }}>
+      <h1 style={{ marginBottom: 4 }}>crypto-audit-lab</h1>
+      <p style={{ color: '#666', marginTop: 0 }}>
+        Ed25519 · HMAC · Merkle Trees · Web Crypto API real.
+      </p>
+      <div style={{ background: '#eee', height: 8, borderRadius: 4, marginBottom: 16 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: '#0a7', borderRadius: 4 }} />
+      </div>
+      <p style={{ fontSize: 12, color: '#555' }}>
+        {progress.completedLessons.length}/{LESSONS.length} módulos · {pct}%
+      </p>
+
+      <nav style={{ display: 'flex', gap: 8, margin: '16px 0' }}>
+        <button onClick={() => setTab('lessons')} style={tab === 'lessons' ? active : idle}>Módulos</button>
+        <button onClick={() => setTab('lab')} style={tab === 'lab' ? active : idle}>Playground</button>
+      </nav>
+
+      {tab === 'lessons' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24 }}>
+          <aside>
+            <ol style={{ listStyle: 'none', padding: 0 }}>
+              {LESSONS.map((l) => {
+                const done = progress.completedLessons.includes(l.id);
+                return (
+                  <li key={l.id} style={{ marginBottom: 4 }}>
+                    <button
+                      onClick={() => setCurrent(l.id)}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '6px 10px',
+                        border: l.id === lesson.id ? '1px solid #0a7' : '1px solid #eee',
+                        background: l.id === lesson.id ? '#e8f6f1' : '#fff',
+                        color: done ? '#0a7' : '#111', cursor: 'pointer',
+                      }}
+                    >
+                      {done ? '✓ ' : ''}{l.order}. {l.title}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </aside>
+          <main>
+            <LessonView
+              lesson={lesson}
+              exercises={exercises}
+              completedExercises={progress.completedExercises}
+              onCompleteExercise={(id) => setProgress((p) => markExercise(p, id))}
+              onCompleteLesson={() => setProgress((p) => markLesson(p, lesson.id))}
+            />
+          </main>
+        </div>
+      )}
+
+      {tab === 'lab' && <CryptoLab />}
+
+      <footer style={{ marginTop: 32, color: '#999', fontSize: 12 }}>
+        Apache-2.0 · Javier Alberto Abreu Molina · Pieza educativa.
+      </footer>
+    </div>
+  );
+}
+
+const idle: React.CSSProperties = {
+  padding: '6px 12px', border: '1px solid #ccc', background: '#fff',
+  borderRadius: 4, cursor: 'pointer',
+};
+const active: React.CSSProperties = {
+  ...idle, background: '#111', color: '#fff', borderColor: '#111',
+};
+```
+
+### 2.13 Resto de boilerplate
+
+`index.html`, `vite.config.ts`, `tsconfig.json`, `src/main.tsx` → **idénticos a `blockchain-lab`** (cambia solo el `<title>` a `crypto-audit-lab`).
+
+---
+
+## 3️⃣ `WebAssembly Lab` — 🔴 POR QUÉ NO PUEDO ENTREGARLO COMPLETO
+
+Sería **deshonesto** darte código de un "WebAssembly Lab" que compile Go a WASM, por esto:
+
+| Requisito | ¿Se puede en frontend solo? |
+|---|---|
+| Compilar Go/C/Rust → WASM | ❌ Necesita backend (Go + `wazero`, o `wasmtime`, o `emscripten`) |
+| Ejecutar WASM precompilado | ✅ Con `WebAssembly.instantiate` |
+| Medir performance JS vs WASM | ✅ Si ya tienes el `.wasm` |
+
+**Un lab honesto requeriría:**
+- Un servidor Node/Go con `wazero` o `wasmtime` (no cabe en un SPA).
+- O usar [WebAssembly Studio](https://webassembly.studio/) o [wasm-pack](https://rustwasm.github.io/wasm-pack/) + toolchain local.
+
+**Lo que sí puedo darte como pieza educativa honesta** (cargar `.wasm` ya compilado, medir y comparar):
+
+```tsx
+// src/components/WasmLoader.tsx
+// Carga un .wasm precompilado. NO compila nada.
+// Enseña: cómo se ejecuta WASM en el navegador, memoria lineal, interop.
+
+export default function WasmLoader() {
+  // ...
+}
+```
+
+Si quieres, lo desarrollo en el siguiente mensaje. **Pero que quede claro: no compila.**
+
+---
+
+## 4️⃣ Los "7 labs Omega" del informe
+
+Estos aparecen en el informe que me pasaste:
+
+| Nombre | Realidad |
+|---|---|
+| Nemesis Academy | Nombre comercial, sin código |
+| Omega Verification | Sería Z3 (solver SMT) — no existe código |
+| Q-Omega | "Decimal exacto" — no existe código |
+| Cauchy Sandbox | Física simulada — no existe código |
+| V-Band Tactical | Propagación RF — no existe código |
+| Exocórtex | BCI — no existe código (y BCI necesita hardware) |
+| Omega Collatz | Visualización matemática — no existe código |
+
+Son **nombres de un roadmap de marketing**, no herramientas construidas. No te voy a inventar código y hacerlo pasar por "herramientas existentes".
+
+---
+
+## 📊 Tabla: para qué sirve cada uno
+
+| Herramienta | Para qué sirve | Estado |
+|---|---|---|
+| **blockchain-lab** | Enseñar hash, bloques, encadenamiento, inmutabilidad, PoW, ataques, forks | ✅ Código completo entregado |
+| **crypto-audit-lab** | Enseñar SHA-256/512, HMAC, Ed25519, Merkle Trees, sellos de tiempo, auditoría distribuida | ✅ Código completo arriba |
+| **webassembly-lab** | Enseñar WASM, memoria lineal, interop JS↔WASM | 🔴 Requiere backend; solo puedo dar el loader honesto |
+| Omega Verification | (Roadmap) Verificación formal con Z3 | ❌ No existe |
+| Q-Omega, Cauchy, V-Band, Exocórtex, Collatz, Nemesis | (Roadmap) | ❌ No existen |
+
+---
+
+## 🎯 Siguiente paso — elige
+
+1. **Darte el `WasmLoader.tsx` honesto** (carga `.wasm` precompilado, mide, compara con JS — sin pretender compilar).
+2. **Añadir tests con Vitest** a `blockchain-lab` y `crypto-audit-lab` (cobertura real).
+3. **Generar el `webassembly-lab` completo con backend** (Node + `wazero`), asumiendo que aceptas un servidor.
+4. **Cerrar aquí** y consolidar el informe final de la trilogía.
+
+Dime cuál y sigo. Sin inventar, sin marketing.

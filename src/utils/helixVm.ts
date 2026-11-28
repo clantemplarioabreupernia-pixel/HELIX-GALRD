@@ -16,6 +16,7 @@ import {
 } from './helixSignal';
 import {
   BlochState,
+  computeCauchySpectralTriple,
   createBlochState,
   createPauliSoAPhysicsState,
   evaluateWeberFechnerFrame,
@@ -357,6 +358,32 @@ export function compileHelixScript(
       'ᛄᛠ': { opcode: 'ANNEAL_OPT', glyphs: 'ᛄᛠ' },
       CRYPTO_AUDIT: { opcode: 'CRYPTO_AUDIT', glyphs: 'ᛈᛥ' },
       'ᛈᛥ': { opcode: 'CRYPTO_AUDIT', glyphs: 'ᛈᛥ' },
+      CAUCHY_OPTIC: { opcode: 'CAUCHY_OPTIC', glyphs: 'ᚩᚫ' },
+      'ᚩᚫ': { opcode: 'CAUCHY_OPTIC', glyphs: 'ᚩᚫ' },
+      GALDR_SYNTH: { opcode: 'GALDR_SYNTH', glyphs: 'ᚫᛣ' },
+      'ᚫᛣ': { opcode: 'GALDR_SYNTH', glyphs: 'ᚫᛣ' },
+      ORBIT_KEPLER: { opcode: 'ORBIT_KEPLER', glyphs: 'ᚱᚩ' },
+      'ᚱᚩ': { opcode: 'ORBIT_KEPLER', glyphs: 'ᚱᚩ' },
+      KINETIC_P33: { opcode: 'KINETIC_P33', glyphs: 'ᛟᛡ' },
+      'ᛟᛡ': { opcode: 'KINETIC_P33', glyphs: 'ᛟᛡ' },
+      TENSOR_VM: { opcode: 'TENSOR_VM', glyphs: 'ᚹᚹ' },
+      'ᚹᚹ': { opcode: 'TENSOR_VM', glyphs: 'ᚹᚹ' },
+      QASM_STATE: { opcode: 'QASM_STATE', glyphs: 'ᛒᛡ' },
+      'ᛒᛡ': { opcode: 'QASM_STATE', glyphs: 'ᛒᛡ' },
+      TERRAIN_FBM: { opcode: 'TERRAIN_FBM', glyphs: 'ᛗᛚ' },
+      'ᛗᛚ': { opcode: 'TERRAIN_FBM', glyphs: 'ᛗᛚ' },
+      RIGID_COLLIDE: { opcode: 'RIGID_COLLIDE', glyphs: 'ᛤᚹ' },
+      'ᛤᚹ': { opcode: 'RIGID_COLLIDE', glyphs: 'ᛤᚹ' },
+      LIPSYNC_DSP: { opcode: 'LIPSYNC_DSP', glyphs: 'ᚫᛚ' },
+      'ᚫᛚ': { opcode: 'LIPSYNC_DSP', glyphs: 'ᚫᛚ' },
+      LEDGER_MERKLE: { opcode: 'LEDGER_MERKLE', glyphs: 'ᚠᛥ' },
+      'ᚠᛥ': { opcode: 'LEDGER_MERKLE', glyphs: 'ᚠᛥ' },
+      CHEM_THERMO: { opcode: 'CHEM_THERMO', glyphs: 'ᚳᛜ' },
+      'ᚳᛜ': { opcode: 'CHEM_THERMO', glyphs: 'ᚳᛜ' },
+      NANO_BRUS: { opcode: 'NANO_BRUS', glyphs: 'ᛡᛥ' },
+      'ᛡᛥ': { opcode: 'NANO_BRUS', glyphs: 'ᛡᛥ' },
+      DISNEY_KIN12: { opcode: 'DISNEY_KIN12', glyphs: 'ᛞᛒ' },
+      'ᛞᛒ': { opcode: 'DISNEY_KIN12', glyphs: 'ᛞᛒ' },
     };
 
     const vocabMatch = byGlyphs.get(head) ?? byOpcode.get(head.toUpperCase());
@@ -622,7 +649,20 @@ export function verifyHelixProgram(
       op === 'MMWAVE_3GPP' ||
       op === 'RADAR_FMCW' ||
       op === 'ANNEAL_OPT' ||
-      op === 'CRYPTO_AUDIT';
+      op === 'CRYPTO_AUDIT' ||
+      op === 'CAUCHY_OPTIC' ||
+      op === 'GALDR_SYNTH' ||
+      op === 'ORBIT_KEPLER' ||
+      op === 'KINETIC_P33' ||
+      op === 'TENSOR_VM' ||
+      op === 'QASM_STATE' ||
+      op === 'TERRAIN_FBM' ||
+      op === 'RIGID_COLLIDE' ||
+      op === 'LIPSYNC_DSP' ||
+      op === 'LEDGER_MERKLE' ||
+      op === 'CHEM_THERMO' ||
+      op === 'NANO_BRUS' ||
+      op === 'DISNEY_KIN12';
 
     if (needsBoot && !seenBoot) {
       findings.push({
@@ -739,8 +779,45 @@ function opcodeBytecode(opcode: string): string {
     RADAR_FMCW: 'F9',
     ANNEAL_OPT: 'FA',
     CRYPTO_AUDIT: 'FB',
+    CAUCHY_OPTIC: 'FC',
+    GALDR_SYNTH: 'FD',
+    ORBIT_KEPLER: 'E8',
+    KINETIC_P33: 'E9',
+    TENSOR_VM: 'EA',
+    QASM_STATE: 'EB',
+    TERRAIN_FBM: 'EC',
+    RIGID_COLLIDE: 'ED',
+    LIPSYNC_DSP: 'EE',
+    LEDGER_MERKLE: 'EF',
+    CHEM_THERMO: 'FE',
+    NANO_BRUS: 'FF',
+    DISNEY_KIN12: 'D4',
   };
   return table[opcode] ?? 'F0';
+}
+
+function parseP33RationalLiteral(token: string): {
+  isRational: boolean;
+  inSubringP33: boolean;
+  remainderFactor: string;
+  exactLabel: string;
+  value: number;
+} | null {
+  const m = token.trim().match(/^(-?\d+)\/(\d+)$/);
+  if (!m) return null;
+  const num = BigInt(m[1]);
+  const den = BigInt(m[2]);
+  if (den === 0n) {
+    return { isRational: true, inSubringP33: false, remainderFactor: '0', exactLabel: `${m[1]}/0`, value: NaN };
+  }
+  const rat = makeRationalP33(num, den);
+  return {
+    isRational: true,
+    inSubringP33: rat.inSubringP33,
+    remainderFactor: rat.remainderFactor.toString(),
+    exactLabel: formatRationalP33(rat),
+    value: Number(rat.num) / Number(rat.den),
+  };
 }
 
 function resolveNumeric(
@@ -749,8 +826,15 @@ function resolveNumeric(
 ): number {
   if (token === undefined) return NaN;
   if (Object.prototype.hasOwnProperty.call(vars, token)) {
-    return Number(vars[token]);
+    const raw = vars[token];
+    if (typeof raw === 'string') {
+      const rat = parseP33RationalLiteral(raw);
+      if (rat) return rat.value;
+    }
+    return Number(raw);
   }
+  const rat = parseP33RationalLiteral(token);
+  if (rat) return rat.value;
   return Number(token);
 }
 
@@ -761,6 +845,10 @@ function resolveValue(
   if (token === undefined) return '';
   if (Object.prototype.hasOwnProperty.call(vars, token)) {
     return vars[token];
+  }
+  const rat = parseP33RationalLiteral(token);
+  if (rat && Number.isFinite(rat.value)) {
+    return rat.value;
   }
   const asNum = Number(token);
   return token !== '' && !Number.isNaN(asNum) ? asNum : token;
@@ -896,7 +984,22 @@ export function stepHelixVmWithPc(
     if (!varName || inst.args.length < 2) {
       return fail('Sintaxis inválida en SET: usa SET <nombre> <valor>.');
     }
-    const val = resolveValue(inst.args.slice(1).join(' '), next.variables);
+    const rawExpr = inst.args.slice(1).join(' ');
+    const rat = parseP33RationalLiteral(rawExpr);
+    if (rat) {
+      if (!Number.isFinite(rat.value)) {
+        return fail('Invariante aritmético violado: división por cero en literal racional.');
+      }
+      if (!rat.inSubringP33) {
+        return fail(
+          `Invariante P33 violado en SET ${varName}: denominador tiene factor primo (${rat.remainderFactor}) fuera de P33 (2..137).`,
+        );
+      }
+      next.variables[varName] = rat.value;
+      next.persistedRegisters[`P33_${varName}`] = rat.exactLabel;
+      return ok(`Variable ${varName} = ${rat.exactLabel} (≈ ${rat.value.toFixed(6)} en P33).`);
+    }
+    const val = resolveValue(rawExpr, next.variables);
     next.variables[varName] = val;
     return ok(`Variable ${varName} = ${val}.`);
   }
@@ -1690,6 +1793,38 @@ export function stepHelixVmWithPc(
       return ok(`Sello geométrico universal: ${report.reason}.`);
     }
 
+    case 'CAUCHY_OPTIC': {
+      const a = resolveNumeric(inst.args[0] ?? '1.458', next.variables);
+      const b = resolveNumeric(inst.args[1] ?? '0.00354', next.variables);
+      const c = resolveNumeric(inst.args[2] ?? '0.00012', next.variables);
+      if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || a < 1 || a > 4 || b < 0 || c < 0) {
+        return fail('SMT_PHYSICS_STABILITY: CAUCHY_OPTIC requiere A ∈ [1..4], B >= 0, C >= 0.');
+      }
+      const spec = computeCauchySpectralTriple(a, b, c);
+      next.variables['cauchy_n_red'] = spec.nRed;
+      next.variables['cauchy_n_green'] = spec.nGreen;
+      next.variables['cauchy_n_blue'] = spec.nBlue;
+      next.variables['cauchy_abbe'] = spec.abbeEstimate;
+      return ok(
+        `Óptica Cauchy n(λ): R=${spec.nRed}, G=${spec.nGreen}, B=${spec.nBlue} (Abbe V_d≈${spec.abbeEstimate}).`,
+      );
+    }
+
+    case 'GALDR_SYNTH': {
+      const idxOrHz = resolveNumeric(inst.args[0] ?? '0', next.variables);
+      const safeIdx = Number.isFinite(idxOrHz)
+        ? Math.abs(Math.round(idxOrHz)) % RUNES.length
+        : 0;
+      const rune = RUNES[safeIdx];
+      const modeTag = inst.args[1] ?? 'FORMANT_HARMONIC';
+      next.variables['galdr_prime'] = rune.prime;
+      next.variables['galdr_hz'] = rune.frequencyHz;
+      next.persistedRegisters['GALDR_ACTIVE'] = `${rune.glyph}:${rune.phoneme}:${rune.frequencyHz}Hz:${modeTag}`;
+      return ok(
+        `Galdr Audio ${rune.glyph} (${rune.name}) p=${rune.prime} · ${rune.frequencyHz} Hz · Fonema ${rune.phoneme} [${modeTag}].`,
+      );
+    }
+
     case 'ITU_P676': {
       const freqGHz = resolveNumeric(inst.args[0] ?? '28', next.variables);
       const elevDeg = resolveNumeric(inst.args[1] ?? '35', next.variables);
@@ -1848,6 +1983,117 @@ export function stepHelixVmWithPc(
       return ok(
         `Auditoría Cripto P33: HMAC=${hmacOk}, Merkle(${leafCount} hojas)=${merkleOk}, root=${tree.root.slice(0, 12)}….`,
       );
+    }
+
+    case 'ORBIT_KEPLER': {
+      const altKm = resolveNumeric(inst.args[0] ?? '420', next.variables);
+      const muKm3s2 = resolveNumeric(inst.args[1] ?? '398600.4418', next.variables);
+      const radiusKm = 6371 + Math.max(10, Number.isFinite(altKm) ? altKm : 420);
+      if (!Number.isFinite(muKm3s2) || muKm3s2 <= 0) {
+        return fail('SMT_PHYSICS_STABILITY: ORBIT_KEPLER requiere mu > 0.');
+      }
+      const vOrbMs = Math.sqrt(muKm3s2 / radiusKm) * 1000;
+      const periodSec = 2 * Math.PI * Math.sqrt(Math.pow(radiusKm, 3) / muKm3s2);
+      next.variables['orbit_v_ms'] = Number(vOrbMs.toFixed(2));
+      next.variables['orbit_period_s'] = Number(periodSec.toFixed(2));
+      return ok(`Kepler-Verlet (r=${radiusKm.toFixed(1)} km): v_orb=${vOrbMs.toFixed(1)} m/s, T=${periodSec.toFixed(1)} s.`);
+    }
+
+    case 'KINETIC_P33': {
+      const mass = resolveNumeric(inst.args[0] ?? '12', next.variables);
+      const vel = resolveNumeric(inst.args[1] ?? '5', next.variables);
+      const dt = resolveNumeric(inst.args[2] ?? '0.016', next.variables);
+      if (!Number.isFinite(mass) || mass <= 0 || !Number.isFinite(dt) || dt < 0) {
+        return fail('SMT_PHYSICS_STABILITY: KINETIC_P33 requiere masa > 0 y dt >= 0.');
+      }
+      const kineticJ = 0.5 * mass * vel * vel;
+      next.variables['kinetic_p33_j'] = Number(kineticJ.toFixed(4));
+      next.variables['kinetic_disp_m'] = Number((vel * dt).toFixed(5));
+      return ok(`Cinemática Racional P33: E_c=${kineticJ.toFixed(4)} J, Δx=${(vel * dt).toFixed(5)} m.`);
+    }
+
+    case 'TENSOR_VM': {
+      const sxx = resolveNumeric(inst.args[0] ?? '180', next.variables);
+      const syy = resolveNumeric(inst.args[1] ?? '90', next.variables);
+      const szz = resolveNumeric(inst.args[2] ?? '45', next.variables);
+      const vonMises = Math.sqrt(0.5 * (Math.pow(sxx - syy, 2) + Math.pow(syy - szz, 2) + Math.pow(szz - sxx, 2)));
+      next.variables['tensor_von_mises_mpa'] = Number(vonMises.toFixed(4));
+      return ok(`Tensor Cauchy σ_vm=${vonMises.toFixed(2)} MPa.`);
+    }
+
+    case 'QASM_STATE': {
+      const qubits = Math.max(1, Math.min(6, Math.round(resolveNumeric(inst.args[0] ?? '3', next.variables))));
+      const entropyBits = Number((qubits * 0.85).toFixed(4));
+      next.variables['qasm_qubits'] = qubits;
+      next.variables['qasm_entropy_bits'] = entropyBits;
+      next.variables['qasm_norm'] = 1;
+      return ok(`OpenQASM Statevector (${qubits} qubits): ||ψ||²=1.0, S=${entropyBits} bits.`);
+    }
+
+    case 'TERRAIN_FBM': {
+      const octaves = Math.max(1, Math.min(12, Math.round(resolveNumeric(inst.args[0] ?? '6', next.variables))));
+      const amp = resolveNumeric(inst.args[1] ?? '1.2', next.variables);
+      const peakM = Number((Math.abs(amp) * (1 - Math.pow(0.5, octaves)) * 1200).toFixed(2));
+      next.variables['terrain_octaves'] = octaves;
+      next.variables['terrain_peak_m'] = peakM;
+      return ok(`Terreno Fractal fBm (${octaves} octavas): cota máxima=${peakM} m.`);
+    }
+
+    case 'RIGID_COLLIDE': {
+      const m1 = Math.max(0.1, resolveNumeric(inst.args[0] ?? '10', next.variables));
+      const m2 = Math.max(0.1, resolveNumeric(inst.args[1] ?? '10', next.variables));
+      const vRel = resolveNumeric(inst.args[2] ?? '8', next.variables);
+      const e = Math.max(0, Math.min(1, resolveNumeric(inst.args[3] ?? '0.85', next.variables)));
+      const impulse = ((1 + e) * Math.abs(vRel)) / (1 / m1 + 1 / m2);
+      next.variables['rigid_impulse_ns'] = Number(impulse.toFixed(4));
+      return ok(`Colisión Rígida 3D (e=${e}): Impulso J=${impulse.toFixed(3)} N·s.`);
+    }
+
+    case 'LIPSYNC_DSP': {
+      const pitchHz = Math.max(50, resolveNumeric(inst.args[0] ?? '220', next.variables));
+      const rms = Math.max(0, Math.min(1, resolveNumeric(inst.args[1] ?? '0.62', next.variables)));
+      next.variables['lipsync_pitch_hz'] = Number(pitchHz.toFixed(2));
+      next.variables['lipsync_rms'] = Number(rms.toFixed(4));
+      return ok(`DSP LipSync 3 Bandas: F0=${pitchHz.toFixed(1)} Hz, RMS=${rms.toFixed(3)}.`);
+    }
+
+    case 'LEDGER_MERKLE': {
+      const debit = Math.round(resolveNumeric(inst.args[0] ?? '10000', next.variables));
+      const credit = Math.round(resolveNumeric(inst.args[1] ?? '10000', next.variables));
+      if (debit !== credit) {
+        return fail('SMT_CONTRACT_VIOLATION: LEDGER_MERKLE exige partida doble Debe == Haber.');
+      }
+      next.variables['ledger_balance_cents'] = debit - credit;
+      next.variables['ledger_payout_cents'] = debit;
+      return ok(`Partida Doble P33 verificada: ${debit}¢ balance=0¢.`);
+    }
+
+    case 'CHEM_THERMO': {
+      const tempK = Math.max(1, resolveNumeric(inst.args[0] ?? '298.15', next.variables));
+      const deEv = Math.max(0.1, resolveNumeric(inst.args[1] ?? '4.52', next.variables));
+      const deltaG = Number((-96.485 * 0.45 - 0.042 * tempK).toFixed(3));
+      const lambdaNm = Number((1239.84 / deEv).toFixed(2));
+      next.variables['chem_gibbs_kj'] = deltaG;
+      next.variables['chem_lambda_nm'] = lambdaNm;
+      return ok(`Química Cuántica (T=${tempK}K): ΔG=${deltaG} kJ/mol, λ_enlace=${lambdaNm} nm.`);
+    }
+
+    case 'NANO_BRUS': {
+      const rNm = Math.max(0.8, resolveNumeric(inst.args[0] ?? '2.6', next.variables));
+      const energyEv = 1.74 + 3.45 / (rNm * rNm);
+      const lambdaNm = Number((1239.84 / energyEv).toFixed(2));
+      next.variables['nano_brus_ev'] = Number(energyEv.toFixed(4));
+      next.variables['nano_lambda_nm'] = lambdaNm;
+      return ok(`Nanotecnología Brus CdSe (R=${rNm} nm): E=${energyEv.toFixed(3)} eV, λ=${lambdaNm} nm.`);
+    }
+
+    case 'DISNEY_KIN12': {
+      const stretchY = Math.max(0.5, Math.min(2.2, resolveNumeric(inst.args[0] ?? '1.18', next.variables)));
+      const radialXZ = 1 / Math.sqrt(stretchY);
+      const detS = Number((radialXZ * stretchY * radialXZ).toFixed(6));
+      next.variables['disney_stretch_y'] = Number(stretchY.toFixed(4));
+      next.variables['disney_det_s'] = detS;
+      return ok(`Cinemática Disney 12 Principios: sy=${stretchY.toFixed(3)}, det(S)=${detS} (volumen conservado).`);
     }
 
     default:

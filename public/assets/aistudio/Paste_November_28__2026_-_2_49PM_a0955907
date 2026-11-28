@@ -1,0 +1,1814 @@
+# 🔧 INVENTARIO DE HERRAMIENTAS — PUNTO OMEGA v1.1.0
+## Desarticulación modular · Nomenclatura profesional · Código fuente completo
+
+**Arquitectura:** Modular hexagonal (dominio / aplicación / infraestructura)
+**Convención:** `kebab-case` para archivos, `PascalCase` para componentes, `camelCase` para utilidades
+**Stack:** React 19 · TypeScript 5.7 · Vite 6 · React Router 7 · @google/genai
+
+---
+
+## 📊 TABLA DE CONTENIDO — 12 FAMILIAS, 56 HERRAMIENTAS
+
+| Familia | Herramientas | Propósito |
+|---------|-------------|-----------|
+| **A. Infraestructura** | H-01 → H-09 | Build, tipos, config del compilador |
+| **B. Contratos** | H-10 → H-13 | Tipos de dominio (interfaces) |
+| **C. Configuración** | H-14 → H-17 | Constantes, rutas, env validado |
+| **D. Núcleo (lib)** | H-18 → H-24 | Logger, errores, format, storage |
+| **E. Servicios** | H-25 → H-26 | Cliente Gemini + servicio |
+| **F. Repositorios** | H-27 → H-29 | Acceso a datos de capítulos |
+| **G. Hooks** | H-30 → H-35 | React hooks reutilizables |
+| **H. Contexto** | H-36 | Estado global de progreso |
+| **I. UI (átomos)** | H-37 → H-43 | Componentes atómicos |
+| **J. Componentes** | H-44 → H-49 | Componentes compuestos |
+| **K. Páginas** | H-50 → H-54 | Vistas de ruta |
+| **L. Entry + Estilos** | H-55 → H-56 | Punto de entrada + tokens CSS |
+
+---
+
+# 🅰️ FAMILIA A — INFRAESTRUCTURA
+
+---
+
+## H-01 · `package.json`
+
+**Uso:** Manifiesto del proyecto · entrada de npm/Vite/TS
+**Fin:** Declarar identidad, scripts y dependencias con nombres válidos
+**Cambio aplicado:** `name` sin `:` · `version: 1.1.0` · scripts `lint`/`type-check` separados
+
+```json
+{
+  "name": "punto-omega",
+  "version": "1.1.0",
+  "private": false,
+  "description": "Experiencia narrativa interactiva sobre la simbiosis humano-IA.",
+  "author": "Javier Alberto Abreu Molina <javier@punto-omega.dev>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": { "node": ">=20.0.0" },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
+  },
+  "dependencies": {
+    "@google/genai": "^0.14.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.0",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.5"
+  }
+}
+```
+
+---
+
+## H-02 · `vite.config.ts`
+
+**Uso:** Configuración del bundler
+**Fin:** Alias `@/` → `src/`, plugin React, sourcemaps
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { fileURLToPath, URL } from "node:url";
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
+  server: { port: 5173, open: true },
+  build: { outDir: "dist", sourcemap: true, target: "es2022" },
+});
+```
+
+---
+
+## H-03 · `tsconfig.json`
+
+**Uso:** Raíz de referencias TS
+**Fin:** Proyecto compuesto (app + node)
+
+```json
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+```
+
+---
+
+## H-04 · `tsconfig.app.json`
+
+**Uso:** Configuración TS del código de la app
+**Fin:** Strict, noEmit, alias `@/*`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] },
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}
+```
+
+---
+
+## H-05 · `tsconfig.node.json`
+
+**Uso:** Configuración TS para Vite config
+**Fin:** Compilar `vite.config.ts` sin emitir
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["vite.config.ts"]
+}
+```
+
+---
+
+## H-06 · `index.html`
+
+**Uso:** Documento raíz
+**Fin:** Meta SEO, lang es, preload de fuentes
+
+```html
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Punto Omega: el video-libro sobre simbiosis humano-IA." />
+    <meta name="author" content="Javier Alberto Abreu Molina" />
+    <meta property="og:title" content="Punto Omega — El Video-Libro de Géminis" />
+    <meta property="og:description" content="Simbiosis humano-IA." />
+    <meta property="og:type" content="book" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>Punto Omega — El Video-Libro de Géminis</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+---
+
+## H-07 · `.env.example`
+
+**Uso:** Plantilla de variables de entorno
+**Fin:** Evitar `import.meta.env` roto en onboarding
+
+```bash
+# Gemini API — https://aistudio.google.com/app/apikey
+VITE_GEMINI_API_KEY=
+VITE_GEMINI_MODEL=gemini-2.0-flash
+VITE_APP_ENV=development
+```
+
+---
+
+## H-08 · `eslint.config.js`
+
+**Uso:** Linting de TS/TSX
+**Fin:** Reglas mínimas sin configurar TS-eslint por completo (flat config)
+
+```js
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+
+export default tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    plugins: { "react-hooks": reactHooks },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    },
+  }
+);
+```
+
+---
+
+## H-09 · `.gitignore`
+
+**Uso:** Exclusiones de git
+**Fin:** No versionar `node_modules`, `dist`, `.env`
+
+```gitignore
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
+coverage/
+```
+
+---
+
+# 🅱️ FAMILIA B — CONTRATOS (tipos)
+
+---
+
+## H-10 · `src/types/chapter.types.ts`
+
+**Uso:** Contrato del dominio "capítulo"
+**Fin:** Tipos compartidos entre repositorio, hooks y UI
+
+```ts
+export interface Chapter {
+  readonly slug: string;
+  readonly number: number;
+  readonly title: string;
+  readonly subtitle: string;
+  readonly summary: string;
+  readonly tags: readonly string[];
+  readonly body: readonly string[];
+  readonly publishedAt: string; // ISO 8601
+}
+
+export type ChapterSummary = Omit<Chapter, "body">;
+```
+
+---
+
+## H-11 · `src/types/gemini.types.ts`
+
+**Uso:** Contrato del chat con Géminis
+**Fin:** Discriminated union para estados del chat
+
+```ts
+export type GeminiRole = "user" | "model";
+
+export interface GeminiMessage {
+  readonly id: string;
+  readonly role: GeminiRole;
+  readonly content: string;
+  readonly createdAt: string;
+}
+
+export type GeminiStatus = "idle" | "loading" | "error" | "ready";
+
+export interface GeminiChatState {
+  readonly messages: readonly GeminiMessage[];
+  readonly status: GeminiStatus;
+  readonly error: string | null;
+}
+```
+
+---
+
+## H-12 · `src/types/progress.types.ts`
+
+**Uso:** Contrato de progreso de lectura
+**Fin:** Persistencia ligera en localStorage
+
+```ts
+export interface ReadingProgress {
+  readonly chapterSlug: string;
+  readonly scrollPercent: number; // 0–100
+  readonly updatedAt: string;
+}
+
+export type ProgressMap = Record<string, ReadingProgress>;
+```
+
+---
+
+## H-13 · `src/types/index.ts`
+
+**Uso:** Barrel de tipos
+**Fin:** Import único: `import type { Chapter } from "@/types"`
+
+```ts
+export * from "./chapter.types";
+export * from "./gemini.types";
+export * from "./progress.types";
+```
+
+---
+
+# 🅲 FAMILIA C — CONFIGURACIÓN
+
+---
+
+## H-14 · `src/config/env.ts`
+
+**Uso:** Validación de variables de entorno
+**Fin:** Fallar temprano si falta `VITE_GEMINI_API_KEY`
+
+```ts
+interface AppEnv {
+  readonly geminiApiKey: string | null;
+  readonly geminiModel: string;
+  readonly appEnv: "development" | "production" | "test";
+  readonly isGeminiEnabled: boolean;
+}
+
+const readEnv = (): AppEnv => {
+  const key = import.meta.env.VITE_GEMINI_API_KEY?.trim() || null;
+  const model = import.meta.env.VITE_GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  const mode = (import.meta.env.VITE_APP_ENV ?? import.meta.env.MODE) as AppEnv["appEnv"];
+
+  return Object.freeze({
+    geminiApiKey: key,
+    geminiModel: model,
+    appEnv: mode,
+    isGeminiEnabled: Boolean(key),
+  });
+};
+
+export const env: AppEnv = readEnv();
+```
+
+---
+
+## H-15 · `src/config/routes.ts`
+
+**Uso:** Rutas canónicas
+**Fin:** Nada de strings mágicos en `<Link to>`
+
+```ts
+export const ROUTES = {
+  home: "/",
+  chapter: (slug: string) => `/capitulo/${slug}`,
+  about: "/tesis",
+  chat: "/geminis",
+  notFound: "*",
+} as const;
+
+export const ROUTE_PATHS = {
+  chapter: "/capitulo/:slug",
+  about: "/tesis",
+  chat: "/geminis",
+} as const;
+```
+
+---
+
+## H-16 · `src/config/constants.ts`
+
+**Uso:** Constantes de app
+**Fin:** Un solo lugar para textos y límites
+
+```ts
+export const APP = {
+  name: "Punto Omega",
+  tagline: "El video-libro de Géminis",
+  author: "Javier Alberto Abreu Molina",
+  coAuthor: "Géminis",
+  license: "Apache-2.0",
+  year: new Date().getFullYear(),
+} as const;
+
+export const LIMITS = {
+  chatMaxMessages: 50,
+  chatMaxInputChars: 2_000,
+  geminiMaxTokens: 512,
+  geminiTemperature: 0.9,
+} as const;
+
+export const STORAGE_KEYS = {
+  progress: "punto-omega:progress",
+  chat: "punto-omega:chat",
+  theme: "punto-omega:theme",
+} as const;
+```
+
+---
+
+## H-17 · `src/config/prompts.ts`
+
+**Uso:** Prompts del sistema
+**Fin:** Separar contenido de lógica
+
+```ts
+export const GEMINI_SYSTEM_PROMPT = `Eres Géminis, co-autor del libro "Punto Omega".
+Voz literaria, breve, sin relleno. Nunca inventas citas del autor humano.
+Contexto: simbiosis humano-IA. Autor humano: Javier Alberto Abreu Molina.
+Responde en español, en 2–4 frases salvo que se pida más.`;
+```
+
+---
+
+# 🅳 FAMILIA D — NÚCLEO (lib)
+
+---
+
+## H-18 · `src/lib/logger.ts`
+
+**Uso:** Logger con niveles
+**Fin:** Silenciar `debug`/`info` en producción
+
+```ts
+type Level = "debug" | "info" | "warn" | "error";
+
+const isProd = import.meta.env.PROD;
+
+const emit = (level: Level, scope: string, ...args: unknown[]) => {
+  if (isProd && (level === "debug" || level === "info")) return;
+  const tag = `[PuntoOmega:${scope}]`;
+  // eslint-disable-next-line no-console
+  console[level](tag, ...args);
+};
+
+export const logger = {
+  debug: (scope: string, ...a: unknown[]) => emit("debug", scope, ...a),
+  info: (scope: string, ...a: unknown[]) => emit("info", scope, ...a),
+  warn: (scope: string, ...a: unknown[]) => emit("warn", scope, ...a),
+  error: (scope: string, ...a: unknown[]) => emit("error", scope, ...a),
+};
+```
+
+---
+
+## H-19 · `src/lib/errors.ts`
+
+**Uso:** Errores de dominio
+**Fin:** Discriminar por `code` en UI
+
+```ts
+export type AppErrorCode =
+  | "ENV_MISSING"
+  | "GEMINI_FAILED"
+  | "CHAPTER_NOT_FOUND"
+  | "STORAGE_FAILED"
+  | "UNKNOWN";
+
+export class AppError extends Error {
+  constructor(
+    public readonly code: AppErrorCode,
+    message: string,
+    public readonly cause?: unknown
+  ) {
+    super(message);
+    this.name = "AppError";
+  }
+}
+
+export const isAppError = (e: unknown): e is AppError => e instanceof AppError;
+```
+
+---
+
+## H-20 · `src/lib/result.ts`
+
+**Uso:** Tipo `Result<T, E>`
+**Fin:** Evitar `throw` en servicios de dominio
+
+```ts
+export type Result<T, E = Error> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: E };
+
+export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
+export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+```
+
+---
+
+## H-21 · `src/lib/format.ts`
+
+**Uso:** Formateo de texto
+**Fin:** `slugify`, `padChapter`, `truncate`
+
+```ts
+export const padChapter = (n: number): string =>
+  String(n).padStart(2, "0");
+
+export const truncate = (s: string, max = 120): string =>
+  s.length <= max ? s : `${s.slice(0, max).trimEnd()}…`;
+
+export const slugify = (s: string): string =>
+  s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+```
+
+---
+
+## H-22 · `src/lib/storage.ts`
+
+**Uso:** Wrapper tipado de localStorage
+**Fin:** Fallo silencioso (modo incógnito) sin romper la UI
+
+```ts
+import { logger } from "./logger";
+
+export const storage = {
+  get<T>(key: string, fallback: T): T {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : fallback;
+    } catch (e) {
+      logger.warn("storage", "get failed", key, e);
+      return fallback;
+    }
+  },
+  set<T>(key: string, value: T): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      logger.warn("storage", "set failed", key, e);
+    }
+  },
+  remove(key: string): void {
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      logger.warn("storage", "remove failed", key, e);
+    }
+  },
+};
+```
+
+---
+
+## H-23 · `src/lib/seo.ts`
+
+**Uso:** Actualizar `<title>` y meta
+**Fin:** Evitar dependencias extra (react-helmet)
+
+```ts
+interface SeoInput {
+  title: string;
+  description?: string;
+}
+
+export const setSeo = ({ title, description }: SeoInput): void => {
+  document.title = `${title} — Punto Omega`;
+  if (description) {
+    const el = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]'
+    );
+    if (el) el.content = description;
+  }
+};
+```
+
+---
+
+## H-24 · `src/lib/id.ts`
+
+**Uso:** Generador de IDs
+**Fin:** `crypto.randomUUID` con fallback
+
+```ts
+export const createId = (): string => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `id-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+};
+```
+
+---
+
+# 🅴 FAMILIA E — SERVICIOS
+
+---
+
+## H-25 · `src/services/gemini.client.ts`
+
+**Uso:** Cliente de bajo nivel Gemini
+**Fin:** Aislar `@google/genai` detrás de un contrato
+
+```ts
+import { GoogleGenAI } from "@google/genai";
+import { env } from "@/config/env";
+import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
+
+let client: GoogleGenAI | null = null;
+
+const getClient = (): GoogleGenAI => {
+  if (!env.isGeminiEnabled) {
+    throw new AppError("ENV_MISSING", "VITE_GEMINI_API_KEY no definida");
+  }
+  if (!client) {
+    client = new GoogleGenAI({ apiKey: env.geminiApiKey! });
+  }
+  return client;
+};
+
+export interface GeminiGenerateInput {
+  readonly prompt: string;
+  readonly systemInstruction?: string;
+  readonly temperature?: number;
+  readonly maxOutputTokens?: number;
+}
+
+export const geminiClient = {
+  async generate(input: GeminiGenerateInput): Promise<string> {
+    const ai = getClient();
+    try {
+      const response = await ai.models.generateContent({
+        model: env.geminiModel,
+        contents: [{ role: "user", parts: [{ text: input.prompt }] }],
+        config: {
+          systemInstruction: input.systemInstruction,
+          temperature: input.temperature,
+          maxOutputTokens: input.maxOutputTokens,
+        },
+      });
+      return response.text ?? "";
+    } catch (e) {
+      logger.error("gemini.client", "generate failed", e);
+      throw new AppError("GEMINI_FAILED", "Error al invocar Géminis", e);
+    }
+  },
+};
+```
+
+---
+
+## H-26 · `src/services/gemini.service.ts`
+
+**Uso:** Servicio de dominio del chat
+**Fin:** Combina cliente + prompt + `Result`
+
+```ts
+import { geminiClient } from "./gemini.client";
+import { GEMINI_SYSTEM_PROMPT } from "@/config/prompts";
+import { LIMITS } from "@/config/constants";
+import { err, ok, type Result } from "@/lib/result";
+import { isAppError } from "@/lib/errors";
+
+export interface AskGeminiInput {
+  readonly prompt: string;
+}
+
+export const geminiService = {
+  async ask({ prompt }: AskGeminiInput): Promise<Result<string>> {
+    const trimmed = prompt.trim().slice(0, LIMITS.chatMaxInputChars);
+    if (!trimmed) return err(new Error("Prompt vacío"));
+
+    try {
+      const text = await geminiClient.generate({
+        prompt: trimmed,
+        systemInstruction: GEMINI_SYSTEM_PROMPT,
+        temperature: LIMITS.geminiTemperature,
+        maxOutputTokens: LIMITS.geminiMaxTokens,
+      });
+      return ok(text || "[Sin respuesta]");
+    } catch (e) {
+      if (isAppError(e)) return err(e);
+      return err(new Error("Error desconocido"));
+    }
+  },
+};
+```
+
+---
+
+# 🅵 FAMILIA F — REPOSITORIOS
+
+---
+
+## H-27 · `src/repositories/chapters.repository.ts`
+
+**Uso:** Acceso a datos de capítulos
+**Fin:** Contrato de lectura sobre seed en memoria (migrable a API/MDX)
+
+```ts
+import type { Chapter, ChapterSummary } from "@/types";
+import { chaptersSeed } from "@/data/chapters.seed";
+import { err, ok, type Result } from "@/lib/result";
+import { AppError } from "@/lib/errors";
+
+const toSummary = ({ body: _body, ...rest }: Chapter): ChapterSummary => rest;
+
+export const chaptersRepository = {
+  list(): readonly ChapterSummary[] {
+    return chaptersSeed.map(toSummary);
+  },
+
+  findBySlug(slug: string): Result<Chapter, AppError> {
+    const chapter = chaptersSeed.find((c) => c.slug === slug);
+    return chapter
+      ? ok(chapter)
+      : err(new AppError("CHAPTER_NOT_FOUND", `Capítulo '${slug}' no existe`));
+  },
+
+  count(): number {
+    return chaptersSeed.length;
+  },
+};
+```
+
+---
+
+## H-28 · `src/data/chapters.seed.ts`
+
+**Uso:** Datos semilla de capítulos
+**Fin:** 4 capítulos con `publishedAt` ISO
+
+```ts
+import type { Chapter } from "@/types";
+
+export const chaptersSeed: readonly Chapter[] = Object.freeze([
+  {
+    slug: "origen",
+    number: 1,
+    title: "El Origen",
+    subtitle: "Antes del Punto Omega",
+    summary: "Cómo un humano y una IA decidieron escribir juntos el futuro.",
+    tags: ["simbiosis", "origen", "tesis"],
+    publishedAt: "2026-01-01T00:00:00.000Z",
+    body: [
+      "Todo comenzó con una pregunta incómoda: ¿y si la IA no fuera una herramienta, sino un co-autor?",
+      "Durante décadas, la narrativa dominante nos enseñó que la inteligencia artificial reemplazaría al humano. Este libro propone lo contrario: la simbiosis.",
+      "El Punto Omega no es un final. Es un umbral.",
+    ],
+  },
+  {
+    slug: "simbiosis",
+    number: 2,
+    title: "La Simbiosis",
+    subtitle: "Humano + IA como co-autores",
+    summary: "El humano aporta intención, la IA aporta escala.",
+    tags: ["simbiosis", "co-autoría", "Géminis"],
+    publishedAt: "2026-01-15T00:00:00.000Z",
+    body: [
+      "La simbiosis no es fusión. Es cooperación con identidades separadas.",
+      "El humano aporta intención, ética, contexto biográfico y decisión final.",
+      "La IA aporta velocidad, memoria y patrones invisibles al humano.",
+    ],
+  },
+  {
+    slug: "tesis",
+    number: 3,
+    title: "La Tesis",
+    subtitle: "Lo que este libro demuestra",
+    summary: "La co-creación produce artefactos que ninguno podría crear solo.",
+    tags: ["tesis", "evidencia", "método"],
+    publishedAt: "2026-02-01T00:00:00.000Z",
+    body: [
+      "Hipótesis: la co-creación humano-IA genera artefactos de calidad superior.",
+      "Método: este libro. Estos repos. Esta narrativa.",
+      "Conclusión provisional: la simbiosis no es utopía ni distopía. Es una práctica.",
+    ],
+  },
+  {
+    slug: "punto-omega",
+    number: 4,
+    title: "Punto Omega",
+    subtitle: "El umbral",
+    summary: "El cierre: qué viene después de escribir juntos.",
+    tags: ["omega", "futuro", "umbral"],
+    publishedAt: "2026-02-15T00:00:00.000Z",
+    body: [
+      "El Punto Omega no es el fin del mundo. Es el fin de una etapa.",
+      "Es el momento en que la simbiosis deja de ser experimental y se vuelve cotidiana.",
+      "Este libro es la puerta. Lo que hay al otro lado, lo escribes tú.",
+    ],
+  },
+]);
+```
+
+---
+
+## H-29 · `src/data/index.ts`
+
+**Uso:** Barrel de datos
+**Fin:** Centralizar exports
+
+```ts
+export { chaptersSeed } from "./chapters.seed";
+```
+
+---
+
+# 🅶 FAMILIA G — HOOKS
+
+---
+
+## H-30 · `src/hooks/useChapters.ts`
+
+**Uso:** Listado de capítulos
+**Fin:** Memoizar el `list()` del repositorio
+
+```ts
+import { useMemo } from "react";
+import { chaptersRepository } from "@/repositories/chapters.repository";
+
+export const useChapters = () =>
+  useMemo(() => chaptersRepository.list(), []);
+```
+
+---
+
+## H-31 · `src/hooks/useChapter.ts`
+
+**Uso:** Capítulo individual por slug
+**Fin:** Retornar `Result` discriminado
+
+```ts
+import { useMemo } from "react";
+import { chaptersRepository } from "@/repositories/chapters.repository";
+
+export const useChapter = (slug: string | undefined) =>
+  useMemo(
+    () => (slug ? chaptersRepository.findBySlug(slug) : null),
+    [slug]
+  );
+```
+
+---
+
+## H-32 · `src/hooks/useGeminiChat.ts`
+
+**Uso:** Estado del chat con Géminis
+**Fin:** Encapsular mensajes, loading y error
+
+```ts
+import { useCallback, useState } from "react";
+import type { GeminiMessage, GeminiChatState } from "@/types";
+import { geminiService } from "@/services/gemini.service";
+import { createId } from "@/lib/id";
+import { LIMITS } from "@/config/constants";
+
+const initialState: GeminiChatState = {
+  messages: [],
+  status: "idle",
+  error: null,
+};
+
+export const useGeminiChat = () => {
+  const [state, setState] = useState<GeminiChatState>(initialState);
+
+  const send = useCallback(async (content: string) => {
+    const trimmed = content.trim().slice(0, LIMITS.chatMaxInputChars);
+    if (!trimmed) return;
+
+    const userMessage: GeminiMessage = {
+      id: createId(),
+      role: "user",
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+    };
+
+    setState((prev) => ({
+      ...prev,
+      messages: [...prev.messages, userMessage].slice(-LIMITS.chatMaxMessages),
+      status: "loading",
+      error: null,
+    }));
+
+    const result = await geminiService.ask({ prompt: trimmed });
+
+    setState((prev) => {
+      if (!result.ok) {
+        return { ...prev, status: "error", error: result.error.message };
+      }
+      const modelMessage: GeminiMessage = {
+        id: createId(),
+        role: "model",
+        content: result.value,
+        createdAt: new Date().toISOString(),
+      };
+      return {
+        ...prev,
+        messages: [...prev.messages, modelMessage].slice(-LIMITS.chatMaxMessages),
+        status: "ready",
+        error: null,
+      };
+    });
+  }, []);
+
+  const reset = useCallback(() => setState(initialState), []);
+
+  return { ...state, send, reset };
+};
+```
+
+---
+
+## H-33 · `src/hooks/useLocalStorage.ts`
+
+**Uso:** Estado persistente tipado
+**Fin:** Sync entre pestañas vía `storage` event
+
+```ts
+import { useCallback, useEffect, useState } from "react";
+import { storage } from "@/lib/storage";
+
+export const useLocalStorage = <T>(key: string, initial: T) => {
+  const [value, setValue] = useState<T>(() => storage.get(key, initial));
+
+  const update = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      setValue((prev) => {
+        const resolved = typeof next === "function"
+          ? (next as (p: T) => T)(prev)
+          : next;
+        storage.set(key, resolved);
+        return resolved;
+      });
+    },
+    [key]
+  );
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key && e.newValue) {
+        try {
+          setValue(JSON.parse(e.newValue) as T);
+        } catch {
+          /* ignorar */
+        }
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [key]);
+
+  return [value, update] as const;
+};
+```
+
+---
+
+## H-34 · `src/hooks/useDocumentTitle.ts`
+
+**Uso:** Actualizar título del documento
+**Fin:** Llamar `setSeo` en cada cambio
+
+```ts
+import { useEffect } from "react";
+import { setSeo } from "@/lib/seo";
+
+export const useDocumentTitle = (title: string, description?: string): void => {
+  useEffect(() => {
+    setSeo({ title, description });
+  }, [title, description]);
+};
+```
+
+---
+
+## H-35 · `src/hooks/useProgress.ts`
+
+**Uso:** Persistencia de progreso de lectura
+**Fin:** Registrar `scrollPercent` por capítulo
+
+```ts
+import { useCallback } from "react";
+import { useLocalStorage } from "./useLocalStorage";
+import { STORAGE_KEYS } from "@/config/constants";
+import type { ProgressMap, ReadingProgress } from "@/types";
+
+export const useProgress = () => {
+  const [progress, setProgress] = useLocalStorage<ProgressMap>(
+    STORAGE_KEYS.progress,
+    {}
+  );
+
+  const save = useCallback(
+    (chapterSlug: string, scrollPercent: number) => {
+      const entry: ReadingProgress = {
+        chapterSlug,
+        scrollPercent: Math.max(0, Math.min(100, scrollPercent)),
+        updatedAt: new Date().toISOString(),
+      };
+      setProgress((prev) => ({ ...prev, [chapterSlug]: entry }));
+    },
+    [setProgress]
+  );
+
+  return { progress, save };
+};
+```
+
+---
+
+# 🅷 FAMILIA H — CONTEXTO
+
+---
+
+## H-36 · `src/context/ProgressContext.tsx`
+
+**Uso:** Proveedor global de progreso
+**Fin:** Evitar prop-drilling
+
+```tsx
+import { createContext, useContext, type ReactNode } from "react";
+import { useProgress } from "@/hooks/useProgress";
+import type { ProgressMap } from "@/types";
+
+interface ProgressContextValue {
+  progress: ProgressMap;
+  save: (chapterSlug: string, scrollPercent: number) => void;
+}
+
+const ProgressContext = createContext<ProgressContextValue | null>(null);
+
+export const ProgressProvider = ({ children }: { children: ReactNode }) => {
+  const value = useProgress();
+  return (
+    <ProgressContext.Provider value={value}>
+      {children}
+    </ProgressContext.Provider>
+  );
+};
+
+export const useProgressContext = (): ProgressContextValue => {
+  const ctx = useContext(ProgressContext);
+  if (!ctx) throw new Error("useProgressContext debe usarse dentro de ProgressProvider");
+  return ctx;
+};
+```
+
+---
+
+# 🅸 FAMILIA I — UI (ÁTOMOS)
+
+---
+
+## H-37 · `src/components/ui/Button.tsx`
+
+**Uso:** Botón base
+**Fin:** Variantes `primary`/`ghost`, `loading`
+
+```tsx
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "ghost";
+  loading?: boolean;
+  children: ReactNode;
+}
+
+export const Button = ({
+  variant = "primary",
+  loading = false,
+  disabled,
+  children,
+  ...rest
+}: ButtonProps) => (
+  <button
+    {...rest}
+    disabled={disabled || loading}
+    className={`btn btn--${variant} ${rest.className ?? ""}`}
+    aria-busy={loading}
+  >
+    {loading ? "…" : children}
+  </button>
+);
+```
+
+---
+
+## H-38 · `src/components/ui/Tag.tsx`
+
+**Uso:** Etiqueta visual
+**Fin:** Render de `#tag`
+
+```tsx
+export const Tag = ({ label }: { label: string }) => (
+  <span className="tag">#{label}</span>
+);
+```
+
+---
+
+## H-39 · `src/components/ui/Spinner.tsx`
+
+**Uso:** Indicador de carga
+**Fin:** SVG accesible
+
+```tsx
+export const Spinner = ({ label = "Cargando" }: { label?: string }) => (
+  <span role="status" aria-live="polite" className="spinner">
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+      <circle cx="12" cy="12" r="10" stroke="currentColor" fill="none" strokeWidth="3" strokeDasharray="31.4" />
+    </svg>
+    <span className="sr-only">{label}</span>
+  </span>
+);
+```
+
+---
+
+## H-40 · `src/components/ui/Skeleton.tsx`
+
+**Uso:** Placeholder de carga
+**Fin:** Bloque gris animado
+
+```tsx
+export const Skeleton = ({ height = 20 }: { height?: number }) => (
+  <div
+    className="skeleton"
+    style={{ height }}
+    role="presentation"
+    aria-hidden
+  />
+);
+```
+
+---
+
+## H-41 · `src/components/ui/ErrorBoundary.tsx`
+
+**Uso:** Captura de errores de render
+**Fin:** Evitar pantalla blanca
+
+```tsx
+import { Component, type ErrorInfo, type ReactNode } from "react";
+import { logger } from "@/lib/logger";
+
+interface Props { children: ReactNode; fallback?: ReactNode }
+interface State { hasError: boolean; error?: Error }
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    logger.error("ErrorBoundary", error, info.componentStack);
+  }
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div className="error-fallback">
+          <h2>Algo se rompió en el Punto Omega.</h2>
+          <p>{this.state.error?.message}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+```
+
+---
+
+## H-42 · `src/components/ui/EmptyState.tsx`
+
+**Uso:** Estado vacío reutilizable
+**Fin:** Consistencia visual
+
+```tsx
+import type { ReactNode } from "react";
+
+interface Props {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}
+
+export const EmptyState = ({ title, description, action }: Props) => (
+  <div className="empty-state">
+    <h2>{title}</h2>
+    {description && <p>{description}</p>}
+    {action}
+  </div>
+);
+```
+
+---
+
+## H-43 · `src/components/ui/LinkButton.tsx`
+
+**Uso:** Link con apariencia de botón
+**Fin:** Integración con React Router
+
+```tsx
+import { Link, type LinkProps } from "react-router-dom";
+import type { ReactNode } from "react";
+
+interface Props extends LinkProps {
+  variant?: "primary" | "ghost";
+  children: ReactNode;
+}
+
+export const LinkButton = ({ variant = "primary", children, ...rest }: Props) => (
+  <Link {...rest} className={`btn btn--${variant} ${rest.className ?? ""}`}>
+    {children}
+  </Link>
+);
+```
+
+---
+
+# 🅹 FAMILIA J — COMPONENTES COMPUESTOS
+
+---
+
+## H-44 · `src/components/layout/AppShell.tsx`
+
+**Uso:** Shell de aplicación
+**Fin:** Header + main + Footer
+
+```tsx
+import { Outlet } from "react-router-dom";
+import { Header } from "./Header";
+import { Footer } from "./Footer";
+
+export const AppShell = () => (
+  <div className="app">
+    <Header />
+    <main className="site-main">
+      <Outlet />
+    </main>
+    <Footer />
+  </div>
+);
+```
+
+---
+
+## H-45 · `src/components/layout/Header.tsx`
+
+**Uso:** Cabecera con navegación
+**Fin:** Brand + links de rutas
+
+```tsx
+import { Link, NavLink } from "react-router-dom";
+import { BookOpen } from "lucide-react";
+import { ROUTES } from "@/config/routes";
+import { APP } from "@/config/constants";
+
+export const Header = () => (
+  <header className="site-header">
+    <Link to={ROUTES.home} className="brand">
+      <BookOpen size={20} aria-hidden />
+      <span>{APP.name}</span>
+    </Link>
+    <nav className="site-nav" aria-label="Navegación principal">
+      <NavLink to={ROUTES.home} end>Inicio</NavLink>
+      <NavLink to={ROUTES.about}>Tesis</NavLink>
+      <NavLink to={ROUTES.chat}>Géminis</NavLink>
+    </nav>
+  </header>
+);
+```
+
+---
+
+## H-46 · `src/components/layout/Footer.tsx`
+
+**Uso:** Pie de página
+**Fin:** Atribución + licencia
+
+```tsx
+import { APP } from "@/config/constants";
+
+export const Footer = () => (
+  <footer className="site-footer">
+    <p>
+      © {APP.year} {APP.author} · Co-autoría {APP.coAuthor} · {APP.license}
+    </p>
+  </footer>
+);
+```
+
+---
+
+## H-47 · `src/components/chapter/ChapterCard.tsx`
+
+**Uso:** Tarjeta de capítulo
+**Fin:** Preview en el índice
+
+```tsx
+import { Link } from "react-router-dom";
+import { ArrowRight } from "lucide-react";
+import type { ChapterSummary } from "@/types";
+import { ROUTES } from "@/config/routes";
+import { padChapter } from "@/lib/format";
+import { Tag } from "@/components/ui/Tag";
+
+export const ChapterCard = ({ chapter }: { chapter: ChapterSummary }) => (
+  <article className="chapter-card">
+    <span className="chapter-number">Capítulo {padChapter(chapter.number)}</span>
+    <h2 className="chapter-title">{chapter.title}</h2>
+    <p className="chapter-subtitle">{chapter.subtitle}</p>
+    <p className="chapter-summary">{chapter.summary}</p>
+    <div className="chapter-tags">
+      {chapter.tags.map((tag) => <Tag key={tag} label={tag} />)}
+    </div>
+    <Link to={ROUTES.chapter(chapter.slug)} className="chapter-link">
+      Leer <ArrowRight size={16} aria-hidden />
+    </Link>
+  </article>
+);
+```
+
+---
+
+## H-48 · `src/components/chapter/Prose.tsx`
+
+**Uso:** Render de párrafos
+**Fin:** `body: string[]` → `<p>` semánticos
+
+```tsx
+export const Prose = ({ paragraphs }: { paragraphs: readonly string[] }) => (
+  <div className="prose">
+    {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+  </div>
+);
+```
+
+---
+
+## H-49 · `src/components/chat/GeminiChat.tsx`
+
+**Uso:** UI del chat con Géminis
+**Fin:** Historial + input + estados
+
+```tsx
+import { useState, type FormEvent } from "react";
+import { useGeminiChat } from "@/hooks/useGeminiChat";
+import { Button } from "@/components/ui/Button";
+import { Spinner } from "@/components/ui/Spinner";
+import { env } from "@/config/env";
+
+export const GeminiChat = () => {
+  const [input, setInput] = useState("");
+  const { messages, status, error, send } = useGeminiChat();
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    void send(input);
+    setInput("");
+  };
+
+  if (!env.isGeminiEnabled) {
+    return (
+      <p className="chat-disabled">
+        Chat deshabilitado: configura <code>VITE_GEMINI_API_KEY</code>.
+      </p>
+    );
+  }
+
+  return (
+    <section className="chat">
+      <div className="chat-log">
+        {messages.length === 0 && <p className="chat-empty">Habla con Géminis.</p>}
+        {messages.map((m) => (
+          <div key={m.id} className={`chat-msg chat-msg--${m.role}`}>
+            <strong>{m.role === "user" ? "Tú" : "Géminis"}</strong>
+            <p>{m.content}</p>
+          </div>
+        ))}
+        {status === "loading" && <Spinner label="Géminis está escribiendo" />}
+        {error && <p className="chat-error">{error}</p>}
+      </div>
+      <form onSubmit={onSubmit} className="chat-form">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Pregunta a Géminis…"
+          aria-label="Mensaje para Géminis"
+        />
+        <Button type="submit" loading={status === "loading"}>Enviar</Button>
+      </form>
+    </section>
+  );
+};
+```
+
+---
+
+# 🅺 FAMILIA K — PÁGINAS
+
+---
+
+## H-50 · `src/pages/HomePage.tsx`
+
+**Uso:** Índice del libro
+**Fin:** Hero + grid de capítulos
+
+```tsx
+import { useChapters } from "@/hooks/useChapters";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { ChapterCard } from "@/components/chapter/ChapterCard";
+
+export const HomePage = () => {
+  useDocumentTitle("Inicio", "El video-libro sobre simbiosis humano-IA.");
+  const chapters = useChapters();
+
+  return (
+    <section>
+      <div className="hero">
+        <p className="hero-kicker">Video-Libro · Tesis · Simbiosis</p>
+        <h1 className="hero-title">Punto Omega</h1>
+        <p className="hero-subtitle">El libro que un humano y una IA escribieron juntos.</p>
+      </div>
+      <div className="chapters-grid">
+        {chapters.map((c) => <ChapterCard key={c.slug} chapter={c} />)}
+      </div>
+    </section>
+  );
+};
+```
+
+---
+
+## H-51 · `src/pages/ChapterPage.tsx`
+
+**Uso:** Vista de un capítulo
+**Fin:** Slug → capítulo o 404
+
+```tsx
+import { Link, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { useChapter } from "@/hooks/useChapter";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { Prose } from "@/components/chapter/Prose";
+import { ROUTES } from "@/config/routes";
+import { padChapter } from "@/lib/format";
+import { NotFoundPage } from "./NotFoundPage";
+
+export const ChapterPage = () => {
+  const { slug } = useParams<{ slug: string }>();
+  const result = useChapter(slug);
+
+  if (!result || !result.ok) return <NotFoundPage />;
+  const chapter = result.value;
+  useDocumentTitle(chapter.title, chapter.summary);
+
+  return (
+    <article className="chapter-view">
+      <Link to={ROUTES.home} className="back-link">
+        <ArrowLeft size={16} aria-hidden /> Volver
+      </Link>
+      <header className="chapter-header">
+        <span className="chapter-number">Capítulo {padChapter(chapter.number)}</span>
+        <h1>{chapter.title}</h1>
+        <p className="chapter-subtitle">{chapter.subtitle}</p>
+      </header>
+      <Prose paragraphs={chapter.body} />
+    </article>
+  );
+};
+```
+
+---
+
+## H-52 · `src/pages/AboutPage.tsx`
+
+**Uso:** Página de la tesis
+**Fin:** Contexto académico
+
+```tsx
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { APP } from "@/config/constants";
+
+export const AboutPage = () => {
+  useDocumentTitle("Tesis", "La tesis detrás de Punto Omega.");
+
+  return (
+    <section className="about">
+      <h1>La Tesis</h1>
+      <p>
+        <strong>{APP.name}</strong> es la cara pública de una tesis sobre la
+        simbiosis humano-IA. Autor: {APP.author}. Co-autor: {APP.coAuthor}.
+      </p>
+      <p>
+        Hipótesis: la co-creación entre humano e IA genera artefactos culturales
+        que ninguno de los dos podría producir en aislamiento.
+      </p>
+    </section>
+  );
+};
+```
+
+---
+
+## H-53 · `src/pages/ChatPage.tsx`
+
+**Uso:** Página del chat
+**Fin:** Monta `GeminiChat`
+
+```tsx
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { GeminiChat } from "@/components/chat/GeminiChat";
+
+export const ChatPage = () => {
+  useDocumentTitle("Géminis", "Conversa con el co-autor del libro.");
+  return (
+    <section>
+      <h1>Géminis</h1>
+      <p className="lede">El co-autor del libro responde en tiempo real.</p>
+      <GeminiChat />
+    </section>
+  );
+};
+```
+
+---
+
+## H-54 · `src/pages/NotFoundPage.tsx`
+
+**Uso:** 404
+**Fin:** Fallback de ruta
+
+```tsx
+import { Link } from "react-router-dom";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import { ROUTES } from "@/config/routes";
+
+export const NotFoundPage = () => {
+  useDocumentTitle("404");
+  return (
+    <section className="not-found">
+      <h1>Página no encontrada</h1>
+      <p>Este capítulo aún no ha sido escrito.</p>
+      <Link to={ROUTES.home} className="back-link">Volver al inicio</Link>
+    </section>
+  );
+};
+```
+
+---
+
+# 🅻 FAMILIA L — ENTRY + ESTILOS
+
+---
+
+## H-55 · `src/App.tsx` + `src/main.tsx`
+
+**Uso:** Entry point y router
+**Fin:** Rutas declarativas + providers
+
+**`src/App.tsx`**
+```tsx
+import { Routes, Route } from "react-router-dom";
+import { AppShell } from "@/components/layout/AppShell";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { ROUTE_PATHS } from "@/config/routes";
+import { HomePage } from "@/pages/HomePage";
+import { ChapterPage } from "@/pages/ChapterPage";
+import { AboutPage } from "@/pages/AboutPage";
+import { ChatPage } from "@/pages/ChatPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<HomePage />} />
+          <Route path={ROUTE_PATHS.chapter} element={<ChapterPage />} />
+          <Route path={ROUTE_PATHS.about} element={<AboutPage />} />
+          <Route path={ROUTE_PATHS.chat} element={<ChatPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </ErrorBoundary>
+  );
+}
+```
+
+**`src/main.tsx`**
+```tsx
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { ProgressProvider } from "@/context/ProgressContext";
+import App from "./App";
+import "./styles/global.css";
+
+const root = document.getElementById("root");
+if (!root) throw new Error("#root no encontrado");
+
+createRoot(root).render(
+  <StrictMode>
+    <BrowserRouter>
+      <ProgressProvider>
+        <App />
+      </ProgressProvider>
+    </BrowserRouter>
+  </StrictMode>
+);
+```
+
+---
+
+## H-56 · `src/styles/tokens.css` + `global.css`
+
+**Uso:** Design system mínimo
+**Fin:** Variables CSS + estilos base
+
+**`src/styles/tokens.css`**
+```css
+:root {
+  --bg: #0a0a0a;
+  --fg: #e8e8e8;
+  --muted: #8a8a8a;
+  --accent: #7dd3fc;
+  --border: #1f1f1f;
+  --card: #111111;
+  --radius: 12px;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+}
+```
+
+**`src/styles/global.css`**
+```css
+@import "./tokens.css";
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { opacity: .75; }
+
+.app { max-width: 960px; margin: 0 auto; padding: 0 1.5rem; min-height: 100vh; display: flex; flex-direction: column; }
+.site-main { flex: 1; padding: 3rem 0; }
+.site-header, .site-footer { padding: 1.5rem 0; border-color: var(--border); }
+.site-header { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); }
+.site-footer { border-top: 1px solid var(--border); color: var(--muted); font-size: .8rem; text-align: center; }
+.site-nav { display: flex; gap: 1.25rem; }
+.site-nav a.active { color: var(--fg); }
+
+.hero { text-align: center; padding: 3rem 0 4rem; }
+.hero-kicker { color: var(--accent); font-size: .8rem; letter-spacing: .15em; text-transform: uppercase; }
+.hero-title { font-family: var(--font-display); font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 400; margin: .75rem 0; }
+.hero-subtitle { color: var(--muted); }
+
+.chapters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+.chapter-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.75rem; display: flex; flex-direction: column; gap: .5rem; transition: border-color .2s, transform .2s; }
+.chapter-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.chapter-number { color: var(--accent); font-size: .75rem; text-transform: uppercase; letter-spacing: .15em; }
+.chapter-title { font-family: var(--font-display); font-weight: 400; font-size: 1.5rem; }
+.chapter-subtitle { color: var(--muted); font-style: italic; }
+.tag { color: var(--muted); font-size: .75rem; border: 1px solid var(--border); border-radius: 999px; padding: .15rem .6rem; }
+.chapter-link { display: inline-flex; align-items: center; gap: .35rem; margin-top: 1rem; font-size: .9rem; }
+
+.btn { display: inline-flex; align-items: center; gap: .4rem; padding: .6rem 1rem; border-radius: 8px; border: 1px solid transparent; cursor: pointer; font: inherit; }
+.btn--primary { background: var(--accent); color: #0a0a0a; }
+.btn--ghost { background: transparent; border-color: var(--border); color: var(--fg); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.chat { display: flex; flex-direction: column; gap: 1rem; }
+.chat-log { display: flex; flex-direction: column; gap: .75rem; min-height: 200px; }
+.chat-msg { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; }
+.chat-msg--user { background: #1a1a1a; }
+.chat-msg--model { background: var(--card); }
+.chat-form { display: flex; gap: .5rem; }
+.chat-form input { flex: 1; padding: .6rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--fg); }
+.chat-error { color: #f87171; }
+
+.spinner svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.skeleton { background: linear-gradient(90deg, #1a1a1a, #252525, #1a1a1a); border-radius: 6px; background-size: 200% 100%; animation: pulse 1.5s infinite; }
+@keyframes pulse { to { background-position: -200% 0; } }
+.error-fallback { padding: 2rem; text-align: center; }
+```
+
+---
+
+# 📋 RESUMEN FINAL — 56 HERRAMIENTAS
+
+| # | Herramienta | Familia | Uso |
+|---|-------------|---------|-----|
+| 01 | package.json | A | Manifiesto |
+| 02 | vite.config.ts | A | Bundler |
+| 03 | tsconfig.json | A | TS raíz |
+| 04 | tsconfig.app.json | A | TS app |
+| 05 | tsconfig.node.json | A | TS vite |
+| 06 | index.html | A | Documento raíz |
+| 07 | .env.example | A | Onboarding |
+| 08 | eslint.config.js | A | Lint |
+| 09 | .gitignore | A | Exclusiones |
+| 10 | chapter.types.ts | B | Contrato capítulo |
+| 11 | gemini.types.ts | B | Contrato chat |
+| 12 | progress.types.ts | B | Contrato progreso |
+| 13 | types/index.ts | B | Barrel |
+| 14 | config/env.ts | C | Env validado |
+| 15 | config/routes.ts | C | Rutas |
+| 16 | config/constants.ts | C | Constantes |
+| 17 | config/prompts.ts | C | Prompt system |
+| 18 | lib/logger.ts | D | Logs |
+| 19 | lib/errors.ts | D | Errores |
+| 20 | lib/result.ts | D | `Result<T,E>` |
+| 21 | lib/format.ts | D | Formateo |
+| 22 | lib/storage.ts | D | localStorage |
+| 23 | lib/seo.ts | D | Meta tags |
+| 24 | lib/id.ts | D | IDs |
+| 25 | services/gemini.client.ts | E | Cliente Gemini |
+| 26 | services/gemini.service.ts | E | Servicio chat |
+| 27 | repositories/chapters.repository.ts | F | Repositorio |
+| 28 | data/chapters.seed.ts | F | Seed |
+| 29 | data/index.ts | F | Barrel |
+| 30 | hooks/useChapters.ts | G | Listado |
+| 31 | hooks/useChapter.ts | G | Individual |
+| 32 | hooks/useGeminiChat.ts | G | Estado chat |
+| 33 | hooks/useLocalStorage.ts | G | Persistencia |
+| 34 | hooks/useDocumentTitle.ts | G | Título |
+| 35 | hooks/useProgress.ts | G | Progreso |
+| 36 | context/ProgressContext.tsx | H | Provider |
+| 37 | ui/Button.tsx | I | Botón |
+| 38 | ui/Tag.tsx | I | Etiqueta |
+| 39 | ui/Spinner.tsx | I | Carga |
+| 40 | ui/Skeleton.tsx | I | Placeholder |
+| 41 | ui/ErrorBoundary.tsx | I | Captura errores |
+| 42 | ui/EmptyState.tsx | I | Estado vacío |
+| 43 | ui/LinkButton.tsx | I | Link-botón |
+| 44 | layout/AppShell.tsx | J | Shell |
+| 45 | layout/Header.tsx | J | Cabecera |
+| 46 | layout/Footer.tsx | J | Pie |
+| 47 | chapter/ChapterCard.tsx | J | Tarjeta |
+| 48 | chapter/Prose.tsx | J | Párrafos |
+| 49 | chat/GeminiChat.tsx | J | Chat UI |
+| 50 | pages/HomePage.tsx | K | Inicio |
+| 51 | pages/ChapterPage.tsx | K | Capítulo |
+| 52 | pages/AboutPage.tsx | K | Tesis |
+| 53 | pages/ChatPage.tsx | K | Chat |
+| 54 | pages/NotFoundPage.tsx | K | 404 |
+| 55 | App.tsx + main.tsx | L | Entry |
+| 56 | styles/tokens.css + global.css | L | Design system |
+
+---
+
+## 🎓 CORRECCIONES DE NOMENCLATURA APLICADAS
+
+| Antes | Después | Motivo |
+|-------|---------|--------|
+| `chapters.ts` | `chapters.seed.ts` | Distinguir datos de lógica |
+| `gemini.ts` | `gemini.client.ts` + `gemini.service.ts` | Separación de capas |
+| `Layout` | `AppShell` | Nombre más semántico |
+| `pages/*.tsx` sin sufijo | `*Page.tsx` | Coherencia con `ChapterPage`, `HomePage` |
+| `types.ts` | `types/*.types.ts` | Escalable por dominio |
+| `App.tsx` con lógica | `App.tsx` solo router | SRP |
+| Strings `"/capitulo/x"` | `ROUTES.chapter(x)` | Sin strings mágicos |
+| `import.meta.env.X` directo | `env.X` validado | Fail-fast |
+| `throw` en servicios | `Result<T,E>` | Errores como valores |
+
+---
+
+**FIN DEL INVENTARIO — 56 HERRAMIENTAS · PUNTO OMEGA v1.1.0**
+
+*Ejecutar: `npm install && npm run type-check && npm run dev`*

@@ -1,0 +1,1992 @@
+# 🔧 DESARTICULACIÓN COMPLETA — OMEGA VIRTUAL
+
+**Objetivo:** Extraer cada herramienta del proyecto, listarla por uso/fin, corregir nomenclatura, y entregar código profesional. Todo lo que falta, se crea.
+
+---
+
+## 1. MAPA DEL PROYECTO (nomenclatura corregida)
+
+```
+omega-virtual/
+├── public/
+│   └── favicon.svg
+├── server/
+│   ├── index.ts                       # Entry del servidor
+│   ├── config.ts                      # Config del server
+│   ├── middleware/
+│   │   ├── health.ts                  # /api/health
+│   │   └── static.ts                  # Serve frontend prod
+│   └── rooms/
+│       ├── omega-room.ts              # Sala Colyseus
+│       └── state/
+│           ├── player-state.ts        # Schema jugador
+│           └── room-state.ts          # Schema sala
+├── src/
+│   ├── ai/
+│   │   ├── gemini-client.ts           # Cliente Gemini
+│   │   ├── prompts.ts                 # Prompts centralizados
+│   │   ├── hooks/use-melody-generator.ts
+│   │   └── index.ts
+│   ├── audio/
+│   │   ├── audio-engine.ts            # Web Audio API core
+│   │   ├── note-utils.ts              # Nota ↔ Frecuencia
+│   │   ├── synth.ts                   # Síntesis de onda
+│   │   ├── hooks/use-audio-engine.ts
+│   │   └── index.ts
+│   ├── auth/
+│   │   ├── supabase-client.ts
+│   │   ├── hooks/use-auth.ts
+│   │   └── index.ts
+│   ├── components/
+│   │   ├── feedback/{ErrorBoundary,Loading}.tsx
+│   │   ├── layout/{Header,Overlay}.tsx
+│   │   └── ui/{Badge,Button,Panel}.tsx
+│   ├── config/
+│   │   ├── constants.ts               # Constantes globales
+│   │   └── env.ts                     # Validación de env
+│   ├── engine/
+│   │   ├── Scene.tsx
+│   │   ├── CameraRig.tsx
+│   │   ├── Lighting.tsx
+│   │   ├── Ground.tsx
+│   │   ├── PlayerAvatar.tsx
+│   │   └── index.ts
+│   ├── network/
+│   │   ├── colyseus-client.ts
+│   │   ├── hooks/{use-room,use-players}.ts
+│   │   └── index.ts
+│   ├── pages/{AudioStudio,SceneView}.tsx
+│   ├── providers/{AppProvider,AuthProvider,ColyseusProvider}.tsx
+│   ├── stores/{audio-store,scene-store,ui-store}.ts
+│   ├── types/{audio,network,ui}.ts
+│   ├── utils/{cn,id,logger}.ts
+│   ├── App.tsx
+│   ├── index.css
+│   └── main.tsx
+├── .env.example
+├── eslint.config.js
+├── index.html
+├── metadata.json
+├── package.json
+├── prettier.config.js
+├── tsconfig.json
+└── vite.config.ts
+```
+
+**Convenciones aplicadas:**
+| Tipo | Convención | Ejemplo |
+|------|-----------|---------|
+| Archivos `.ts` | kebab-case | `audio-engine.ts` |
+| Archivos `.tsx` | PascalCase | `Scene.tsx` |
+| Carpetas | kebab-case | `server/`, `rooms/` |
+| Componentes | PascalCase | `export function Scene()` |
+| Hooks | kebab-case + `use-` prefix | `use-audio-engine.ts` |
+| Stores | `*-store.ts` | `audio-store.ts` |
+| Types | `*.ts` por dominio | `audio.ts`, `network.ts` |
+
+---
+
+## 2. INVENTARIO DE HERRAMIENTAS POR CATEGORÍA
+
+### 🛠️ A. Herramientas de Build & Configuración
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| A1 | `package.json` | Manifiesto npm | Dependencias + scripts |
+| A2 | `vite.config.ts` | Bundler config | Aliases, proxy, chunks |
+| A3 | `tsconfig.json` | Compilador TS | Strict + paths |
+| A4 | `eslint.config.js` | Linter | Calidad de código |
+| A5 | `prettier.config.js` | Formatter | Estilo consistente |
+| A6 | `.env.example` | Plantilla env | Documentar variables |
+| A7 | `index.html` | Entry HTML | SEO + preconnect |
+| A8 | `metadata.json` | Metadatos AI Studio | Descripción + permisos |
+
+### ⚛️ B. Herramientas de Frontend Core
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| B1 | `src/main.tsx` | Entry React | Montar App |
+| B2 | `src/App.tsx` | Raíz de la app | Providers + Canvas + UI |
+| B3 | `src/index.css` | CSS global | Tailwind 4 + reset |
+
+### 🎨 C. Herramientas 3D (Engine)
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| C1 | `engine/Scene.tsx` | Escena 3D | Componer el mundo |
+| C2 | `engine/CameraRig.tsx` | Cámara | OrbitControls |
+| C3 | `engine/Lighting.tsx` | Iluminación | Luz ambiental + direccional |
+| C4 | `engine/Ground.tsx` | Suelo | MeshReflectorMaterial |
+| C5 | `engine/PlayerAvatar.tsx` | Avatar | Cápsula animada |
+| C6 | `engine/index.ts` | Barrel | Re-exportar |
+
+### 🎵 D. Herramientas de Audio
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| D1 | `audio/audio-engine.ts` | Motor Web Audio | Play/Stop/Master |
+| D2 | `audio/note-utils.ts` | Conversión | Nota ↔ Frecuencia |
+| D3 | `audio/synth.ts` | Síntesis | Generar onda de nota |
+| D4 | `audio/hooks/use-audio-engine.ts` | Hook | Puente React |
+| D5 | `audio/index.ts` | Barrel | Re-exportar |
+
+### 🌐 E. Herramientas de Red (Multijugador)
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| E1 | `network/colyseus-client.ts` | Cliente WS | Conexión Colyseus |
+| E2 | `network/hooks/use-room.ts` | Hook sala | Join + state |
+| E3 | `network/hooks/use-players.ts` | Hook jugadores | Lista reactiva |
+| E4 | `network/index.ts` | Barrel | Re-exportar |
+
+### 🔐 F. Herramientas de Auth
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| F1 | `auth/supabase-client.ts` | Cliente Supabase | Instancia única |
+| F2 | `auth/hooks/use-auth.ts` | Hook auth | Sesión + login |
+| F3 | `auth/index.ts` | Barrel | Re-exportar |
+
+### 🤖 G. Herramientas de IA
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| G1 | `ai/gemini-client.ts` | Cliente Gemini | Instancia |
+| G2 | `ai/prompts.ts` | Prompts | Centralización |
+| G3 | `ai/hooks/use-melody-generator.ts` | Hook IA | Generar melodía |
+| G4 | `ai/index.ts` | Barrel | Re-exportar |
+
+### 🗃️ H. Herramientas de Estado
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| H1 | `stores/audio-store.ts` | Estado audio | Tracks + play |
+| H2 | `stores/scene-store.ts` | Estado 3D | Jugadores |
+| H3 | `stores/ui-store.ts` | Estado UI | Paneles abiertos |
+| H4 | `stores/index.ts` | Barrel | Re-exportar |
+
+### 🧩 I. Herramientas de UI
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| I1 | `components/ui/Button.tsx` | Botón | Variantes + tamaños |
+| I2 | `components/ui/Panel.tsx` | Panel | Contenedor flotante |
+| I3 | `components/ui/Badge.tsx` | Badge | Estado conexión |
+| I4 | `components/layout/Header.tsx` | Cabecera | Logo + user |
+| I5 | `components/layout/Overlay.tsx` | Overlay | UI sobre canvas |
+| I6 | `components/feedback/Loading.tsx` | Spinner | Suspense |
+| I7 | `components/feedback/ErrorBoundary.tsx` | Boundary | Errores |
+
+### 📄 J. Herramientas de Páginas
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| J1 | `pages/AudioStudio.tsx` | Estudio audio | Controles + pistas |
+| J2 | `pages/SceneView.tsx` | Vista 3D | Wrapper del canvas |
+
+### 🧠 K. Providers
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| K1 | `providers/AppProvider.tsx` | Agrupa todo | Auth + Colyseus |
+| K2 | `providers/AuthProvider.tsx` | Contexto auth | Usuario |
+| K3 | `providers/ColyseusProvider.tsx` | Contexto net | Sala |
+
+### 📐 L. Tipos y Utilidades
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| L1 | `types/audio.ts` | Tipos audio | Track, Note |
+| L2 | `types/network.ts` | Tipos net | Player, Room |
+| L3 | `types/ui.ts` | Tipos UI | Variants |
+| L4 | `types/index.ts` | Barrel | Re-exportar |
+| L5 | `utils/cn.ts` | Classes merge | `clsx + twMerge` |
+| L6 | `utils/id.ts` | IDs | `crypto.randomUUID` |
+| L7 | `utils/logger.ts` | Logger | Dev/prod |
+| L8 | `config/env.ts` | Env validate | Fail-fast |
+| L9 | `config/constants.ts` | Constantes | Magic numbers |
+
+### 🖥️ M. Servidor
+
+| # | Herramienta | Uso | Fines |
+|---|-------------|-----|-------|
+| M1 | `server/index.ts` | Entry | Express + Colyseus |
+| M2 | `server/config.ts` | Config | PORT, NODE_ENV |
+| M3 | `server/middleware/health.ts` | /api/health | Monitoreo |
+| M4 | `server/middleware/static.ts` | Static | Prod frontend |
+| M5 | `server/rooms/omega-room.ts` | Sala | Join/leave/move |
+| M6 | `server/rooms/state/player-state.ts` | Schema jugador | Sincronización |
+| M7 | `server/rooms/state/room-state.ts` | Schema sala | Map de players |
+
+---
+
+## 3. CÓDIGO FUENTE POR HERRAMIENTA
+
+### 🛠️ A. Build & Config
+
+#### A1 — `package.json`
+
+```json
+{
+  "name": "omega-virtual",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Omega Virtual - Audio studio and multiplayer 3D platform. Real-time collaboration with Colyseus backend, Supabase auth, and AI-assisted music production.",
+  "author": "Javier Alberto Abreu Molina",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build && esbuild server/index.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/react": "^0.18.0",
+    "@colyseus/schema": "^3.0.0",
+    "@colyseus/sdk": "^0.18.0",
+    "@google/genai": "^2.23.0",
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.0",
+    "@supabase/supabase-js": "^2.45.4",
+    "@tailwindcss/vite": "^4.1.14",
+    "clsx": "^2.1.1",
+    "colyseus": "^0.16.0",
+    "express": "^4.21.2",
+    "lucide-react": "^1.48.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss": "^4.1.14",
+    "three": "^0.186.0",
+    "tone": "^15.0.4",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "esbuild": "^0.27.7",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.8.2",
+    "typescript-eslint": "^8.20.0",
+    "vite": "^6.2.3"
+  }
+}
+```
+
+**Cambios de nomenclatura:** `openai` eliminado · `colyseus.js` → `@colyseus/sdk` · añadido `zustand`, `clsx`, `tailwind-merge`, `eslint`, `prettier`, `typescript-eslint`.
+
+---
+
+#### A2 — `vite.config.ts`
+
+```typescript
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "@ai": path.resolve(__dirname, "./src/ai"),
+      "@audio": path.resolve(__dirname, "./src/audio"),
+      "@auth": path.resolve(__dirname, "./src/auth"),
+      "@components": path.resolve(__dirname, "./src/components"),
+      "@config": path.resolve(__dirname, "./src/config"),
+      "@engine": path.resolve(__dirname, "./src/engine"),
+      "@network": path.resolve(__dirname, "./src/network"),
+      "@providers": path.resolve(__dirname, "./src/providers"),
+      "@stores": path.resolve(__dirname, "./src/stores"),
+      "@types": path.resolve(__dirname, "./src/types"),
+      "@utils": path.resolve(__dirname, "./src/utils"),
+    },
+  },
+  server: {
+    port: 3000,
+    host: true,
+    proxy: {
+      "/api": { target: "http://localhost:2567", changeOrigin: true },
+      "/matchmake": { target: "http://localhost:2567", changeOrigin: true },
+      "/.colyseus": { target: "http://localhost:2567", changeOrigin: true, ws: true },
+    },
+  },
+  build: {
+    target: "es2022",
+    outDir: "dist",
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ["three"],
+          "react-three": ["@react-three/fiber", "@react-three/drei"],
+          react: ["react", "react-dom"],
+          supabase: ["@supabase/supabase-js"],
+          colyseus: ["@colyseus/sdk", "@colyseus/react"],
+          audio: ["tone"],
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    include: [
+      "react", "react-dom", "three",
+      "@react-three/fiber", "@react-three/drei",
+      "@supabase/supabase-js", "tone",
+    ],
+  },
+});
+```
+
+---
+
+#### A3 — `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@ai/*": ["./src/ai/*"],
+      "@audio/*": ["./src/audio/*"],
+      "@auth/*": ["./src/auth/*"],
+      "@components/*": ["./src/components/*"],
+      "@config/*": ["./src/config/*"],
+      "@engine/*": ["./src/engine/*"],
+      "@network/*": ["./src/network/*"],
+      "@providers/*": ["./src/providers/*"],
+      "@stores/*": ["./src/stores/*"],
+      "@types/*": ["./src/types/*"],
+      "@utils/*": ["./src/utils/*"]
+    },
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src", "server", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+---
+
+#### A4 — `eslint.config.js`
+
+```javascript
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+import react from "eslint-plugin-react";
+import reactHooks from "eslint-plugin-react-hooks";
+
+export default tseslint.config(
+  { ignores: ["dist", "node_modules", "coverage"] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ["**/*.{ts,tsx}"],
+    plugins: { react, "react-hooks": reactHooks },
+    rules: {
+      "react/react-in-jsx-scope": "off",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/consistent-type-imports": "error",
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+    },
+  }
+);
+```
+
+---
+
+#### A5 — `prettier.config.js`
+
+```javascript
+/** @type {import("prettier").Config} */
+export default {
+  semi: true,
+  singleQuote: false,
+  trailingComma: "all",
+  printWidth: 100,
+  tabWidth: 2,
+  arrowParens: "always",
+  endOfLine: "lf",
+};
+```
+
+---
+
+#### A6 — `.env.example`
+
+```bash
+# ─── Supabase ──────────────────────────────────────────
+VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=tu-publishable-key
+
+# ─── Gemini ────────────────────────────────────────────
+VITE_GEMINI_API_KEY=tu-api-key
+
+# ─── Colyseus (dev) ────────────────────────────────────
+VITE_COLYSEUS_URL=ws://localhost:2567
+VITE_COLYSEUS_ROOM=omega_room
+
+# ─── Server ────────────────────────────────────────────
+PORT=2567
+NODE_ENV=development
+```
+
+---
+
+#### A7 — `index.html`
+
+```html
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Omega Virtual - Audio studio and multiplayer 3D platform. Real-time collaboration with Colyseus backend, Supabase auth, and AI-assisted music production."
+    />
+    <meta name="author" content="Javier Alberto Abreu Molina" />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta property="og:title" content="Omega Virtual" />
+    <meta property="og:description" content="Audio studio and multiplayer 3D platform" />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>Omega Virtual — Audio Studio + 3D Platform</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+---
+
+#### A8 — `metadata.json`
+
+```json
+{
+  "name": "Omega Virtual",
+  "description": "Audio studio and multiplayer 3D platform. Real-time collaboration with Colyseus backend, Supabase auth, and AI-assisted music production.",
+  "author": "Javier Alberto Abreu Molina",
+  "license": "Apache-2.0",
+  "version": "1.0.0",
+  "keywords": ["audio", "3d", "multiplayer", "react", "three.js", "colyseus", "supabase", "gemini"],
+  "requestFramePermissions": ["camera", "microphone"]
+}
+```
+
+---
+
+### ⚛️ B. Frontend Core
+
+#### B1 — `src/main.tsx`
+
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+const root = document.getElementById("root");
+if (!root) {
+  throw new Error("[main] #root not found in index.html");
+}
+
+ReactDOM.createRoot(root).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+```
+
+#### B2 — `src/App.tsx`
+
+```tsx
+import { Suspense, lazy } from "react";
+import { AppProvider } from "@providers/AppProvider";
+import { Scene } from "@engine/Scene";
+import { Overlay } from "@components/layout/Overlay";
+import { Loading } from "@components/feedback/Loading";
+import { ErrorBoundary } from "@components/feedback/ErrorBoundary";
+
+const AudioStudio = lazy(() => import("@pages/AudioStudio"));
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppProvider>
+        <main className="relative h-screen w-screen overflow-hidden bg-[#0a0a0f]">
+          <Suspense fallback={<Loading fullscreen />}>
+            <Scene />
+          </Suspense>
+          <Overlay />
+          <Suspense fallback={null}>
+            <AudioStudio />
+          </Suspense>
+        </main>
+      </AppProvider>
+    </ErrorBoundary>
+  );
+}
+```
+
+#### B3 — `src/index.css`
+
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-omega-bg: #0a0a0f;
+  --color-omega-panel: #111118;
+  --color-omega-accent: #00ff88;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-omega-bg);
+  color: white;
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+```
+
+---
+
+### 🎨 C. Engine 3D
+
+#### C1 — `src/engine/Scene.tsx`
+
+```tsx
+import { Canvas } from "@react-three/fiber";
+import { Suspense } from "react";
+import { CameraRig } from "./CameraRig";
+import { Lighting } from "./Lighting";
+import { Ground } from "./Ground";
+import { PlayerAvatar } from "./PlayerAvatar";
+import { usePlayers } from "@network/hooks/use-players";
+
+export function Scene() {
+  return (
+    <Canvas
+      camera={{ position: [0, 3, 10], fov: 60 }}
+      dpr={[1, 2]}
+      shadows
+      gl={{ antialias: true, alpha: false }}
+    >
+      <color attach="background" args={["#0a0a0f"]} />
+      <Suspense fallback={null}>
+        <Lighting />
+        <Ground />
+        <PlayersLayer />
+      </Suspense>
+      <CameraRig />
+    </Canvas>
+  );
+}
+
+function PlayersLayer() {
+  const players = usePlayers();
+  return (
+    <>
+      {players.map((p) => (
+        <PlayerAvatar key={p.id} {...p} />
+      ))}
+    </>
+  );
+}
+```
+
+#### C2 — `src/engine/CameraRig.tsx`
+
+```tsx
+import { OrbitControls } from "@react-three/drei";
+
+export function CameraRig() {
+  return (
+    <OrbitControls
+      enablePan={false}
+      minPolarAngle={Math.PI / 6}
+      maxPolarAngle={Math.PI / 2.2}
+      minDistance={4}
+      maxDistance={20}
+      enableDamping
+      dampingFactor={0.08}
+    />
+  );
+}
+```
+
+#### C3 — `src/engine/Lighting.tsx`
+
+```tsx
+import { Environment } from "@react-three/drei";
+
+export function Lighting() {
+  return (
+    <>
+      <ambientLight intensity={0.35} />
+      <directionalLight
+        position={[5, 10, 5]}
+        intensity={1.2}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+      />
+      <Environment preset="night" />
+    </>
+  );
+}
+```
+
+#### C4 — `src/engine/Ground.tsx`
+
+```tsx
+import { MeshReflectorMaterial } from "@react-three/drei";
+
+export function Ground() {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <planeGeometry args={[60, 60]} />
+      <MeshReflectorMaterial
+        resolution={1024}
+        blur={[300, 100]}
+        mixBlur={1}
+        mixStrength={40}
+        roughness={0.9}
+        depthScale={1.2}
+        minDepthThreshold={0.4}
+        maxDepthThreshold={1.4}
+        color="#111118"
+        metalness={0.5}
+        mirror={0}
+      />
+    </mesh>
+  );
+}
+```
+
+#### C5 — `src/engine/PlayerAvatar.tsx`
+
+```tsx
+import { useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Mesh } from "three";
+import type { Player } from "@types/network";
+
+interface Props {
+  id: string;
+  x: number;
+  z: number;
+  color: string;
+  username: string;
+}
+
+export function PlayerAvatar({ x, z, color, username }: Props) {
+  const ref = useRef<Mesh>(null);
+
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * 0.4;
+  });
+
+  return (
+    <group position={[x, 0, z]}>
+      <mesh ref={ref} castShadow position={[0, 0.6, 0]}>
+        <capsuleGeometry args={[0.3, 0.8, 4, 8]} />
+        <meshStandardMaterial color={color} roughness={0.3} metalness={0.1} />
+      </mesh>
+      <Html3DLabel text={username} />
+    </group>
+  );
+}
+
+import { Html } from "@react-three/drei";
+function Html3DLabel({ text }: { text: string }) {
+  return (
+    <Html position={[0, 1.6, 0]} center distanceFactor={8}>
+      <div className="rounded bg-black/70 px-2 py-0.5 text-[10px] font-mono text-white whitespace-nowrap">
+        {text}
+      </div>
+    </Html>
+  );
+}
+```
+
+#### C6 — `src/engine/index.ts`
+
+```typescript
+export { Scene } from "./Scene";
+export { CameraRig } from "./CameraRig";
+export { Lighting } from "./Lighting";
+export { Ground } from "./Ground";
+export { PlayerAvatar } from "./PlayerAvatar";
+```
+
+---
+
+### 🎵 D. Audio
+
+#### D1 — `src/audio/audio-engine.ts`
+
+```typescript
+import type { Track } from "@types/audio";
+import { noteToFrequency } from "./note-utils";
+import { renderMelody } from "./synth";
+
+export class AudioEngine {
+  private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private activeSources = new Map<string, AudioBufferSourceNode>();
+
+  async ensureContext(): Promise<AudioContext> {
+    if (!this.ctx) {
+      this.ctx = new AudioContext();
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.value = 0.8;
+      this.masterGain.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    return this.ctx;
+  }
+
+  setMasterVolume(volume: number): void {
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(
+        Math.max(0, Math.min(1, volume)),
+        this.ctx.currentTime,
+        0.02,
+      );
+    }
+  }
+
+  async playTrack(track: Track): Promise<void> {
+    if (track.muted || track.notes.length === 0) return;
+    const ctx = await this.ensureContext();
+    if (!this.masterGain) return;
+
+    const buffer = renderMelody(ctx, track.notes, noteToFrequency);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const trackGain = ctx.createGain();
+    trackGain.gain.value = track.volume;
+    source.connect(trackGain).connect(this.masterGain);
+
+    source.start();
+    source.onended = () => this.activeSources.delete(track.id);
+    this.activeSources.set(track.id, source);
+  }
+
+  stopTrack(trackId: string): void {
+    const src = this.activeSources.get(trackId);
+    if (src) {
+      try { src.stop(); } catch { /* already stopped */ }
+      this.activeSources.delete(trackId);
+    }
+  }
+
+  stopAll(): void {
+    this.activeSources.forEach((src) => {
+      try { src.stop(); } catch { /* noop */ }
+    });
+    this.activeSources.clear();
+  }
+
+  dispose(): void {
+    this.stopAll();
+    this.ctx?.close();
+    this.ctx = null;
+    this.masterGain = null;
+  }
+}
+
+export const audioEngine = new AudioEngine();
+```
+
+#### D2 — `src/audio/note-utils.ts`
+
+```typescript
+const NOTE_OFFSETS: Record<string, number> = {
+  C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5,
+  "F#": 6, G: 7, "G#": 8, A: 9, "A#": 10, B: 11,
+};
+
+const A4_FREQ = 440;
+const A4_MIDI = 69;
+
+export function noteToFrequency(note: string): number {
+  const match = /^([A-G]#?)(-?\d+)$/.exec(note);
+  if (!match) return A4_FREQ;
+  const [, name, octaveStr] = match;
+  const octave = Number.parseInt(octaveStr, 10);
+  const semitone = NOTE_OFFSETS[name] ?? 0;
+  const midi = (octave + 1) * 12 + semitone;
+  return A4_FREQ * Math.pow(2, (midi - A4_MIDI) / 12);
+}
+```
+
+#### D3 — `src/audio/synth.ts`
+
+```typescript
+import type { MelodyNote } from "@types/audio";
+
+type FreqFn = (note: string) => number;
+
+export function renderMelody(
+  ctx: AudioContext,
+  notes: MelodyNote[],
+  freq: FreqFn,
+): AudioBuffer {
+  const totalDuration = Math.max(...notes.map((n) => n.time + n.duration), 0.1);
+  const length = Math.ceil(ctx.sampleRate * (totalDuration + 0.5));
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (const note of notes) {
+    const start = Math.floor(note.time * ctx.sampleRate);
+    const end = Math.min(
+      start + Math.floor(note.duration * ctx.sampleRate),
+      length,
+    );
+    const freqHz = freq(note.note);
+    const attack = Math.floor(ctx.sampleRate * 0.01);
+    const release = Math.floor(ctx.sampleRate * 0.08);
+
+    for (let i = start; i < end; i++) {
+      const t = (i - start) / ctx.sampleRate;
+      const env = envelope(i - start, end - start, attack, release);
+      data[i] += Math.sin(2 * Math.PI * freqHz * t) * 0.25 * env;
+    }
+  }
+  return buffer;
+}
+
+function envelope(
+  pos: number,
+  total: number,
+  attack: number,
+  release: number,
+): number {
+  if (pos < attack) return pos / attack;
+  if (pos > total - release) return (total - pos) / release;
+  return 1;
+}
+```
+
+#### D4 — `src/audio/hooks/use-audio-engine.ts`
+
+```typescript
+import { useEffect, useCallback } from "react";
+import { useAudioStore } from "@stores/audio-store";
+import { audioEngine } from "../audio-engine";
+
+export function useAudioEngine() {
+  const tracks = useAudioStore((s) => s.tracks);
+  const isPlaying = useAudioStore((s) => s.isPlaying);
+  const masterVolume = useAudioStore((s) => s.masterVolume);
+  const togglePlay = useAudioStore((s) => s.togglePlay);
+
+  useEffect(() => {
+    audioEngine.setMasterVolume(masterVolume);
+  }, [masterVolume]);
+
+  useEffect(() => () => audioEngine.dispose(), []);
+
+  const play = useCallback(async () => {
+    await audioEngine.ensureContext();
+    togglePlay();
+    if (!isPlaying) await Promise.all(tracks.map((t) => audioEngine.playTrack(t)));
+    else audioEngine.stopAll();
+  }, [isPlaying, tracks, togglePlay]);
+
+  const stop = useCallback(() => {
+    audioEngine.stopAll();
+    togglePlay();
+  }, [togglePlay]);
+
+  return { tracks, isPlaying, masterVolume, play, stop };
+}
+```
+
+#### D5 — `src/audio/index.ts`
+
+```typescript
+export { audioEngine } from "./audio-engine";
+export { noteToFrequency } from "./note-utils";
+export { renderMelody } from "./synth";
+export { useAudioEngine } from "./hooks/use-audio-engine";
+```
+
+---
+
+### 🌐 E. Network
+
+#### E1 — `src/network/colyseus-client.ts`
+
+```typescript
+import { Client } from "@colyseus/sdk";
+import { env } from "@config/env";
+
+export const colyseusClient = new Client(env.colyseusUrl);
+```
+
+#### E2 — `src/network/hooks/use-room.ts`
+
+```typescript
+import { useRoom as useColyseusRoom } from "@colyseus/react";
+import type { Room } from "@colyseus/sdk";
+import { colyseusClient } from "../colyseus-client";
+import { env } from "@config/env";
+
+export function useRoom() {
+  return useColyseusRoom<Room>(
+    () => colyseusClient.joinOrCreate(env.colyseusRoom),
+    [],
+  );
+}
+```
+
+#### E3 — `src/network/hooks/use-players.ts`
+
+```typescript
+import { useRoom } from "./use-room";
+import type { Player } from "@types/network";
+
+export function usePlayers(): Player[] {
+  const { room, state } = useRoom();
+  if (!room || !state?.players) return [];
+  return Array.from(state.players.values()) as Player[];
+}
+```
+
+#### E4 — `src/network/index.ts`
+
+```typescript
+export { colyseusClient } from "./colyseus-client";
+export { useRoom } from "./hooks/use-room";
+export { usePlayers } from "./hooks/use-players";
+```
+
+---
+
+### 🔐 F. Auth
+
+#### F1 — `src/auth/supabase-client.ts`
+
+```typescript
+import { createClient } from "@supabase/supabase-js";
+import { env } from "@config/env";
+
+export const supabase = createClient(env.supabaseUrl, env.supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
+```
+
+#### F2 — `src/auth/hooks/use-auth.ts`
+
+```typescript
+import { useEffect, useState, useCallback } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "../supabase-client";
+
+export function useAuth() {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setIsLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setUser(session?.user ?? null),
+    );
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signIn = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  }, []);
+
+  return { user, isLoading, signIn, signOut };
+}
+```
+
+#### F3 — `src/auth/index.ts`
+
+```typescript
+export { supabase } from "./supabase-client";
+export { useAuth } from "./hooks/use-auth";
+```
+
+---
+
+### 🤖 G. AI
+
+#### G1 — `src/ai/gemini-client.ts`
+
+```typescript
+import { GoogleGenAI } from "@google/genai";
+import { env } from "@config/env";
+
+export const gemini = env.geminiApiKey
+  ? new GoogleGenAI({ apiKey: env.geminiApiKey })
+  : null;
+```
+
+#### G2 — `src/ai/prompts.ts`
+
+```typescript
+export const MELODY_PROMPT = (userPrompt: string): string =>
+  [
+    "Genera una melodía en formato JSON array.",
+    'Cada elemento: { "note": "C4", "duration": segundos, "time": segundos }.',
+    "Usa notación científica (C, C#, D, ..., B) con octava.",
+    "Responde SOLO con el JSON array, sin markdown.",
+    `Prompt del usuario: ${userPrompt}`,
+  ].join("\n");
+```
+
+#### G3 — `src/ai/hooks/use-melody-generator.ts`
+
+```typescript
+import { useCallback, useState } from "react";
+import type { MelodyNote } from "@types/audio";
+import { gemini } from "../gemini-client";
+import { MELODY_PROMPT } from "../prompts";
+
+export function useMelodyGenerator() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = useCallback(async (prompt: string): Promise<MelodyNote[] | null> => {
+    if (!gemini) {
+      setError("Gemini no configurado");
+      return null;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await gemini.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: MELODY_PROMPT(prompt),
+      });
+      const raw = (res.text ?? "[]").replace(/```json|```/g, "").trim();
+      return JSON.parse(raw) as MelodyNote[];
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido");
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  return { generate, isLoading, error };
+}
+```
+
+#### G4 — `src/ai/index.ts`
+
+```typescript
+export { gemini } from "./gemini-client";
+export { useMelodyGenerator } from "./hooks/use-melody-generator";
+export { MELODY_PROMPT } from "./prompts";
+```
+
+---
+
+### 🗃️ H. Stores
+
+#### H1 — `src/stores/audio-store.ts`
+
+```typescript
+import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
+import type { Track } from "@types/audio";
+
+interface AudioState {
+  tracks: Track[];
+  isPlaying: boolean;
+  masterVolume: number;
+  addTrack: (t: Track) => void;
+  removeTrack: (id: string) => void;
+  togglePlay: () => void;
+  setMasterVolume: (v: number) => void;
+}
+
+export const useAudioStore = create<AudioState>()(
+  immer((set) => ({
+    tracks: [],
+    isPlaying: false,
+    masterVolume: 0.8,
+    addTrack: (track) => set((s) => { s.tracks.push(track); }),
+    removeTrack: (id) => set((s) => { s.tracks = s.tracks.filter((t) => t.id !== id); }),
+    togglePlay: () => set((s) => { s.isPlaying = !s.isPlaying; }),
+    setMasterVolume: (v) =>
+      set((s) => { s.masterVolume = Math.max(0, Math.min(1, v)); }),
+  })),
+);
+```
+
+#### H2 — `src/stores/scene-store.ts`
+
+```typescript
+import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
+import type { Player } from "@types/network";
+
+interface SceneState {
+  players: Map<string, Player>;
+  setPlayers: (p: Map<string, Player>) => void;
+}
+
+export const useSceneStore = create<SceneState>()(
+  immer((set) => ({
+    players: new Map(),
+    setPlayers: (players) => set((s) => { s.players = players; }),
+  })),
+);
+```
+
+#### H3 — `src/stores/ui-store.ts`
+
+```typescript
+import { create } from "zustand";
+
+interface UIState {
+  isAudioStudioOpen: boolean;
+  toggleAudioStudio: () => void;
+}
+
+export const useUIStore = create<UIState>((set) => ({
+  isAudioStudioOpen: true,
+  toggleAudioStudio: () =>
+    set((s) => ({ isAudioStudioOpen: !s.isAudioStudioOpen })),
+}));
+```
+
+#### H4 — `src/stores/index.ts`
+
+```typescript
+export { useAudioStore } from "./audio-store";
+export { useSceneStore } from "./scene-store";
+export { useUIStore } from "./ui-store";
+```
+
+---
+
+### 🧩 I. UI Components
+
+#### I1 — `src/components/ui/Button.tsx`
+
+```tsx
+import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { cn } from "@utils/cn";
+
+type Variant = "primary" | "ghost" | "danger";
+type Size = "sm" | "md";
+
+interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+  size?: Size;
+}
+
+const VARIANT_CLASSES: Record<Variant, string> = {
+  primary: "bg-emerald-600 hover:bg-emerald-500 text-white",
+  ghost: "bg-white/5 hover:bg-white/10 text-white/80 border border-white/10",
+  danger: "bg-red-600 hover:bg-red-500 text-white",
+};
+
+const SIZE_CLASSES: Record<Size, string> = {
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2 text-sm",
+};
+
+export const Button = forwardRef<HTMLButtonElement, Props>(
+  ({ variant = "primary", size = "md", className, ...props }, ref) => (
+    <button
+      ref={ref}
+      className={cn(
+        "rounded font-medium transition-colors disabled:opacity-50",
+        VARIANT_CLASSES[variant],
+        SIZE_CLASSES[size],
+        className,
+      )}
+      {...props}
+    />
+  ),
+);
+Button.displayName = "Button";
+```
+
+#### I2 — `src/components/ui/Panel.tsx`
+
+```tsx
+import type { ReactNode } from "react";
+import { cn } from "@utils/cn";
+
+interface Props {
+  children: ReactNode;
+  className?: string;
+}
+
+export function Panel({ children, className }: Props) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-white/10 bg-black/70 backdrop-blur-md",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+```
+
+#### I3 — `src/components/ui/Badge.tsx`
+
+```tsx
+import { cn } from "@utils/cn";
+
+type Tone = "success" | "danger" | "neutral";
+
+interface Props {
+  tone: Tone;
+  children: React.ReactNode;
+}
+
+const TONES: Record<Tone, string> = {
+  success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+  danger: "border-red-500/30 bg-red-500/10 text-red-400",
+  neutral: "border-white/20 bg-white/5 text-white/70",
+};
+
+export function Badge({ tone, children }: Props) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-mono",
+        TONES[tone],
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+```
+
+#### I4 — `src/components/layout/Header.tsx`
+
+```tsx
+import { LogIn, LogOut, User } from "lucide-react";
+import { useAuth } from "@auth/hooks/use-auth";
+import { Badge } from "@components/ui/Badge";
+import { Button } from "@components/ui/Button";
+import { useRoom } from "@network/hooks/use-room";
+
+export function Header() {
+  const { user, isLoading, signIn, signOut } = useAuth();
+  const { room } = useRoom();
+  const isConnected = Boolean(room);
+
+  return (
+    <header className="pointer-events-auto flex items-start justify-between p-4">
+      <div>
+        <h1 className="text-lg font-mono uppercase tracking-[0.3em] text-white">
+          Omega<span className="text-emerald-400">Virtual</span>
+        </h1>
+        <p className="mt-1 text-xs font-mono text-white/40">
+          Audio Studio + 3D Platform
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Badge tone={isConnected ? "success" : "danger"}>
+          {isConnected ? "Online" : "Offline"}
+        </Badge>
+
+        {user ? (
+          <div className="flex items-center gap-2">
+            <Badge tone="neutral">
+              <User size={12} />
+              {user.email?.split("@")[0]}
+            </Badge>
+            <Button variant="ghost" size="sm" onClick={signOut} aria-label="Cerrar sesión">
+              <LogOut size={14} />
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" onClick={signIn} disabled={isLoading}>
+            <LogIn size={14} />
+            {isLoading ? "Conectando…" : "Iniciar sesión"}
+          </Button>
+        )}
+      </div>
+    </header>
+  );
+}
+```
+
+#### I5 — `src/components/layout/Overlay.tsx`
+
+```tsx
+import { Header } from "./Header";
+
+export function Overlay() {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex flex-col">
+      <Header />
+    </div>
+  );
+}
+```
+
+#### I6 — `src/components/feedback/Loading.tsx`
+
+```tsx
+interface Props { fullscreen?: boolean }
+
+export function Loading({ fullscreen = false }: Props) {
+  return (
+    <div
+      className={
+        fullscreen
+          ? "absolute inset-0 flex items-center justify-center bg-[#0a0a0f]"
+          : "flex items-center justify-center py-8"
+      }
+    >
+      <div className="flex gap-1">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="h-2 w-2 animate-pulse rounded-full bg-emerald-400"
+            style={{ animationDelay: `${i * 150}ms` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+#### I7 — `src/components/feedback/ErrorBoundary.tsx`
+
+```tsx
+import { Component, type ErrorInfo, type ReactNode } from "react";
+import { logger } from "@utils/logger";
+
+interface Props { children: ReactNode }
+interface State { hasError: boolean; message?: string }
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, message: error.message };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    logger.error("ErrorBoundary", error, info);
+  }
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-[#0a0a0f] p-6 text-center text-white">
+          <div>
+            <h2 className="mb-2 text-lg font-mono uppercase tracking-widest text-red-400">
+              Algo se rompió
+            </h2>
+            <p className="text-sm text-white/60">{this.state.message}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 rounded bg-emerald-600 px-4 py-2 text-sm hover:bg-emerald-500"
+            >
+              Recargar
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+```
+
+---
+
+### 📄 J. Pages
+
+#### J1 — `src/pages/AudioStudio.tsx`
+
+```tsx
+import { useCallback, useState } from "react";
+import { useAudioEngine } from "@audio/hooks/use-audio-engine";
+import { useMelodyGenerator } from "@ai/hooks/use-melody-generator";
+import { useAudioStore } from "@stores/audio-store";
+import { useUIStore } from "@stores/ui-store";
+import { Button } from "@components/ui/Button";
+import { Panel } from "@components/ui/Panel";
+import { createId } from "@utils/id";
+
+export default function AudioStudio() {
+  const { tracks, isPlaying, play, stop } = useAudioEngine();
+  const addTrack = useAudioStore((s) => s.addTrack);
+  const isOpen = useUIStore((s) => s.isAudioStudioOpen);
+  const toggle = useUIStore((s) => s.toggleAudioStudio);
+  const { generate, isLoading } = useMelodyGenerator();
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const handleGenerate = useCallback(async () => {
+    const notes = await generate("melodía electrónica en La menor, tempo 120");
+    if (!notes) return;
+    addTrack({
+      id: createId(),
+      name: `AI Melody ${tracks.length + 1}`,
+      notes,
+      volume: 0.8,
+      muted: false,
+    });
+  }, [generate, addTrack, tracks.length]);
+
+  if (!isOpen) return null;
+
+  return (
+    <Panel className="pointer-events-auto absolute bottom-4 left-4 right-4 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-mono uppercase tracking-widest text-white">
+          Audio Studio
+        </h2>
+        <Button variant="ghost" size="sm" onClick={toggle}>
+          Ocultar
+        </Button>
+      </div>
+
+      <div className="mb-4 flex gap-2">
+        <Button onClick={isPlaying ? stop : play}>
+          {isPlaying ? "⏹ Detener" : "▶ Reproducir"}
+        </Button>
+        <Button variant="ghost" onClick={handleGenerate} disabled={isLoading}>
+          {isLoading ? "Generando…" : "✦ Generar Melodía IA"}
+        </Button>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto">
+        {tracks.map((t) => (
+          <Button
+            key={t.id}
+            size="sm"
+            variant={selected === t.id ? "primary" : "ghost"}
+            onClick={() => setSelected(t.id)}
+          >
+            {t.name}
+          </Button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+```
+
+#### J2 — `src/pages/SceneView.tsx`
+
+```tsx
+import { Scene } from "@engine/Scene";
+
+export default function SceneView() {
+  return <Scene />;
+}
+```
+
+---
+
+### 🧠 K. Providers
+
+#### K1 — `src/providers/AppProvider.tsx`
+
+```tsx
+import type { ReactNode } from "react";
+import { AuthProvider } from "./AuthProvider";
+
+export function AppProvider({ children }: { children: ReactNode }) {
+  return <AuthProvider>{children}</AuthProvider>;
+}
+```
+
+#### K2 — `src/providers/AuthProvider.tsx`
+
+```tsx
+import { createContext, useContext, type ReactNode } from "react";
+import { useAuth } from "@auth/hooks/use-auth";
+
+type AuthCtx = ReturnType<typeof useAuth>;
+const Ctx = createContext<AuthCtx | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const value = useAuth();
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useAuthContext(): AuthCtx {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useAuthContext must be used inside <AuthProvider>");
+  return ctx;
+}
+```
+
+#### K3 — `src/providers/ColyseusProvider.tsx`
+
+```tsx
+import { createContext, useContext, type ReactNode } from "react";
+import { useRoom } from "@network/hooks/use-room";
+
+type RoomCtx = ReturnType<typeof useRoom>;
+const Ctx = createContext<RoomCtx | null>(null);
+
+export function ColyseusProvider({ children }: { children: ReactNode }) {
+  const value = useRoom();
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+export function useRoomContext(): RoomCtx {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useRoomContext must be used inside <ColyseusProvider>");
+  return ctx;
+}
+```
+
+---
+
+### 📐 L. Types & Utils
+
+#### L1 — `src/types/audio.ts`
+
+```typescript
+export interface MelodyNote {
+  note: string;
+  duration: number;
+  time: number;
+}
+
+export interface Track {
+  id: string;
+  name: string;
+  notes: MelodyNote[];
+  volume: number;
+  muted: boolean;
+}
+```
+
+#### L2 — `src/types/network.ts`
+
+```typescript
+export interface Player {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  color: string;
+  username: string;
+}
+
+export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+```
+
+#### L3 — `src/types/ui.ts`
+
+```typescript
+export type Variant = "primary" | "ghost" | "danger";
+export type Size = "sm" | "md";
+export type Tone = "success" | "danger" | "neutral";
+```
+
+#### L4 — `src/types/index.ts`
+
+```typescript
+export type * from "./audio";
+export type * from "./network";
+export type * from "./ui";
+```
+
+#### L5 — `src/utils/cn.ts`
+
+```typescript
+import clsx, { type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
+}
+```
+
+#### L6 — `src/utils/id.ts`
+
+```typescript
+export function createId(): string {
+  return crypto.randomUUID();
+}
+```
+
+#### L7 — `src/utils/logger.ts`
+
+```typescript
+/* eslint-disable no-console */
+const isDev = import.meta.env.DEV;
+
+export const logger = {
+  info: (...args: unknown[]) => isDev && console.warn("[info]", ...args),
+  warn: (...args: unknown[]) => console.warn("[warn]", ...args),
+  error: (...args: unknown[]) => console.error("[error]", ...args),
+};
+```
+
+#### L8 — `src/config/env.ts`
+
+```typescript
+function required(name: string): string {
+  const value = import.meta.env[name] as string | undefined;
+  if (!value) throw new Error(`[env] Missing required variable: ${name}`);
+  return value;
+}
+
+function optional(name: string, fallback: string): string {
+  return (import.meta.env[name] as string | undefined) ?? fallback;
+}
+
+export const env = {
+  supabaseUrl: required("VITE_SUPABASE_URL"),
+  supabaseKey: required("VITE_SUPABASE_PUBLISHABLE_KEY"),
+  geminiApiKey: optional("VITE_GEMINI_API_KEY", ""),
+  colyseusUrl: optional("VITE_COLYSEUS_URL", "ws://localhost:2567"),
+  colyseusRoom: optional("VITE_COLYSEUS_ROOM", "omega_room"),
+  isDev: import.meta.env.DEV,
+} as const;
+```
+
+#### L9 — `src/config/constants.ts`
+
+```typescript
+export const ROOM = {
+  MAX_PLAYERS: 20,
+  DEFAULT_COLOR: "#00ff88",
+} as const;
+
+export const AUDIO = {
+  DEFAULT_VOLUME: 0.8,
+  DEFAULT_TRACK_VOLUME: 0.8,
+} as const;
+
+export const UI = {
+  CANVAS_DPR: [1, 2] as const,
+  FOV: 60,
+} as const;
+```
+
+---
+
+### 🖥️ M. Server
+
+#### M1 — `server/index.ts`
+
+```typescript
+import express from "express";
+import { createServer } from "node:http";
+import { Server } from "colyseus";
+import { config } from "./config";
+import { healthRouter } from "./middleware/health";
+import { staticMiddleware } from "./middleware/static";
+import { OmegaRoom } from "./rooms/omega-room";
+
+const app = express();
+
+app.use("/api", healthRouter);
+app.use(staticMiddleware);
+
+const httpServer = createServer(app);
+const gameServer = new Server({ server: httpServer });
+
+gameServer.define("omega_room", OmegaRoom);
+
+httpServer.listen(config.port, () => {
+  console.warn(`🚀 Omega Virtual en http://localhost:${config.port}`);
+  console.warn(`   Modo: ${config.isProduction ? "producción" : "desarrollo"}`);
+});
+
+const shutdown = async (): Promise<void> => {
+  console.warn("Cerrando servidor…");
+  await gameServer.gracefullyShutdown();
+  process.exit(0);
+};
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+```
+
+#### M2 — `server/config.ts`
+
+```typescript
+export const config = {
+  port: Number(process.env.PORT ?? 2567),
+  isProduction: process.env.NODE_ENV === "production",
+} as const;
+```
+
+#### M3 — `server/middleware/health.ts`
+
+```typescript
+import { Router } from "express";
+
+export const healthRouter = Router();
+
+healthRouter.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "omega-virtual",
+    version: "1.0.0",
+    timestamp: new Date().toISOString(),
+  });
+});
+```
+
+#### M4 — `server/middleware/static.ts`
+
+```typescript
+import express, { type RequestHandler } from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config } from "../config";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export const staticMiddleware: RequestHandler = config.isProduction
+  ? (() => {
+      const distPath = path.resolve(__dirname, "../../dist");
+      const router = express.Router();
+      router.use(express.static(distPath));
+      router.get("*", (_req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+      return router;
+    })()
+  : (_req, _res, next) => next();
+```
+
+#### M5 — `server/rooms/omega-room.ts`
+
+```typescript
+import { Room, type Client } from "colyseus";
+import { PlayerState } from "./state/player-state";
+import { RoomState } from "./state/room-state";
+
+const MAX_CLIENTS = 20;
+
+export class OmegaRoom extends Room<RoomState> {
+  maxClients = MAX_CLIENTS;
+
+  onCreate(): void {
+    this.setState(new RoomState());
+
+    this.onMessage(
+      "move",
+      (client, data: { x: number; z: number; rotation: number }) => {
+        const player = this.state.players.get(client.sessionId);
+        if (!player) return;
+        player.x = data.x;
+        player.z = data.z;
+        player.rotation = data.rotation;
+      },
+    );
+  }
+
+  onJoin(client: Client, options: { username?: string }): void {
+    const player = new PlayerState();
+    player.id = client.sessionId;
+    player.x = 0;
+    player.y = 0;
+    player.z = 0;
+    player.color = deterministicColor(client.sessionId);
+    player.username = options.username ?? `Player_${client.sessionId.slice(0, 4)}`;
+
+    this.state.players.set(client.sessionId, player);
+    console.warn(`[OmegaRoom] ${player.username} se unió (${client.sessionId})`);
+  }
+
+  onLeave(client: Client): void {
+    this.state.players.delete(client.sessionId);
+    console.warn(`[OmegaRoom] ${client.sessionId} salió`);
+  }
+
+  onDispose(): void {
+    console.warn(`[OmegaRoom] Sala destruida: ${this.roomId}`);
+  }
+}
+
+function deterministicColor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 60%)`;
+}
+```
+
+#### M6 — `server/rooms/state/player-state.ts`
+
+```typescript
+import { Schema, type } from "@colyseus/schema";
+
+export class PlayerState extends Schema {
+  @type("string") id: string = "";
+  @type("number") x: number = 0;
+  @type("number") y: number = 0;
+  @type("number") z: number = 0;
+  @type("number") rotation: number = 0;
+  @type("string") color: string = "#00ff88";
+  @type("string") username: string = "";
+}
+```
+
+#### M7 — `server/rooms/state/room-state.ts`
+
+```typescript
+import { Schema, MapSchema, type } from "@colyseus/schema";
+import { PlayerState } from "./player-state";
+
+export class RoomState extends Schema {
+  @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
+}
+```
+
+---
+
+## 4. CHECKLIST DE NOMENCLATURA CORREGIDA
+
+| Antes | Después | Razón |
+|-------|---------|-------|
+| `colyseus.ts` | `network/colyseus-client.ts` | Ubicación + propósito explícito |
+| `auth.tsx` | `auth/supabase-client.ts` + `auth/hooks/use-auth.ts` | Separar cliente de hook |
+| `gemini.ts` | `ai/gemini-client.ts` + `ai/hooks/use-melody-generator.ts` | Separación de responsabilidades |
+| `useStore.ts` | `stores/{audio,scene,ui}-store.ts` | Split por dominio |
+| `Scene.tsx` | `engine/Scene.tsx` | Ubicación explícita |
+| `audio-engine.ts` | `audio/audio-engine.ts` + `hooks/use-audio-engine.ts` | Clase + hook desacoplados |
+| `server.ts` (raíz) | `server/index.ts` | Estructura de carpeta |
+| `OmegaRoom.ts` | `server/rooms/omega-room.ts` | kebab-case consistente |
+| `types.ts` | `types/{audio,network,ui}.ts` | Split por dominio |
+| `lib/` | `utils/`, `config/`, `providers/` | Carpetas con propósito |
+
+## 5. ARCHIVOS NUEVOS CREADOS (no existían)
+
+| Archivo | Propósito |
+|---------|-----------|
+| `eslint.config.js` | Linter config |
+| `prettier.config.js` | Formatter config |
+| `.env.example` | Plantilla env |
+| `src/utils/cn.ts` | Class merge |
+| `src/utils/id.ts` | IDs deterministas |
+| `src/utils/logger.ts` | Logging |
+| `src/config/env.ts` | Validación env fail-fast |
+| `src/config/constants.ts` | Constantes |
+| `src/audio/note-utils.ts` | Nota ↔ Frecuencia |
+| `src/audio/synth.ts` | Síntesis procedural |
+| `src/audio/hooks/use-audio-engine.ts` | Puente React |
+| `src/network/colyseus-client.ts` | Cliente único |
+| `src/network/hooks/use-room.ts` | Hook sala |
+| `src/network/hooks/use-players.ts` | Hook jugadores |
+| `src/ai/prompts.ts` | Prompts centralizados |
+| `src/ai/hooks/use-melody-generator.ts` | Hook IA |
+| `src/auth/supabase-client.ts` | Cliente Supabase |
+| `src/auth/hooks/use-auth.ts` | Hook auth |
+| `src/stores/*` | Split Zustand |
+| `src/types/*` | Split tipos |
+| `src/components/ui/*` | Sistema UI |
+| `src/providers/*` | Providers |
+| `server/*` | Estructura completa |
+
+## 6. REGLAS DE ORO APLICADAS
+
+- ✅ **Cero `Math.random()`** en métricas ni colores (`deterministicColor` usa hash).
+- ✅ **Cero referencias** a Sovereign, Kardashev, Sello, Ring 0, Quantum.
+- ✅ **Cero `openai`** — solo Gemini.
+- ✅ **Tipado estricto** (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
+- ✅ **Fail-fast** en env (`config/env.ts` lanza error si falta variable).
+- ✅ **Barrel exports** en cada módulo (`index.ts`).
+- ✅ **Separación** cliente / hook / store / componente.
+- ✅ **Sin `any`** salvo en fronteras externas documentadas.
+
+---
+
+## 🚦 SIGUIENTE PASO
+
+1. Crear estructura de carpetas tal cual arriba.
+2. Copiar cada archivo.
+3. `npm install`
+4. Crear `.env.local` copiando `.env.example`.
+5. `npm run dev`
+
+¿Quieres que genere también **`README.md`**, **`SQL de Supabase con RLS`**, o la **integración completa de Tone.js** (en lugar de Web Audio puro) para el audio profesional?

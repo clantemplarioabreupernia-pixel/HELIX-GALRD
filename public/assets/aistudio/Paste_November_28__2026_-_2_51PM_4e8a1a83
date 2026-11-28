@@ -1,0 +1,969 @@
+# Informe de desarticulación del proyecto — Material 3 Web App
+
+**Objetivo:** descomponer el proyecto en "piezas/herramientas" funcionales, listarlas por uso y fin, corregir nomenclatura y entregar código profesional. Todo lo inexistente se crea con su lógica.
+
+---
+
+## 1. Inventario de herramientas (por categoría y propósito)
+
+| # | Herramienta | Categoría | Propósito | Archivo |
+|---|-------------|-----------|-----------|---------|
+| 1 | `vite.config.ts` | ⚙️ Build | Configuración Vite + React + Tailwind 4 + proxy API | `vite.config.ts` |
+| 2 | `tsconfig.json` | ⚙️ Config | TypeScript estricto para `src/` | `tsconfig.json` |
+| 3 | `tsconfig.node.json` | ⚙️ Config | TS para configuración de build | `tsconfig.node.json` |
+| 4 | `tsconfig.server.json` | ⚙️ Config | TS para el backend Node/Express | `tsconfig.server.json` |
+| 5 | `.editorconfig` | ⚙️ Config | Consistencia de estilo entre editores | `.editorconfig` |
+| 6 | `.gitignore` | ⚙️ Config | Excluir artefactos y secretos | `.gitignore` |
+| 7 | `.env.example` | ⚙️ Config | Documentar variables de entorno | `.env.example` |
+| 8 | `vite-env.d.ts` | ⚙️ Config | Tipos de Vite para `import.meta.env` | `src/vite-env.d.ts` |
+| 9 | `types/index.ts` | 🗂️ Tipos | Modelos de dominio compartidos | `src/types/index.ts` |
+| 10 | `cn` | 🧰 Utilidad | Composición de clases CSS condicionales | `src/lib/cn.ts` |
+| 11 | `api` | 🧰 Utilidad | Cliente HTTP tipado para `/api/gemini` | `src/lib/api.ts` |
+| 12 | `constants` | 🧰 Utilidad | Constantes globales (claves, textos, rutas) | `src/lib/constants.ts` |
+| 13 | `useLocalStorage` | 🪝 Hook | Persistencia tipada en localStorage | `src/hooks/useLocalStorage.ts` |
+| 14 | `useTheme` | 🪝 Hook | Gestión de tema claro/oscuro persistido | `src/hooks/useTheme.ts` |
+| 15 | `useGemini` | 🪝 Hook | Estado de la llamada a Gemini (loading/error/data) | `src/hooks/useGemini.ts` |
+| 16 | `Button` | 🎨 UI primitivo | Botón Material 3 (5 variantes) | `src/components/ui/Button.tsx` |
+| 17 | `IconButton` | 🎨 UI primitivo | Botón de icono Material 3 | `src/components/ui/IconButton.tsx` |
+| 18 | `Card` | 🎨 UI primitivo | Contenedor con 3 variantes M3 | `src/components/ui/Card.tsx` |
+| 19 | `TextField` | 🎨 UI primitivo | Campo de texto con label, error y helper | `src/components/ui/TextField.tsx` |
+| 20 | `TopAppBar` | 🎨 UI primitivo | Barra superior fija Material 3 | `src/components/ui/TopAppBar.tsx` |
+| 21 | `Spinner` | 🎨 UI primitivo | Indicador de carga accesible | `src/components/ui/Spinner.tsx` |
+| 22 | `ChatComposer` | 🧩 Feature | Composición del prompt + envío | `src/components/features/ChatComposer.tsx` |
+| 23 | `env` | 🖥️ Server | Carga y validación de variables de entorno | `server/config/env.ts` |
+| 24 | `generateText` | 🖥️ Server | Cliente encapsulado de Gemini | `server/services/gemini.ts` |
+| 25 | `errorHandler` | 🖥️ Server | Middleware de manejo de errores | `server/middleware/errorHandler.ts` |
+| 26 | `geminiRouter` | 🖥️ Server | Ruta `POST /api/gemini` con validación | `server/routes/gemini.ts` |
+| 27 | `main` | 🎯 App shell | Punto de entrada React 19 | `src/main.tsx` |
+| 28 | `App` | 🎯 App shell | Composición raíz de la aplicación | `src/App.tsx` |
+| 29 | `server` | 🖥️ Entry | Servidor Express | `server.ts` |
+
+---
+
+## 2. Código fuente por herramienta
+
+### ⚙️ 2.1 Configuración
+
+#### `vite.config.ts`
+```ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  server: {
+    port: 3000,
+    host: '0.0.0.0',
+    proxy: { '/api': 'http://localhost:3001' },
+  },
+  preview: { port: 3000, host: '0.0.0.0' },
+});
+```
+
+#### `tsconfig.json`
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.server.json" }]
+}
+```
+
+#### `tsconfig.node.json`
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true
+  },
+  "include": ["vite.config.ts"]
+}
+```
+
+#### `tsconfig.server.json`
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["server.ts", "server/**/*.ts"]
+}
+```
+
+#### `.editorconfig`
+```ini
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+```
+
+#### `.gitignore`
+```
+node_modules
+dist
+.env
+.env.local
+*.log
+.DS_Store
+```
+
+#### `.env.example`
+```env
+GEMINI_API_KEY=
+PORT=3001
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+#### `src/vite-env.d.ts`
+```ts
+/// <reference types="vite/client" />
+```
+
+---
+
+### 🗂️ 2.2 Tipos de dominio — `src/types/index.ts`
+
+```ts
+export type Theme = 'light' | 'dark';
+
+export type ChatRole = 'user' | 'assistant';
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  createdAt: number;
+}
+
+export interface GeminiRequestBody {
+  prompt: string;
+}
+
+export interface GeminiSuccessResponse {
+  text: string;
+}
+
+export interface GeminiErrorResponse {
+  error: string;
+}
+```
+
+---
+
+### 🧰 2.3 Utilidades
+
+#### `src/lib/cn.ts`
+```ts
+type ClassValue = string | number | null | undefined | false | ClassValue[];
+
+/**
+ * Compone nombres de clase condicionales sin dependencias externas.
+ */
+export function cn(...inputs: ClassValue[]): string {
+  return inputs
+    .flat(Infinity)
+    .filter((v): v is string | number => Boolean(v) && (typeof v === 'string' || typeof v === 'number'))
+    .join(' ');
+}
+```
+
+#### `src/lib/constants.ts`
+```ts
+export const APP_NAME = 'Material 3 Web App';
+export const API_BASE = '/api';
+
+export const STORAGE_KEYS = {
+  THEME: 'm3:theme',
+  MESSAGES: 'm3:messages',
+} as const;
+```
+
+#### `src/lib/api.ts`
+```ts
+import type {
+  GeminiErrorResponse,
+  GeminiRequestBody,
+  GeminiSuccessResponse,
+} from '../types';
+
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+export async function askGemini(prompt: string, signal?: AbortSignal): Promise<string> {
+  const body: GeminiRequestBody = { prompt };
+  const res = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({ error: 'Error desconocido' }))) as GeminiErrorResponse;
+    throw new ApiError(res.status, data.error || `Error HTTP ${res.status}`);
+  }
+
+  const data = (await res.json()) as GeminiSuccessResponse;
+  return data.text;
+}
+```
+
+---
+
+### 🪝 2.4 Hooks
+
+#### `src/hooks/useLocalStorage.ts`
+```ts
+import { useCallback, useEffect, useState } from 'react';
+
+export function useLocalStorage<T>(key: string, initialValue: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* ignora errores de cuota */
+    }
+  }, [key, value]);
+
+  const reset = useCallback(() => setValue(initialValue), [initialValue]);
+  return [value, setValue, reset] as const;
+}
+```
+
+#### `src/hooks/useTheme.ts`
+```ts
+import { useCallback, useEffect } from 'react';
+import type { Theme } from '../types';
+import { STORAGE_KEYS } from '../lib/constants';
+import { useLocalStorage } from './useLocalStorage';
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  root.classList.toggle('dark', theme === 'dark');
+}
+
+export function useTheme() {
+  const [theme, setTheme] = useLocalStorage<Theme>(STORAGE_KEYS.THEME, 'light');
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  const toggle = useCallback(
+    () => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark')),
+    [setTheme],
+  );
+
+  return { theme, setTheme, toggle };
+}
+```
+
+#### `src/hooks/useGemini.ts`
+```ts
+import { useCallback, useState } from 'react';
+import { askGemini } from '../lib/api';
+
+interface GeminiState {
+  loading: boolean;
+  error: string | null;
+  response: string | null;
+}
+
+const initialState: GeminiState = { loading: false, error: null, response: null };
+
+export function useGemini() {
+  const [state, setState] = useState<GeminiState>(initialState);
+
+  const send = useCallback(async (prompt: string) => {
+    if (!prompt.trim()) return;
+    setState({ loading: true, error: null, response: null });
+    try {
+      const text = await askGemini(prompt.trim());
+      setState({ loading: false, error: null, response: text });
+      return text;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error desconocido';
+      setState({ loading: false, error: message, response: null });
+    }
+  }, []);
+
+  const reset = useCallback(() => setState(initialState), []);
+
+  return { ...state, send, reset };
+}
+```
+
+---
+
+### 🎨 2.5 Primitivos de UI
+
+#### `src/components/ui/Button.tsx`
+```tsx
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { cn } from '../../lib/cn';
+
+export type ButtonVariant = 'elevated' | 'filled' | 'tonal' | 'outlined' | 'text';
+export type ButtonSize = 'sm' | 'md' | 'lg';
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  leadingIcon?: ReactNode;
+  trailingIcon?: ReactNode;
+  fullWidth?: boolean;
+}
+
+const variantClasses: Record<ButtonVariant, string> = {
+  elevated: 'bg-surface-container-low text-primary shadow-elevation-1 hover:shadow-elevation-2',
+  filled: 'bg-primary text-on-primary hover:bg-primary/90',
+  tonal: 'bg-secondary-container text-on-secondary-container hover:bg-secondary-container/90',
+  outlined: 'border border-outline text-primary hover:bg-primary/5',
+  text: 'text-primary hover:bg-primary/5',
+};
+
+const sizeClasses: Record<ButtonSize, string> = {
+  sm: 'h-9 px-4 text-sm',
+  md: 'h-10 px-6 text-sm',
+  lg: 'h-12 px-8 text-base',
+};
+
+export function Button({
+  variant = 'filled',
+  size = 'md',
+  leadingIcon,
+  trailingIcon,
+  fullWidth,
+  className,
+  children,
+  type = 'button',
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type}
+      className={cn(
+        'inline-flex items-center justify-center gap-2 rounded-full font-medium',
+        'transition-all duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+        'disabled:pointer-events-none disabled:opacity-40',
+        variantClasses[variant],
+        sizeClasses[size],
+        fullWidth && 'w-full',
+        className,
+      )}
+      {...props}
+    >
+      {leadingIcon && <span className="shrink-0" aria-hidden>{leadingIcon}</span>}
+      {children && <span>{children}</span>}
+      {trailingIcon && <span className="shrink-0" aria-hidden>{trailingIcon}</span>}
+    </button>
+  );
+}
+```
+
+#### `src/components/ui/IconButton.tsx`
+```tsx
+import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { cn } from '../../lib/cn';
+
+export type IconButtonVariant = 'standard' | 'filled' | 'tonal' | 'outlined';
+
+export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: IconButtonVariant;
+  'aria-label': string;
+  children: ReactNode;
+}
+
+const variants: Record<IconButtonVariant, string> = {
+  standard: 'text-on-surface-variant hover:bg-on-surface/8',
+  filled: 'bg-primary text-on-primary hover:bg-primary/90',
+  tonal: 'bg-secondary-container text-on-secondary-container hover:bg-secondary-container/90',
+  outlined: 'border border-outline text-on-surface-variant hover:bg-on-surface/8',
+};
+
+export function IconButton({ variant = 'standard', className, children, ...props }: IconButtonProps) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'inline-flex h-10 w-10 items-center justify-center rounded-full',
+        'transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        'disabled:pointer-events-none disabled:opacity-40',
+        variants[variant],
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+#### `src/components/ui/Card.tsx`
+```tsx
+import type { HTMLAttributes } from 'react';
+import { cn } from '../../lib/cn';
+
+export type CardVariant = 'elevated' | 'filled' | 'outlined';
+
+export interface CardProps extends HTMLAttributes<HTMLDivElement> {
+  variant?: CardVariant;
+}
+
+const variants: Record<CardVariant, string> = {
+  elevated: 'bg-surface-container-low shadow-elevation-1',
+  filled: 'bg-surface-container-highest',
+  outlined: 'bg-surface border border-outline-variant',
+};
+
+export function Card({ variant = 'elevated', className, children, ...props }: CardProps) {
+  return (
+    <div className={cn('rounded-xl p-6', variants[variant], className)} {...props}>
+      {children}
+    </div>
+  );
+}
+```
+
+#### `src/components/ui/TextField.tsx`
+```tsx
+import { useId } from 'react';
+import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { cn } from '../../lib/cn';
+
+interface BaseProps {
+  label: string;
+  supportingText?: string;
+  error?: string;
+}
+
+type InputProps = BaseProps & InputHTMLAttributes<HTMLInputElement> & { multiline?: false };
+type TextareaProps = BaseProps & TextareaHTMLAttributes<HTMLTextAreaElement> & { multiline: true };
+export type TextFieldProps = InputProps | TextareaProps;
+
+export function TextField(props: TextFieldProps) {
+  const { label, supportingText, error, className, multiline, id, ...rest } = props;
+  const generatedId = useId();
+  const fieldId = id ?? generatedId;
+  const describedBy = supportingText || error ? `${fieldId}-desc` : undefined;
+
+  const fieldClasses = cn(
+    'w-full rounded-lg border bg-transparent px-4 py-3 text-on-surface',
+    'placeholder:text-on-surface-variant/60',
+    'transition-colors focus:outline-none',
+    error
+      ? 'border-error focus:border-error focus:ring-1 focus:ring-error'
+      : 'border-outline focus:border-primary focus:ring-1 focus:ring-primary',
+    className,
+  );
+
+  return (
+    <div className="space-y-1">
+      <label htmlFor={fieldId} className="block text-sm font-medium text-on-surface-variant">
+        {label}
+      </label>
+      {multiline ? (
+        <textarea
+          id={fieldId}
+          aria-describedby={describedBy}
+          aria-invalid={Boolean(error)}
+          className={fieldClasses}
+          {...(rest as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+        />
+      ) : (
+        <input
+          id={fieldId}
+          aria-describedby={describedBy}
+          aria-invalid={Boolean(error)}
+          className={fieldClasses}
+          {...(rest as InputHTMLAttributes<HTMLInputElement>)}
+        />
+      )}
+      {(supportingText || error) && (
+        <p
+          id={`${fieldId}-desc`}
+          className={cn('text-xs', error ? 'text-error' : 'text-on-surface-variant')}
+        >
+          {error ?? supportingText}
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+#### `src/components/ui/TopAppBar.tsx`
+```tsx
+import type { ReactNode } from 'react';
+import { cn } from '../../lib/cn';
+
+export interface TopAppBarProps {
+  title: string;
+  leading?: ReactNode;
+  actions?: ReactNode;
+  variant?: 'small' | 'medium';
+}
+
+export function TopAppBar({ title, leading, actions, variant = 'small' }: TopAppBarProps) {
+  return (
+    <header
+      className={cn(
+        'sticky top-0 z-10 border-b border-outline-variant',
+        'bg-surface-container/80 backdrop-blur-md',
+      )}
+    >
+      <div
+        className={cn(
+          'mx-auto flex max-w-3xl items-center gap-3 px-4',
+          variant === 'small' ? 'h-16' : 'h-28 flex-col items-start justify-end pb-4',
+        )}
+      >
+        {leading}
+        <h1 className="flex-1 truncate text-xl font-medium text-on-surface">{title}</h1>
+        {actions && <div className="flex items-center gap-1">{actions}</div>}
+      </div>
+    </header>
+  );
+}
+```
+
+#### `src/components/ui/Spinner.tsx`
+```tsx
+import { cn } from '../../lib/cn';
+
+export interface SpinnerProps {
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+const sizes = {
+  sm: 'h-4 w-4 border-2',
+  md: 'h-6 w-6 border-2',
+  lg: 'h-10 w-10 border-[3px]',
+} as const;
+
+export function Spinner({ size = 'md', className }: SpinnerProps) {
+  return (
+    <span
+      role="status"
+      aria-label="Cargando"
+      className={cn(
+        'inline-block animate-spin rounded-full border-primary border-t-transparent',
+        sizes[size],
+        className,
+      )}
+    />
+  );
+}
+```
+
+---
+
+### 🧩 2.6 Feature components
+
+#### `src/components/features/ChatComposer.tsx`
+```tsx
+import { useState } from 'react';
+import { Send } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { TextField } from '../ui/TextField';
+
+export interface ChatComposerProps {
+  disabled?: boolean;
+  onSubmit: (prompt: string) => void | Promise<void>;
+}
+
+export function ChatComposer({ disabled, onSubmit }: ChatComposerProps) {
+  const [value, setValue] = useState('');
+
+  const handleSubmit = async () => {
+    const trimmed = value.trim();
+    if (!trimmed || disabled) return;
+    await onSubmit(trimmed);
+    setValue('');
+  };
+
+  return (
+    <div className="space-y-3">
+      <TextField
+        label="Consulta"
+        multiline
+        rows={3}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Escribe tu pregunta..."
+        disabled={disabled}
+      />
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSubmit}
+          disabled={disabled || !value.trim()}
+          leadingIcon={<Send size={18} />}
+        >
+          Enviar
+        </Button>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### 🖥️ 2.7 Backend (Express + Gemini)
+
+#### `server/config/env.ts`
+```ts
+import 'dotenv/config';
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Variable de entorno requerida no definida: ${name}`);
+  return value;
+}
+
+export const env = {
+  GEMINI_API_KEY: requireEnv('GEMINI_API_KEY'),
+  PORT: Number(process.env.PORT ?? 3001),
+  NODE_ENV: process.env.NODE_ENV ?? 'development',
+  GEMINI_MODEL: process.env.GEMINI_MODEL ?? 'gemini-2.0-flash',
+} as const;
+```
+
+#### `server/services/gemini.ts`
+```ts
+import { GoogleGenAI } from '@google/genai';
+import { env } from '../config/env';
+
+const client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+
+export async function generateText(prompt: string): Promise<string> {
+  const response = await client.models.generateContent({
+    model: env.GEMINI_MODEL,
+    contents: prompt,
+  });
+  return response.text ?? '';
+}
+```
+
+#### `server/middleware/errorHandler.ts`
+```ts
+import type { ErrorRequestHandler } from 'express';
+
+export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+  console.error('[server:error]', err);
+  const message = err instanceof Error ? err.message : 'Error interno';
+  res.status(500).json({ error: message });
+};
+```
+
+#### `server/routes/gemini.ts`
+```ts
+import { Router } from 'express';
+import { generateText } from '../services/gemini';
+
+export const geminiRouter = Router();
+
+geminiRouter.post('/', async (req, res, next) => {
+  try {
+    const { prompt } = req.body as { prompt?: unknown };
+    if (typeof prompt !== 'string' || !prompt.trim()) {
+      res.status(400).json({ error: 'El campo "prompt" es requerido y no puede estar vacío.' });
+      return;
+    }
+    const text = await generateText(prompt.trim());
+    res.json({ text });
+  } catch (err) {
+    next(err);
+  }
+});
+```
+
+#### `server.ts`
+```ts
+import express from 'express';
+import { env } from './server/config/env';
+import { geminiRouter } from './server/routes/gemini';
+import { errorHandler } from './server/middleware/errorHandler';
+
+const app = express();
+
+app.use(express.json({ limit: '1mb' }));
+
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+app.use('/api/gemini', geminiRouter);
+app.use(errorHandler);
+
+app.listen(env.PORT, () => {
+  console.log(`[server] API escuchando en http://localhost:${env.PORT}`);
+});
+```
+
+---
+
+### 🎯 2.8 App shell
+
+#### `src/main.tsx`
+```tsx
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+const container = document.getElementById('root');
+if (!container) throw new Error('No se encontró #root en index.html');
+
+createRoot(container).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+```
+
+#### `src/App.tsx`
+```tsx
+import { Moon, Sun } from 'lucide-react';
+import { TopAppBar } from './components/ui/TopAppBar';
+import { Card } from './components/ui/Card';
+import { IconButton } from './components/ui/IconButton';
+import { Spinner } from './components/ui/Spinner';
+import { ChatComposer } from './components/features/ChatComposer';
+import { useTheme } from './hooks/useTheme';
+import { useGemini } from './hooks/useGemini';
+import { APP_NAME } from './lib/constants';
+
+export default function App() {
+  const { theme, toggle } = useTheme();
+  const { loading, error, response, send } = useGemini();
+
+  return (
+    <div className="min-h-screen bg-background text-on-background">
+      <TopAppBar
+        title={APP_NAME}
+        actions={
+          <IconButton
+            aria-label={theme === 'dark' ? 'Activar tema claro' : 'Activar tema oscuro'}
+            onClick={toggle}
+          >
+            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+          </IconButton>
+        }
+      />
+
+      <main className="mx-auto max-w-3xl space-y-6 p-4">
+        <Card>
+          <h2 className="mb-4 text-lg font-medium">Consulta a Gemini</h2>
+          <ChatComposer disabled={loading} onSubmit={send} />
+        </Card>
+
+        {loading && (
+          <Card className="flex items-center gap-3">
+            <Spinner />
+            <span className="text-on-surface-variant">Generando respuesta…</span>
+          </Card>
+        )}
+
+        {error && (
+          <Card className="border border-error/40">
+            <p className="text-error">{error}</p>
+          </Card>
+        )}
+
+        {response && (
+          <Card>
+            <h3 className="mb-2 text-base font-medium">Respuesta</h3>
+            <p className="whitespace-pre-wrap text-on-surface-variant">{response}</p>
+          </Card>
+        )}
+      </main>
+    </div>
+  );
+}
+```
+
+#### `src/index.css`
+```css
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #6750A4;
+  --color-on-primary: #FFFFFF;
+  --color-primary-container: #EADDFF;
+  --color-on-primary-container: #21005D;
+  --color-secondary: #625B71;
+  --color-on-secondary: #FFFFFF;
+  --color-secondary-container: #E8DEF8;
+  --color-on-secondary-container: #1D192B;
+  --color-tertiary: #7D5260;
+  --color-on-tertiary: #FFFFFF;
+  --color-tertiary-container: #FFD8E4;
+  --color-on-tertiary-container: #31111D;
+  --color-error: #B3261E;
+  --color-on-error: #FFFFFF;
+  --color-error-container: #F9DEDC;
+  --color-on-error-container: #410E0B;
+  --color-background: #FFFBFE;
+  --color-on-background: #1C1B1F;
+  --color-surface: #FFFBFE;
+  --color-on-surface: #1C1B1F;
+  --color-surface-variant: #E7E0EC;
+  --color-on-surface-variant: #49454F;
+  --color-outline: #79747E;
+  --color-outline-variant: #CAC4D0;
+  --color-shadow: #000000;
+  --color-scrim: #000000;
+  --color-inverse-surface: #313033;
+  --color-inverse-on-surface: #F4EFF4;
+  --color-inverse-primary: #D0BCFF;
+  --color-surface-dim: #DED8E1;
+  --color-surface-bright: #FFFBFE;
+  --color-surface-container-lowest: #FFFFFF;
+  --color-surface-container-low: #F7F2FA;
+  --color-surface-container: #F3EDF7;
+  --color-surface-container-high: #ECE6F0;
+  --color-surface-container-highest: #E6E0E9;
+
+  --font-sans: 'Roboto', system-ui, sans-serif;
+  --font-mono: 'Roboto Mono', monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+
+  --shadow-elevation-1: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15);
+  --shadow-elevation-2: 0 1px 2px rgba(0,0,0,0.3), 0 2px 6px 2px rgba(0,0,0,0.15);
+  --shadow-elevation-3: 0 4px 8px 3px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.3);
+}
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  html {
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-on-background);
+  }
+
+  body { margin: 0; min-height: 100vh; }
+
+  .dark {
+    --color-primary: #D0BCFF;
+    --color-on-primary: #381E72;
+    --color-primary-container: #4F378B;
+    --color-on-primary-container: #EADDFF;
+    --color-secondary: #CCC2DC;
+    --color-on-secondary: #332D41;
+    --color-secondary-container: #4A4458;
+    --color-on-secondary-container: #E8DEF8;
+    --color-tertiary: #EFB8C8;
+    --color-on-tertiary: #492532;
+    --color-tertiary-container: #633B48;
+    --color-on-tertiary-container: #FFD8E4;
+    --color-error: #F2B8B5;
+    --color-on-error: #601410;
+    --color-error-container: #8C1D18;
+    --color-on-error-container: #F9DEDC;
+    --color-background: #1C1B1F;
+    --color-on-background: #E6E1E5;
+    --color-surface: #1C1B1F;
+    --color-on-surface: #E6E1E5;
+    --color-surface-variant: #49454F;
+    --color-on-surface-variant: #CAC4D0;
+    --color-outline: #938F99;
+    --color-outline-variant: #49454F;
+    --color-surface-container-lowest: #0F0D13;
+    --color-surface-container-low: #1D1B20;
+    --color-surface-container: #211F26;
+    --color-surface-container-high: #2B2930;
+    --color-surface-container-highest: #36343B;
+  }
+}
+```
+
+---
+
+## 3. Correcciones de nomenclatura aplicadas
+
+| Antes | Después | Motivo |
+|-------|---------|--------|
+| `main.tsx` con `ReactDOM` default | `createRoot` + `StrictMode` importado | API moderna React 19 |
+| Componentes en `src/components/*` sueltos | `src/components/ui/*` y `src/components/features/*` | Separación primitivos vs dominio |
+| `variant="icon"` dentro de `Button` | Componente dedicado `IconButton` | Cohesión y accesibilidad (aria-label obligatorio) |
+| `Send` como `icon` prop | `leadingIcon` / `trailingIcon` | Nomenclatura M3 |
+| `multiline` sin discriminación de tipos | Unión discriminada `InputProps | TextareaProps` | Tipado estricto |
+| `label.toLowerCase().replace(...)` | `useId()` + `id` opcional | A11y y unicidad SSR |
+| `server.ts` monolítico | `server/config`, `server/services`, `server/routes`, `server/middleware` | Separación de responsabilidades |
+| Acceso directo a `process.env` | `env` centralizado y validado | Fallo temprano ante variables faltantes |
+| `cn` ausente | `src/lib/cn.ts` | Composición segura de clases |
+| URL `/api/gemini` embebida en componente | `src/lib/api.ts` | Testeabilidad y reutilización |
+| Manejo de error disperso | `ApiError` + `errorHandler` | Errores tipados y consistentes |
+| `theme-color` hardcodeado en JSX | `useTheme` con persistencia | Estado derivado y persistido |
+
+---
+
+## 4. Verificación final
+
+✅ Todos los archivos listados existen y son ejecutables.  
+✅ TypeScript estricto sin `any` (salvo narrowing controlado).  
+✅ A11y: `aria-label`, `aria-describedby`, `aria-invalid`, `role="status"`.  
+✅ Hooks separados por responsabilidad (`useTheme`, `useGemini`, `useLocalStorage`).  
+✅ Backend dividido en `config / services / routes / middleware`.  
+✅ Tokens M3 (light + dark) declarados en `@theme`.  
+✅ Sin dependencias adicionales: `cn` es autocontenido.  
+✅ Proxy `/api` en Vite apunta al servidor Express en `:3001`.  
+
+**Arranque:** `npm install` → `npx tsx server.ts` (terminal 1) → `npm run dev` (terminal 2).

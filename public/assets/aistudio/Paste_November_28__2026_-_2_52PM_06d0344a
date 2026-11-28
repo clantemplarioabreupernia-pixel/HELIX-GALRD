@@ -1,0 +1,1800 @@
+# 🧩 DESARTICULACIÓN MODULAR — OMEGA NEWS STUDIO
+
+**Descomposición en 45 herramientas/piezas atómicas, organizadas por uso y fin, con código fuente profesional.**
+
+**Convención de nomenclatura aplicada:**
+- Módulos en `kebab-case`
+- Componentes React en `PascalCase`
+- Hooks con prefijo `use*`
+- Tipos en `PascalCase`, constantes en `SCREAMING_SNAKE_CASE`
+- Carpetas por capa: `tools/`, `domain/`, `services/`, `api/`, `ui/`, `pages/`, `hooks/`, `lib/`
+
+---
+
+## 🗺️ MAPA DE PIEZAS
+
+| Bloque | Capa | Herramientas |
+|:------:|------|:------------:|
+| I | Fundación | 4 |
+| II | Contratos y dominio | 3 |
+| III | Validación y seguridad | 3 |
+| IV | Motor de IA | 4 |
+| V | Servicios de negocio | 2 |
+| VI | Capa API (Express) | 5 |
+| VII | Cliente data (frontend) | 3 |
+| VIII | Design System (UI) | 9 |
+| IX | Componentes de dominio | 4 |
+| X | Layout y shell | 5 |
+| XI | Páginas | 2 |
+| XII | Bootstrap y config | 4 |
+| **Total** | | **48** |
+
+---
+
+# 🏗️ BLOQUE I — FUNDACIÓN
+
+## I.1 — `tools/logger.ts`
+
+**Uso:** Logging estructurado con scopes.
+**Fin:** Trazabilidad interna sin filtrar datos al cliente.
+
+```typescript
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+interface LogContext {
+  scope: string;
+}
+
+const LEVEL_WEIGHT: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+const ACTIVE_LEVEL: LogLevel =
+  (process.env.LOG_LEVEL as LogLevel) ?? "info";
+
+function shouldLog(level: LogLevel): boolean {
+  return LEVEL_WEIGHT[level] >= LEVEL_WEIGHT[ACTIVE_LEVEL];
+}
+
+function emit(level: LogLevel, ctx: LogContext, message: string, meta?: unknown): void {
+  if (!shouldLog(level)) return;
+  const timestamp = new Date().toISOString();
+  const prefix = `[${timestamp}] [${level.toUpperCase()}] [${ctx.scope}]`;
+  if (meta !== undefined) {
+    console[level](prefix, message, meta);
+  } else {
+    console[level](prefix, message);
+  }
+}
+
+export interface Logger {
+  debug: (message: string, meta?: unknown) => void;
+  info: (message: string, meta?: unknown) => void;
+  warn: (message: string, meta?: unknown) => void;
+  error: (message: string, meta?: unknown) => void;
+  child: (scope: string) => Logger;
+}
+
+export function createLogger(scope: string): Logger {
+  const ctx: LogContext = { scope };
+  return {
+    debug: (m, meta) => emit("debug", ctx, m, meta),
+    info: (m, meta) => emit("info", ctx, m, meta),
+    warn: (m, meta) => emit("warn", ctx, m, meta),
+    error: (m, meta) => emit("error", ctx, m, meta),
+    child: (childScope) => createLogger(`${scope}:${childScope}`),
+  };
+}
+
+export const logger = createLogger("omega-news");
+```
+
+---
+
+## I.2 — `tools/env.ts`
+
+**Uso:** Carga y validación tipada de variables de entorno.
+**Fin:** Fallar rápido al arranque si falta configuración crítica.
+
+```typescript
+import "dotenv/config";
+import { z } from "zod";
+
+const EnvSchema = z.object({
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
+  PORT: z.coerce.number().int().positive().default(3000),
+  LOG_LEVEL: z
+    .enum(["debug", "info", "warn", "error"])
+    .default("info"),
+  GEMINI_API_KEY: z
+    .string()
+    .min(1, "GEMINI_API_KEY es obligatoria"),
+  GEMINI_MODEL: z.string().default("gemini-2.5-pro"),
+  GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+});
+
+export type Env = z.infer<typeof EnvSchema>;
+
+function loadEnv(): Env {
+  const parsed = EnvSchema.safeParse(process.env);
+  if (!parsed.success) {
+    console.error("[env] Configuración inválida:");
+    for (const issue of parsed.error.issues) {
+      console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+    }
+    process.exit(1);
+  }
+  return parsed.data;
+}
+
+export const env: Env = loadEnv();
+```
+
+---
+
+## I.3 — `tools/errors.ts`
+
+**Uso:** Jerarquía de errores de dominio.
+**Fin:** Mapear errores internos a códigos HTTP sin filtrar detalles.
+
+```typescript
+export type AppErrorCode =
+  | "VALIDATION_ERROR"
+  | "UPSTREAM_ERROR"
+  | "TIMEOUT_ERROR"
+  | "RATE_LIMITED"
+  | "NOT_FOUND"
+  | "INTERNAL_ERROR";
+
+export interface AppErrorPayload {
+  code: AppErrorCode;
+  publicMessage: string;
+  statusCode: number;
+}
+
+export class AppError extends Error {
+  readonly code: AppErrorCode;
+  readonly publicMessage: string;
+  readonly statusCode: number;
+  readonly internalCause?: unknown;
+
+  constructor(payload: AppErrorPayload, internalCause?: unknown) {
+    super(payload.publicMessage);
+    this.name = "AppError";
+    this.code = payload.code;
+    this.publicMessage = payload.publicMessage;
+    this.statusCode = payload.statusCode;
+    this.internalCause = internalCause;
+  }
+
+  toPublicJSON(): { error: string; code: AppErrorCode } {
+    return { error: this.publicMessage, code: this.code };
+  }
+
+  static validation(message = "Input inválido."): AppError {
+    return new AppError(
+      { code: "VALIDATION_ERROR", publicMessage: message, statusCode: 400 }
+    );
+  }
+
+  static timeout(message = "Tiempo de espera agotado."): AppError {
+    return new AppError(
+      { code: "TIMEOUT_ERROR", publicMessage: message, statusCode: 504 }
+    );
+  }
+
+  static upstream(message = "Fallo del proveedor de IA."): AppError {
+    return new AppError(
+      { code: "UPSTREAM_ERROR", publicMessage: message, statusCode: 502 }
+    );
+  }
+
+  static internal(message = "Error interno del servidor."): AppError {
+    return new AppError(
+      { code: "INTERNAL_ERROR", publicMessage: message, statusCode: 500 }
+    );
+  }
+}
+
+export function isAppError(err: unknown): err is AppError {
+  return err instanceof AppError;
+}
+```
+
+---
+
+## I.4 — `lib/http-client.ts`
+
+**Uso:** Wrapper tipado sobre `fetch`.
+**Fin:** Centralizar manejo de respuestas, errores y JSON parse.
+
+```typescript
+import type { ApiError } from "@/domain/api-contracts";
+
+export class HttpError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly details?: Array<{ path: string; message: string }>;
+
+  constructor(status: number, payload: ApiError) {
+    super(payload.error ?? `HTTP ${status}`);
+    this.name = "HttpError";
+    this.status = status;
+    this.code = payload.code;
+    this.details = payload.details;
+  }
+}
+
+interface RequestOptions {
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+}
+
+export async function postJSON<TResponse, TBody>(
+  url: string,
+  body: TBody,
+  options: RequestOptions = {}
+): Promise<TResponse> {
+  const { signal, headers = {}, timeoutMs = 30_000 } = options;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  if (signal) {
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const json = (await res.json()) as unknown;
+
+    if (!res.ok) {
+      throw new HttpError(res.status, json as ApiError);
+    }
+    return json as TResponse;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function getJSON<TResponse>(
+  url: string,
+  options: RequestOptions = {}
+): Promise<TResponse> {
+  const res = await fetch(url, {
+    method: "GET",
+    headers: options.headers,
+    signal: options.signal,
+  });
+  const json = (await res.json()) as unknown;
+  if (!res.ok) throw new HttpError(res.status, json as ApiError);
+  return json as TResponse;
+}
+```
+
+---
+
+# 📐 BLOQUE II — CONTRATOS Y DOMINIO
+
+## II.1 — `domain/news-types.ts`
+
+**Uso:** Tipos de dominio compartidos backend + frontend.
+**Fin:** Única fuente de verdad del contrato `NewsOutput`.
+
+```typescript
+export interface NewsOutput {
+  readonly titular: string;
+  readonly lead: string;
+  readonly cuerpo: string;
+  readonly conclusion: string;
+  readonly teleprompter: string;
+  readonly newsletter: string;
+  readonly videoScript: string;
+}
+
+export const NEWS_OUTPUT_KEYS = [
+  "titular",
+  "lead",
+  "cuerpo",
+  "conclusion",
+  "teleprompter",
+  "newsletter",
+  "videoScript",
+] as const satisfies ReadonlyArray<keyof NewsOutput>;
+
+export type NewsTone = "neutral" | "urgent" | "analytical" | "feature";
+
+export interface NewsRequest {
+  readonly rawNews: string;
+  readonly tone?: NewsTone;
+  readonly language?: string;
+}
+```
+
+---
+
+## II.2 — `domain/constants.ts`
+
+**Uso:** Constantes compartidas.
+**Fin:** Evitar números y strings mágicos.
+
+```typescript
+export const APP_NAME = "Omega News Studio" as const;
+export const APP_VERSION = "1.0.0" as const;
+export const APP_LICENSE = "Apache-2.0" as const;
+export const APP_AUTHOR = "Javier Alberto Abreu Molina" as const;
+
+export const NEWS_LIMITS = {
+  MIN_CHARS: 20,
+  MAX_CHARS: 20_000,
+} as const;
+
+export const GEMINI_DEFAULTS = {
+  MODEL: "gemini-2.5-pro",
+  TIMEOUT_MS: 20_000,
+  TEMPERATURE: 0.7,
+} as const;
+
+export const RATE_LIMITS = {
+  GLOBAL: { windowMs: 60_000, max: 60 },
+  AI: { windowMs: 60_000, max: 10 },
+} as const;
+
+export const NEWS_TONES: ReadonlyArray<{ value: NewsTone; label: string }> =
+  [
+    { value: "neutral", label: "Neutral" },
+    { value: "urgent", label: "Urgente" },
+    { value: "analytical", label: "Analítico" },
+    { value: "feature", label: "Reportaje" },
+  ];
+
+import type { NewsTone } from "./news-types";
+```
+
+---
+
+## II.3 — `domain/api-contracts.ts`
+
+**Uso:** Contratos HTTP request/response.
+**Fin:** Tipar el borde de la API de forma simétrica.
+
+```typescript
+import type { NewsOutput, NewsRequest } from "./news-types";
+
+export type { NewsRequest };
+
+export interface ProcessNewsSuccess {
+  readonly ok: true;
+  readonly data: NewsOutput;
+}
+
+export interface ApiError {
+  readonly error: string;
+  readonly code?: string;
+  readonly details?: ReadonlyArray<{ path: string; message: string }>;
+}
+
+export interface HealthResponse {
+  readonly status: "ok";
+  readonly service: string;
+  readonly version: string;
+  readonly uptimeSeconds: number;
+}
+```
+
+---
+
+# 🛡️ BLOQUE III — VALIDACIÓN Y SEGURIDAD
+
+## III.1 — `tools/validation-schemas.ts`
+
+**Uso:** Schemas Zod reutilizables.
+**Fin:** Una sola definición de "qué es input válido".
+
+```typescript
+import { z } from "zod";
+import { NEWS_LIMITS } from "@/domain/constants";
+
+export const NewsRequestSchema = z.object({
+  rawNews: z
+    .string()
+    .trim()
+    .min(
+      NEWS_LIMITS.MIN_CHARS,
+      `El cable debe tener al menos ${NEWS_LIMITS.MIN_CHARS} caracteres.`
+    )
+    .max(
+      NEWS_LIMITS.MAX_CHARS,
+      `El cable no puede exceder ${NEWS_LIMITS.MAX_CHARS} caracteres.`
+    ),
+  tone: z
+    .enum(["neutral", "urgent", "analytical", "feature"])
+    .optional()
+    .default("neutral"),
+  language: z
+    .string()
+    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Código de idioma inválido.")
+    .optional()
+    .default("es"),
+});
+
+export type ValidatedNewsRequest = z.infer<typeof NewsRequestSchema>;
+```
+
+---
+
+## III.2 — `tools/rate-limiter-factory.ts`
+
+**Uso:** Fábrica de limitadores de tasa.
+**Fin:** Reutilizar configuración sin duplicar opciones.
+
+```typescript
+import rateLimit, { type RateLimitRequestHandler } from "express-rate-limit";
+import { RATE_LIMITS } from "@/domain/constants";
+
+interface LimiterOptions {
+  windowMs: number;
+  max: number;
+  message: string;
+}
+
+export function createRateLimiter(opts: LimiterOptions): RateLimitRequestHandler {
+  return rateLimit({
+    windowMs: opts.windowMs,
+    max: opts.max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: opts.message },
+    skip: (req) => req.path === "/api/health",
+  });
+}
+
+export const globalRateLimiter = createRateLimiter({
+  ...RATE_LIMITS.GLOBAL,
+  message: "Demasiadas peticiones. Intenta más tarde.",
+});
+
+export const aiRateLimiter = createRateLimiter({
+  ...RATE_LIMITS.AI,
+  message: "Límite de generación alcanzado. Espera un minuto.",
+});
+```
+
+---
+
+## III.3 — `api/middleware/validate.ts`
+
+**Uso:** Middleware de validación Zod.
+**Fin:** Inyectar body validado en `res.locals` sin re-parseos.
+
+```typescript
+import type { Request, Response, NextFunction } from "express";
+import type { ZodSchema } from "zod";
+
+export function validateBody<T>(schema: ZodSchema<T>) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Input inválido.",
+        code: "VALIDATION_ERROR",
+        details: parsed.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      });
+      return;
+    }
+    res.locals.validatedBody = parsed.data;
+    next();
+  };
+}
+```
+
+---
+
+# 🤖 BLOQUE IV — MOTOR DE IA
+
+## IV.1 — `tools/gemini-response-schema.ts`
+
+**Uso:** `ResponseSchema` de Gemini.
+**Fin:** Forzar salida JSON estructurada con 7 claves.
+
+```typescript
+import { Type } from "@google/genai";
+import { NEWS_OUTPUT_KEYS } from "@/domain/news-types";
+
+const properties = {
+  titular: { type: Type.STRING },
+  lead: { type: Type.STRING },
+  cuerpo: { type: Type.STRING },
+  conclusion: { type: Type.STRING },
+  teleprompter: { type: Type.STRING },
+  newsletter: { type: Type.STRING },
+  videoScript: { type: Type.STRING },
+} as const;
+
+export const GEMINI_NEWS_SCHEMA = {
+  type: Type.OBJECT,
+  properties,
+  required: [...NEWS_OUTPUT_KEYS],
+  propertyOrdering: [...NEWS_OUTPUT_KEYS],
+} as const;
+```
+
+---
+
+## IV.2 — `tools/prompt-builder.ts`
+
+**Uso:** Construcción del prompt maestro.
+**Fin:** Aislar la lógica de formateo y reglas editoriales.
+
+```typescript
+import type { ValidatedNewsRequest } from "./validation-schemas";
+
+const TONE_INSTRUCTIONS: Record<ValidatedNewsRequest["tone"], string> = {
+  neutral: "Mantén un tono informativo sobrio y equilibrado.",
+  urgent: "Prioriza lo urgente sin caer en sensacionalismo.",
+  analytical: "Aporta contexto y análisis sin opinión personal.",
+  feature: "Narra en formato reportaje con apertura escénica.",
+};
+
+export function buildNewsPrompt(input: ValidatedNewsRequest): string {
+  return `Eres un editor periodístico profesional. A partir del siguiente cable, genera SIETE piezas coherentes.
+
+IDIOMA: ${input.language}
+TONO: ${input.tone}
+DIRECTRIZ DE TONO: ${TONE_INSTRUCTIONS[input.tone]}
+
+CABLE ORIGINAL:
+"""
+${input.rawNews}
+"""
+
+REGLAS ESTRICTAS:
+1. No inventes datos ausentes del cable.
+2. No incluyas opiniones personales.
+3. Teleprompter: frases cortas, leíbles en voz alta.
+4. Newsletter: máx. 150 palabras.
+5. VideoScript: usa marcas [ESCENA 1], [ESCENA 2]...
+6. Devuelve EXCLUSIVAMENTE JSON válido con las 7 claves indicadas.`;
+}
+```
+
+---
+
+## IV.3 — `tools/gemini-client.ts`
+
+**Uso:** Wrapper del SDK Gemini con timeout.
+**Fin:** Aislar `AbortController` y errores del proveedor.
+
+```typescript
+import { GoogleGenAI } from "@google/genai";
+import { env } from "./env";
+import { AppError } from "./errors";
+import { GEMINI_NEWS_SCHEMA } from "./gemini-response-schema";
+import { GEMINI_DEFAULTS } from "@/domain/constants";
+
+const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+
+interface GenerateArgs {
+  prompt: string;
+  timeoutMs?: number;
+}
+
+export async function generateStructuredJSON(args: GenerateArgs): Promise<string> {
+  const timeoutMs = args.timeoutMs ?? GEMINI_DEFAULTS.TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await ai.models.generateContent({
+      model: env.GEMINI_MODEL,
+      contents: args.prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: GEMINI_NEWS_SCHEMA,
+        temperature: GEMINI_DEFAULTS.TEMPERATURE,
+        abortSignal: controller.signal,
+      },
+    });
+
+    const text = response.text;
+    if (!text) throw AppError.upstream("Respuesta vacía del modelo.");
+    return text;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw AppError.timeout();
+    throw AppError.upstream("Fallo al contactar Gemini.");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+```
+
+---
+
+## IV.4 — `tools/content-parser.ts`
+
+**Uso:** Parseo + validación de la respuesta del modelo.
+**Fin:** Garantizar `NewsOutput` íntegro o fallar ruidosamente.
+
+```typescript
+import { z } from "zod";
+import type { NewsOutput } from "@/domain/news-types";
+import { AppError } from "./errors";
+
+const NewsOutputSchema = z.object({
+  titular: z.string().min(1),
+  lead: z.string().min(1),
+  cuerpo: z.string().min(1),
+  conclusion: z.string().min(1),
+  teleprompter: z.string().min(1),
+  newsletter: z.string().min(1),
+  videoScript: z.string().min(1),
+});
+
+export function parseNewsOutput(raw: string): NewsOutput {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw AppError.upstream("El modelo devolvió JSON inválido.");
+  }
+
+  const parsed = NewsOutputSchema.safeParse(json);
+  if (!parsed.success) {
+    throw AppError.upstream("El modelo devolvió una estructura inválida.");
+  }
+  return parsed.data;
+}
+```
+
+---
+
+# ⚙️ BLOQUE V — SERVICIOS DE NEGOCIO
+
+## V.1 — `services/tone-resolver.ts`
+
+**Uso:** Resolver etiqueta legible del tono.
+**Fin:** Desacoplar UI del enum interno.
+
+```typescript
+import { NEWS_TONES } from "@/domain/constants";
+import type { NewsTone } from "@/domain/news-types";
+
+export function resolveToneLabel(tone: NewsTone): string {
+  return NEWS_TONES.find((t) => t.value === tone)?.label ?? tone;
+}
+
+export function isNewsTone(value: string): value is NewsTone {
+  return NEWS_TONES.some((t) => t.value === value);
+}
+```
+
+---
+
+## V.2 — `services/news-processor.ts`
+
+**Uso:** Orquestador del flujo completo.
+**Fin:** Un único punto de entrada para "cable → 7 piezas".
+
+```typescript
+import type { NewsOutput } from "@/domain/news-types";
+import type { ValidatedNewsRequest } from "@/tools/validation-schemas";
+import { buildNewsPrompt } from "@/tools/prompt-builder";
+import { generateStructuredJSON } from "@/tools/gemini-client";
+import { parseNewsOutput } from "@/tools/content-parser";
+import { createLogger } from "@/tools/logger";
+
+const log = createLogger("news-processor");
+
+export interface ProcessNewsResult {
+  readonly output: NewsOutput;
+  readonly elapsedMs: number;
+}
+
+export async function processNews(input: ValidatedNewsRequest): Promise<ProcessNewsResult> {
+  const startedAt = Date.now();
+  log.info("procesando cable", {
+    chars: input.rawNews.length,
+    tone: input.tone,
+    language: input.language,
+  });
+
+  const prompt = buildNewsPrompt(input);
+  const raw = await generateStructuredJSON({ prompt });
+  const output = parseNewsOutput(raw);
+
+  const elapsedMs = Date.now() - startedAt;
+  log.info("cable procesado", { elapsedMs });
+  return { output, elapsedMs };
+}
+```
+
+---
+
+# 🌐 BLOQUE VI — CAPA API (EXPRESS)
+
+## VI.1 — `api/middleware/error-handler.ts`
+
+**Uso:** Manejador central de errores.
+**Fin:** Nunca filtrar stack traces ni `error.message` al cliente.
+
+```typescript
+import type { Request, Response, NextFunction } from "express";
+import { isAppError, AppError } from "@/tools/errors";
+import { createLogger } from "@/tools/logger";
+
+const log = createLogger("error-handler");
+
+export function errorHandler(
+  err: Error,
+  _req: Request,
+  res: Response,
+  _next: NextFunction
+): void {
+  if (isAppError(err)) {
+    log.warn(err.code, { cause: err.internalCause });
+    res.status(err.statusCode).json(err.toPublicJSON());
+    return;
+  }
+  log.error("unhandled", { message: err.message, stack: err.stack });
+  const fallback = AppError.internal();
+  res.status(fallback.statusCode).json(fallback.toPublicJSON());
+}
+```
+
+---
+
+## VI.2 — `api/routes/health.ts`
+
+**Uso:** Endpoint `/api/health`.
+**Fin:** Verificar disponibilidad y uptime.
+
+```typescript
+import { Router } from "express";
+import { APP_NAME, APP_VERSION } from "@/domain/constants";
+import type { HealthResponse } from "@/domain/api-contracts";
+
+export const healthRouter = Router();
+
+healthRouter.get("/health", (_req, res) => {
+  const payload: HealthResponse = {
+    status: "ok",
+    service: APP_NAME,
+    version: APP_VERSION,
+    uptimeSeconds: Math.floor(process.uptime()),
+  };
+  res.json(payload);
+});
+```
+
+---
+
+## VI.3 — `api/routes/news.ts`
+
+**Uso:** Endpoint `/api/process-news`.
+**Fin:** Exponer el servicio `processNews` con rate limit y validación.
+
+```typescript
+import { Router } from "express";
+import { processNews } from "@/services/news-processor";
+import { NewsRequestSchema } from "@/tools/validation-schemas";
+import { validateBody } from "@/api/middleware/validate";
+import { aiRateLimiter } from "@/tools/rate-limiter-factory";
+import type { ProcessNewsSuccess } from "@/domain/api-contracts";
+import type { ValidatedNewsRequest } from "@/tools/validation-schemas";
+
+export const newsRouter = Router();
+
+newsRouter.post(
+  "/process-news",
+  aiRateLimiter,
+  validateBody(NewsRequestSchema),
+  async (_req, res, next) => {
+    try {
+      const body = res.locals.validatedBody as ValidatedNewsRequest;
+      const { output } = await processNews(body);
+      const payload: ProcessNewsSuccess = { ok: true, data: output };
+      res.json(payload);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+```
+
+---
+
+## VI.4 — `api/router.ts`
+
+**Uso:** Enrutador raíz.
+**Fin:** Componer submódulos bajo `/api`.
+
+```typescript
+import { Router } from "express";
+import { healthRouter } from "./routes/health";
+import { newsRouter } from "./routes/news";
+
+export const apiRouter = Router();
+
+apiRouter.use(healthRouter);
+apiRouter.use(newsRouter);
+
+apiRouter.use((_req, res) => {
+  res.status(404).json({
+    error: "Endpoint no encontrado.",
+    code: "NOT_FOUND",
+  });
+});
+```
+
+---
+
+## VI.5 — `server.ts` (bootstrap)
+
+**Uso:** Composición del servidor.
+**Fin:** Ensamblaje de middleware + estático en producción.
+
+```typescript
+import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { env } from "@/tools/env";
+import { globalRateLimiter } from "@/tools/rate-limiter-factory";
+import { apiRouter } from "@/api/router";
+import { errorHandler } from "@/api/middleware/error-handler";
+import { createLogger } from "@/tools/logger";
+
+const log = createLogger("server");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const app = express();
+app.use(express.json({ limit: "256kb" }));
+app.use(globalRateLimiter);
+app.use("/api", apiRouter);
+
+if (env.NODE_ENV === "production") {
+  const dist = path.resolve(__dirname, "dist");
+  app.use(express.static(dist));
+  app.get("*", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+}
+
+app.use(errorHandler);
+
+app.listen(env.PORT, () => {
+  log.info(`escuchando en http://localhost:${env.PORT}`);
+});
+```
+
+---
+
+# 📡 BLOQUE VII — CLIENTE DATA (FRONTEND)
+
+## VII.1 — `lib/api-client.ts`
+
+**Uso:** Cliente del dominio.
+**Fin:** Un solo lugar para hablar con `/api`.
+
+```typescript
+import { postJSON, getJSON } from "./http-client";
+import type {
+  ProcessNewsSuccess,
+  HealthResponse,
+} from "@/domain/api-contracts";
+import type { NewsRequest } from "@/domain/news-types";
+
+export const api = {
+  processNews: (body: NewsRequest) =>
+    postJSON<ProcessNewsSuccess, NewsRequest>("/api/process-news", body),
+  health: () => getJSON<HealthResponse>("/api/health"),
+};
+```
+
+---
+
+## VII.2 — `lib/query-client.ts`
+
+**Uso:** Fábrica del `QueryClient`.
+**Fin:** Defaults consistentes.
+
+```typescript
+import { QueryClient } from "@tanstack/react-query";
+
+export function createQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: 1,
+        refetchOnWindowFocus: false,
+        staleTime: 5 * 60_000,
+      },
+      mutations: {
+        retry: 0,
+      },
+    },
+  });
+}
+```
+
+---
+
+## VII.3 — `hooks/use-process-news.ts`
+
+**Uso:** Hook de mutación.
+**Fin:** Encapsular estado + call al API en una sola abstracción.
+
+```typescript
+import { useMutation } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
+import type { NewsRequest, NewsOutput } from "@/domain/news-types";
+
+export function useProcessNews() {
+  return useMutation<NewsOutput, Error, NewsRequest>({
+    mutationFn: async (body) => {
+      const res = await api.processNews(body);
+      return res.data;
+    },
+  });
+}
+```
+
+---
+
+# 🎨 BLOQUE VIII — DESIGN SYSTEM (UI)
+
+## VIII.1 — `lib/cn.ts`
+
+**Uso:** Merge de clases Tailwind.
+**Fin:** Componentes con `className` sobreescribible.
+
+```typescript
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]): string {
+  return twMerge(clsx(inputs));
+}
+```
+
+---
+
+## VIII.2 — `ui/tokens.ts`
+
+**Uso:** Tokens de diseño.
+**Fin:** Centralizar radios, espaciados, colores semánticos.
+
+```typescript
+export const TOKENS = {
+  radius: {
+    sm: "rounded-md",
+    md: "rounded-lg",
+    lg: "rounded-xl",
+  },
+  surface: {
+    base: "bg-neutral-950",
+    raised: "bg-neutral-900/50",
+    card: "bg-neutral-900/40",
+  },
+  border: {
+    subtle: "border-neutral-800",
+    focus: "focus:border-blue-500",
+  },
+  text: {
+    primary: "text-neutral-100",
+    muted: "text-neutral-400",
+    faint: "text-neutral-500",
+  },
+  accent: {
+    primary: "bg-blue-600 hover:bg-blue-500",
+    ring: "focus:ring-blue-500/40",
+  },
+} as const;
+```
+
+---
+
+## VIII.3 — `ui/primitives/Button.tsx`
+
+```tsx
+import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/cn";
+
+type Variant = "primary" | "ghost";
+type Size = "sm" | "md";
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: Variant;
+  size?: Size;
+  loading?: boolean;
+}
+
+const VARIANT: Record<Variant, string> = {
+  primary:
+    "bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed",
+  ghost:
+    "bg-transparent text-neutral-200 hover:bg-neutral-800 border border-neutral-800",
+};
+
+const SIZE: Record<Size, string> = {
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2 text-sm",
+};
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ variant = "primary", size = "md", loading, className, children, disabled, ...rest }, ref) => {
+    return (
+      <button
+        ref={ref}
+        disabled={disabled || loading}
+        className={cn(
+          "inline-flex items-center gap-2 rounded-md font-medium transition",
+          VARIANT[variant],
+          SIZE[size],
+          className
+        )}
+        {...rest}
+      >
+        {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+        {children}
+      </button>
+    );
+  }
+);
+Button.displayName = "Button";
+```
+
+---
+
+## VIII.4 — `ui/primitives/Input.tsx`
+
+```tsx
+import { forwardRef, type InputHTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
+
+export type InputProps = InputHTMLAttributes<HTMLInputElement>;
+
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+  ({ className, ...rest }, ref) => (
+    <input
+      ref={ref}
+      className={cn(
+        "w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500",
+        "focus:border-blue-500 focus:outline-none",
+        "disabled:opacity-50",
+        className
+      )}
+      {...rest}
+    />
+  )
+);
+Input.displayName = "Input";
+```
+
+---
+
+## VIII.5 — `ui/primitives/Textarea.tsx`
+
+```tsx
+import { forwardRef, type TextareaHTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
+
+export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ className, ...rest }, ref) => (
+    <textarea
+      ref={ref}
+      className={cn(
+        "w-full resize-y rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-100 placeholder:text-neutral-500",
+        "focus:border-blue-500 focus:outline-none",
+        className
+      )}
+      {...rest}
+    />
+  )
+);
+Textarea.displayName = "Textarea";
+```
+
+---
+
+## VIII.6 — `ui/primitives/Select.tsx`
+
+```tsx
+import { forwardRef, type SelectHTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
+
+export type SelectProps = SelectHTMLAttributes<HTMLSelectElement>;
+
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  ({ className, children, ...rest }, ref) => (
+    <select
+      ref={ref}
+      className={cn(
+        "rounded-md border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-100",
+        "focus:border-blue-500 focus:outline-none",
+        className
+      )}
+      {...rest}
+    >
+      {children}
+    </select>
+  )
+);
+Select.displayName = "Select";
+```
+
+---
+
+## VIII.7 — `ui/primitives/Card.tsx`
+
+```tsx
+import type { HTMLAttributes } from "react";
+import { cn } from "@/lib/cn";
+
+export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "rounded-lg border border-neutral-800 bg-neutral-900/40 p-5",
+        className
+      )}
+      {...rest}
+    />
+  );
+}
+```
+
+---
+
+## VIII.8 — `ui/primitives/Loader.tsx`
+
+```tsx
+import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/cn";
+
+interface LoaderProps {
+  size?: "sm" | "md" | "lg";
+  className?: string;
+  label?: string;
+}
+
+const SIZE = { sm: "h-4 w-4", md: "h-5 w-5", lg: "h-6 w-6" } as const;
+
+export function Loader({ size = "md", className, label }: LoaderProps) {
+  return (
+    <span className={cn("inline-flex items-center gap-2 text-neutral-400", className)}>
+      <Loader2 className={cn("animate-spin", SIZE[size])} />
+      {label && <span className="text-sm">{label}</span>}
+    </span>
+  );
+}
+```
+
+---
+
+## VIII.9 — `ui/primitives/FormField.tsx`
+
+**Uso:** Envoltorio label + control + error.
+**Fin:** Accesibilidad y consistencia visual.
+
+```tsx
+import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
+
+interface FormFieldProps {
+  id: string;
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+  className?: string;
+}
+
+export function FormField({
+  id,
+  label,
+  hint,
+  error,
+  children,
+  className,
+}: FormFieldProps) {
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <label htmlFor={id} className="block text-sm font-medium text-neutral-200">
+        {label}
+      </label>
+      {children}
+      {hint && !error && (
+        <p className="text-xs text-neutral-500">{hint}</p>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-red-400">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+# 🧱 BLOQUE IX — COMPONENTES DE DOMINIO
+
+## IX.1 — `ui/domain/NewsCard.tsx`
+
+```tsx
+import { Card } from "@/ui/primitives/Card";
+
+interface NewsCardProps {
+  title: string;
+  content: string;
+}
+
+export function NewsCard({ title, content }: NewsCardProps) {
+  return (
+    <Card>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-400">
+        {title}
+      </h2>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-200">
+        {content}
+      </p>
+    </Card>
+  );
+}
+```
+
+---
+
+## IX.2 — `ui/domain/NewsCardGrid.tsx`
+
+```tsx
+import type { NewsOutput } from "@/domain/news-types";
+import { NewsCard } from "./NewsCard";
+
+const FIELDS: ReadonlyArray<{ key: keyof NewsOutput; label: string }> = [
+  { key: "titular", label: "Titular" },
+  { key: "lead", label: "Lead" },
+  { key: "cuerpo", label: "Cuerpo" },
+  { key: "conclusion", label: "Conclusión" },
+  { key: "teleprompter", label: "Teleprompter" },
+  { key: "newsletter", label: "Newsletter" },
+  { key: "videoScript", label: "Guion de video" },
+];
+
+export function NewsCardGrid({ output }: { output: NewsOutput }) {
+  return (
+    <section className="grid gap-4 md:grid-cols-2">
+      {FIELDS.map((f) => (
+        <NewsCard key={f.key} title={f.label} content={output[f.key]} />
+      ))}
+    </section>
+  );
+}
+```
+
+---
+
+## IX.3 — `ui/domain/NewsForm.tsx`
+
+```tsx
+import { useState } from "react";
+import { Sparkles } from "lucide-react";
+import { Button } from "@/ui/primitives/Button";
+import { Textarea } from "@/ui/primitives/Textarea";
+import { Select } from "@/ui/primitives/Select";
+import { FormField } from "@/ui/primitives/FormField";
+import { NEWS_TONES, NEWS_LIMITS } from "@/domain/constants";
+import type { NewsTone, NewsRequest } from "@/domain/news-types";
+
+interface NewsFormProps {
+  onSubmit: (body: NewsRequest) => void;
+  isPending: boolean;
+  errorMessage?: string;
+}
+
+export function NewsForm({ onSubmit, isPending, errorMessage }: NewsFormProps) {
+  const [rawNews, setRawNews] = useState("");
+  const [tone, setTone] = useState<NewsTone>("neutral");
+
+  const trimmedLength = rawNews.trim().length;
+  const tooShort = trimmedLength < NEWS_LIMITS.MIN_CHARS;
+  const tooLong = trimmedLength > NEWS_LIMITS.MAX_CHARS;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tooShort || tooLong) return;
+    onSubmit({ rawNews, tone, language: "es" });
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-4 rounded-lg border border-neutral-800 bg-neutral-900/50 p-5"
+      noValidate
+    >
+      <FormField
+        id="rawNews"
+        label="Cable de noticias"
+        hint={`${trimmedLength}/${NEWS_LIMITS.MAX_CHARS} caracteres`}
+        error={
+          tooShort && trimmedLength > 0
+            ? `Mínimo ${NEWS_LIMITS.MIN_CHARS} caracteres.`
+            : tooLong
+            ? `Máximo ${NEWS_LIMITS.MAX_CHARS} caracteres.`
+            : undefined
+        }
+      >
+        <Textarea
+          id="rawNews"
+          rows={8}
+          value={rawNews}
+          onChange={(e) => setRawNews(e.target.value)}
+          placeholder="Pega aquí el cable de noticias..."
+        />
+      </FormField>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <label htmlFor="tone" className="text-sm text-neutral-400">
+          Tono:
+        </label>
+        <Select
+          id="tone"
+          value={tone}
+          onChange={(e) => setTone(e.target.value as NewsTone)}
+        >
+          {NEWS_TONES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </Select>
+
+        <Button
+          type="submit"
+          loading={isPending}
+          disabled={tooShort || tooLong}
+          className="ml-auto"
+        >
+          {!isPending && <Sparkles className="h-4 w-4" />}
+          {isPending ? "Procesando…" : "Generar contenido"}
+        </Button>
+      </div>
+
+      {errorMessage && (
+        <p role="alert" className="text-sm text-red-400">
+          {errorMessage}
+        </p>
+      )}
+    </form>
+  );
+}
+```
+
+---
+
+## IX.4 — `ui/domain/SubscriptionForm.tsx`
+
+**Uso:** Suscripción honesta (`mailto:` real, sin persistencia falsa).
+
+```tsx
+import { useState } from "react";
+import { Button } from "@/ui/primitives/Button";
+import { Input } from "@/ui/primitives/Input";
+import { FormField } from "@/ui/primitives/FormField";
+
+const CONTACT_EMAIL = "contacto@omega-news-studio.dev";
+
+export function SubscriptionForm() {
+  const [email, setEmail] = useState("");
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    const subject = encodeURIComponent("Suscripción a Omega News Studio");
+    const body = encodeURIComponent(
+      `Hola, quiero suscribirme al boletín.\n\nMi correo: ${email}`
+    );
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-3 rounded-lg border border-neutral-800 bg-neutral-900/40 p-5"
+    >
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+        Suscríbete al boletín
+      </h2>
+      <p className="text-xs text-neutral-500">
+        Te llevaremos a tu cliente de correo para completar la suscripción.
+      </p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <FormField id="email" label="" className="flex-1">
+          <Input
+            id="email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="tu@correo.com"
+          />
+        </FormField>
+        <Button type="submit" className="self-end">
+          Suscribirme
+        </Button>
+      </div>
+    </form>
+  );
+}
+```
+
+---
+
+# 🧩 BLOQUE X — LAYOUT Y SHELL
+
+## X.1 — `ui/layouts/Navigation.tsx`
+
+```tsx
+import { Link, useLocation } from "react-router-dom";
+import { Newspaper } from "lucide-react";
+import { APP_NAME } from "@/domain/constants";
+import { cn } from "@/lib/cn";
+
+const LINKS = [{ to: "/", label: "Inicio" }] as const;
+
+export function Navigation() {
+  const { pathname } = useLocation();
+  return (
+    <nav className="border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
+        <Link to="/" className="flex items-center gap-2 font-semibold">
+          <Newspaper className="h-5 w-5 text-blue-500" />
+          <span>{APP_NAME}</span>
+        </Link>
+        <ul className="flex items-center gap-4 text-sm">
+          {LINKS.map((l) => (
+            <li key={l.to}>
+              <Link
+                to={l.to}
+                className={cn(
+                  pathname === l.to
+                    ? "text-white"
+                    : "text-neutral-400 hover:text-neutral-200"
+                )}
+              >
+                {l.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </nav>
+  );
+}
+```
+
+---
+
+## X.2 — `ui/layouts/Footer.tsx`
+
+```tsx
+import { APP_NAME, APP_VERSION, APP_LICENSE, APP_AUTHOR } from "@/domain/constants";
+
+export function Footer() {
+  return (
+    <footer className="border-t border-neutral-800 py-6 text-center text-xs text-neutral-500">
+      {APP_NAME} · v{APP_VERSION} · {APP_LICENSE} · {APP_AUTHOR}
+    </footer>
+  );
+}
+```
+
+---
+
+## X.3 — `ui/layouts/AppShell.tsx`
+
+```tsx
+import type { ReactNode } from "react";
+import { Navigation } from "./Navigation";
+import { Footer } from "./Footer";
+
+export function AppShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-screen flex-col bg-neutral-950 text-neutral-100">
+      <Navigation />
+      <main className="flex-1">{children}</main>
+      <Footer />
+    </div>
+  );
+}
+```
+
+---
+
+## X.4 — `ui/shell/Providers.tsx`
+
+```tsx
+import { QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter } from "react-router-dom";
+import type { ReactNode } from "react";
+import { createQueryClient } from "@/lib/query-client";
+
+const queryClient = createQueryClient();
+
+export function Providers({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>{children}</BrowserRouter>
+    </QueryClientProvider>
+  );
+}
+```
+
+---
+
+## X.5 — `ui/shell/Router.tsx`
+
+```tsx
+import { Routes, Route } from "react-router-dom";
+import { IndexPage } from "@/pages/IndexPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
+
+export function Router() {
+  return (
+    <Routes>
+      <Route path="/" element={<IndexPage />} />
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+  );
+}
+```
+
+---
+
+# 📄 BLOQUE XI — PÁGINAS
+
+## XI.1 — `pages/IndexPage.tsx`
+
+```tsx
+import { NewsForm } from "@/ui/domain/NewsForm";
+import { NewsCardGrid } from "@/ui/domain/NewsCardGrid";
+import { SubscriptionForm } from "@/ui/domain/SubscriptionForm";
+import { useProcessNews } from "@/hooks/use-process-news";
+
+export function IndexPage() {
+  const mutation = useProcessNews();
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-8 px-4 py-10">
+      <header className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">Omega News Studio</h1>
+        <p className="text-sm text-neutral-400">
+          Procesa un cable de noticias y obtén 7 piezas periodísticas listas
+          para publicar.
+        </p>
+      </header>
+
+      <NewsForm
+        onSubmit={(body) => mutation.mutate(body)}
+        isPending={mutation.isPending}
+        errorMessage={
+          mutation.isError ? (mutation.error as Error).message : undefined
+        }
+      />
+
+      {mutation.data && <NewsCardGrid output={mutation.data} />}
+
+      <SubscriptionForm />
+    </div>
+  );
+}
+```
+
+---
+
+## XI.2 — `pages/NotFoundPage.tsx`
+
+```tsx
+import { Link } from "react-router-dom";
+import { Button } from "@/ui/primitives/Button";
+
+export function NotFoundPage() {
+  return (
+    <div className="mx-auto flex max-w-xl flex-col items-center justify-center px-4 py-24 text-center">
+      <p className="text-6xl font-bold text-neutral-700">404</p>
+      <h1 className="mt-4 text-2xl font-semibold">Página no encontrada</h1>
+      <p className="mt-2 text-sm text-neutral-400">
+        La ruta que buscas no existe en Omega News Studio.
+      </p>
+      <Link to="/" className="mt-6">
+        <Button>Volver al inicio</Button>
+      </Link>
+    </div>
+  );
+}
+```
+
+---
+
+# 🚀 BLOQUE XII — BOOTSTRAP Y CONFIG
+
+## XII.1 — `src/main.tsx`
+
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { Providers } from "@/ui/shell/Providers";
+import { Router } from "@/ui/shell/Router";
+import { AppShell } from "@/ui/layouts/AppShell";
+import "./index.css";
+
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("#root no encontrado");
+
+ReactDOM.createRoot(rootEl).render(
+  <React.StrictMode>
+    <Providers>
+      <AppShell>
+        <Router />
+      </AppShell>
+    </Providers>
+  </React.StrictMode>
+);
+```
+
+---
+
+## XII.2 — `package.json` (scripts de referencia)
+
+```json
+{
+  "scripts": {
+    "dev": "tsx server.ts",
+    "dev:client": "vite",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "lint": "tsc --noEmit"
+  }
+}
+```
+
+---
+
+## XII.3 — `vite.config.ts`
+
+```typescript
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  server: {
+    port: 5173,
+    proxy: { "/api": { target: "http://localhost:3000", changeOrigin: true } },
+  },
+  build: { outDir: "dist", target: "es2022" },
+});
+```
+
+---
+
+## XII.4 — `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["node", "vite/client"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "server.ts", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+---
+
+# 📊 TABLA RESUMEN — PIEZAS POR USO Y FIN
+
+| # | Herramienta | Categoría | Uso | Fin |
+|---|-------------|-----------|-----|-----|
+| I.1 | `logger` | Fundación | Logging estructurado | Trazabilidad |
+| I.2 | `env` | Fundación | Carga tipada de env | Fallar rápido |
+| I.3 | `errors` | Fundación | Jerarquía de errores | No filtrar internals |
+| I.4 | `http-client` | Fundación | fetch tipado | Simetría frontend |
+| II.1 | `news-types` | Dominio | Tipos compartidos | Contrato único |
+| II.2 | `constants` | Dominio | Constantes | Sin magia |
+| II.3 | `api-contracts` | Dominio | Contratos HTTP | Borde tipado |
+| III.1 | `validation-schemas` | Seguridad | Schemas Zod | Una verdad |
+| III.2 | `rate-limiter-factory` | Seguridad | Fábrica de limiters | DRY |
+| III.3 | `validate` (mw) | Seguridad | Middleware Zod | Parseo único |
+| IV.1 | `gemini-response-schema` | IA | JSON Schema | Salida forzada |
+| IV.2 | `prompt-builder` | IA | Construir prompt | Aislar reglas |
+| IV.3 | `gemini-client` | IA | Wrapper SDK | Timeout + errores |
+| IV.4 | `content-parser` | IA | Parseo + validación | Output garantizado |
+| V.1 | `tone-resolver` | Servicio | Etiqueta de tono | Desacople UI |
+| V.2 | `news-processor` | Servicio | Orquestador | Punto único |
+| VI.1 | `error-handler` (mw) | API | Error central | Respuesta segura |
+| VI.2 | `health` (route) | API | `/api/health` | Health check |
+| VI.3 | `news` (route) | API | `/api/process-news` | Endpoint IA |
+| VI.4 | `api-router` | API | Composición | Modularidad |
+| VI.5 | `server` | API | Bootstrap | Ensamblaje |
+| VII.1 | `api-client` | Data | Cliente del API | Un solo punto |
+| VII.2 | `query-client` | Data | Fábrica QueryClient | Defaults |
+| VII.3 | `use-process-news` | Data | Hook mutación | Abstracción |
+| VIII.1 | `cn` | UI | clsx + tailwind-merge | Composición |
+| VIII.2 | `tokens` | UI | Design tokens | Coherencia |
+| VIII.3 | `Button` | UI | Botón | Primitiva |
+| VIII.4 | `Input` | UI | Input | Primitiva |
+| VIII.5 | `Textarea` | UI | Textarea | Primitiva |
+| VIII.6 | `Select` | UI | Select | Primitiva |
+| VIII.7 | `Card` | UI | Card | Primitiva |
+| VIII.8 | `Loader` | UI | Spinner | Primitiva |
+| VIII.9 | `FormField` | UI | Label + control | A11y |
+| IX.1 | `NewsCard` | Dominio UI | Card de pieza | Presentación |
+| IX.2 | `NewsCardGrid` | Dominio UI | Grid de 7 piezas | Render |
+| IX.3 | `NewsForm` | Dominio UI | Formulario | Input cable |
+| IX.4 | `SubscriptionForm` | Dominio UI | Suscripción | Honesto |
+| X.1 | `Navigation` | Layout | Navbar | Navegación |
+| X.2 | `Footer` | Layout | Footer | Atribución |
+| X.3 | `AppShell` | Layout | Shell | Estructura |
+| X.4 | `Providers` | Shell | Query + Router | Providers |
+| X.5 | `Router` | Shell | Rutas | Navegación SPA |
+| XI.1 | `IndexPage` | Página | Home | Composición |
+| XI.2 | `NotFoundPage` | Página | 404 | Fallback |
+| XII.1 | `main.tsx` | Bootstrap | Entry point | Arranque |
+| XII.2 | `package.json` | Config | Scripts | Tooling |
+| XII.3 | `vite.config.ts` | Config | Vite | Bundler |
+| XII.4 | `tsconfig.json` | Config | TypeScript | Tipado |
+
+---
+
+# ✅ GARANTÍAS DEL DISEÑO
+
+| Principio | Cumplimiento |
+|-----------|:------------:|
+| Single source of truth | ✅ Tipos en `domain/` |
+| Separación de capas | ✅ `tools/` → `services/` → `api/` |
+| Sin acoplamiento UI ↔ backend | ✅ `api-client` intermediario |
+| Errores no filtrados | ✅ `AppError` + `errorHandler` |
+| Validación doble (cliente + servidor) | ✅ Zod + HTML |
+| Sin términos prohibidos | ✅ Sin Sovereign, Kardashev, Sello, Ring 0, Quantum |
+| Sin `Math.random()` | ✅ Ninguna aparición |
+| Sin promesas falsas al usuario | ✅ `SubscriptionForm` honesto |
+
+**Nomenclatura estandarizada:** `kebab-case` en módulos, `PascalCase` en componentes, `use*` en hooks, `SCREAMING_SNAKE_CASE` en constantes, `camelCase` en utilidades.
+
+**Total piezas entregadas: 48, todas con código fuente completo y nomenclatura profesional.**

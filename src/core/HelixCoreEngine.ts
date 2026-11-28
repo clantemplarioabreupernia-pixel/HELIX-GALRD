@@ -66,12 +66,15 @@ import {
   PersonaMode,
 } from './helixPlanner';
 import {
+  CombinatorialBatchReport,
   CURATED_CROSS_EXPERIMENTS,
   CrossDomainExperiment,
   decomposeHelixProgram,
   DecompositionResult,
+  generateVerifiedCombinationsBatch,
   recombineHelixTools,
   RecombinationResult,
+  runGrandOmegaRecombination,
 } from './helixRecombinator';
 import {
   BASE_HELIX_TOOL_CATALOG,
@@ -813,6 +816,87 @@ export class HelixCoreEngine {
 
   public discoverCrossDomainExperiments(): readonly CrossDomainExperiment[] {
     return CURATED_CROSS_EXPERIMENTS;
+  }
+
+  /**
+   * Comprueba y genera en vivo un lote completo de combinaciones (1.er, 2.º y 3.er orden)
+   * recorriendo los 23 motores y los 12 dominios, registrando las nuevas herramientas hijas verificadas.
+   */
+  public runCombinatorialBatch(
+    firstOrderCount = 12,
+    secondOrderCount = 6,
+    registerChildren = true,
+  ): CombinatorialBatchReport {
+    const batch = generateVerifiedCombinationsBatch(this.tools, {
+      firstOrderCount,
+      secondOrderCount,
+    });
+    if (registerChildren) {
+      let lastVerified: RecombinationResult | null = null;
+      for (const res of batch.results) {
+        if (!res.success || !res.childTool) continue;
+        lastVerified = res;
+        if (!this.tools.some((t) => t.id === res.childTool!.id)) {
+          this.tools.unshift(res.childTool);
+        }
+        this.holographicLibrary.ingestRecombination({
+          title: res.childTool.title,
+          summary: res.engineeringSummary,
+          tools: res.parentTools,
+          hlxScript: res.synthesizedHlx,
+          godelProduct: res.godelBigInt,
+          pcc: res.pcc,
+        });
+      }
+      if (lastVerified?.childTool) {
+        this.recordCertifiedCapsule(
+          {
+            prompt: `Lote Combinatorio ${batch.summary}`,
+            reply: lastVerified.engineeringSummary,
+            hlxScript: lastVerified.synthesizedHlx,
+            shape: 'crystal',
+            domain: lastVerified.childTool.domain,
+          },
+          2,
+        );
+      }
+    }
+    return batch;
+  }
+
+  /**
+   * Gran Recombinación Total Omega: fusiona las 23 familias de motores × 33 disciplinas completas,
+   * verifica con SMT + PCC, registra el gen hijo en el catálogo vivo y destila la cápsula holográfica.
+   */
+  public runOmegaRecombination(
+    params: Record<string, number | string> = {},
+    registerChild = true,
+  ): RecombinationResult {
+    const res = runGrandOmegaRecombination(this.tools, params);
+    if (registerChild && res.success && res.childTool) {
+      if (!this.tools.some((t) => t.id === res.childTool!.id)) {
+        this.tools.unshift(res.childTool);
+      }
+      this.holographicLibrary.ingestRecombination({
+        title: res.childTool.title,
+        summary: res.engineeringSummary,
+        tools: res.parentTools,
+        hlxScript: res.synthesizedHlx,
+        godelProduct: res.godelBigInt,
+        pcc: res.pcc,
+      });
+      this.recordCertifiedCapsule(
+        {
+          prompt: `Gran Recombinación Total Omega (23 Motores × 33 Disciplinas)`,
+          reply: res.engineeringSummary,
+          hlxScript: res.synthesizedHlx,
+          shape: 'quantum_bloch',
+          domain: res.childTool.domain,
+        },
+        2,
+      );
+    }
+    return res;
   }
 
   /**

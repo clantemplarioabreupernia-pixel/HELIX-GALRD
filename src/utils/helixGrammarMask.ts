@@ -122,6 +122,19 @@ const RESERVED_HEAD_OPCODES = new Set([
   'BVN_LATTICE',
   'WEBER_GUARD',
   'GEOM_SEAL',
+  'CAUCHY_OPTIC',
+  'GALDR_SYNTH',
+  'ORBIT_KEPLER',
+  'KINETIC_P33',
+  'TENSOR_VM',
+  'QASM_STATE',
+  'TERRAIN_FBM',
+  'RIGID_COLLIDE',
+  'LIPSYNC_DSP',
+  'LEDGER_MERKLE',
+  'CHEM_THERMO',
+  'NANO_BRUS',
+  'DISNEY_KIN12',
 ]);
 
 const RELATIONAL_OPS = new Set(['==', '!=', '>', '<', '>=', '<=']);
@@ -159,6 +172,19 @@ function normalizeHeadOpcode(
   if (head === 'ᛉᛣ') return 'BVN_LATTICE';
   if (head === 'ᚹᛋ') return 'WEBER_GUARD';
   if (head === 'ᛟᚹ') return 'GEOM_SEAL';
+  if (head === 'ᚩᚫ') return 'CAUCHY_OPTIC';
+  if (head === 'ᚫᛣ') return 'GALDR_SYNTH';
+  if (head === 'ᚱᚩ') return 'ORBIT_KEPLER';
+  if (head === 'ᛟᛡ') return 'KINETIC_P33';
+  if (head === 'ᚹᚹ') return 'TENSOR_VM';
+  if (head === 'ᛒᛡ') return 'QASM_STATE';
+  if (head === 'ᛗᛚ') return 'TERRAIN_FBM';
+  if (head === 'ᛤᚹ') return 'RIGID_COLLIDE';
+  if (head === 'ᚫᛚ') return 'LIPSYNC_DSP';
+  if (head === 'ᚠᛥ') return 'LEDGER_MERKLE';
+  if (head === 'ᚳᛜ') return 'CHEM_THERMO';
+  if (head === 'ᛡᛥ') return 'NANO_BRUS';
+  if (head === 'ᛞᛒ') return 'DISNEY_KIN12';
   return upper;
 }
 

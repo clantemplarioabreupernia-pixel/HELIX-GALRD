@@ -1,0 +1,1460 @@
+# 🧰 CATÁLOGO DE HERRAMIENTAS — Omega Vision Corporate Site
+
+**Objetivo:** desarticular el proyecto en piezas reutilizables, independientes y de propósito único. Cada herramienta tiene **uso**, **fin**, **dependencias**, **API** y **código fuente profesional**. Se corrige la nomenclatura original.
+
+---
+
+## 📚 Índice del catálogo
+
+| # | Categoría | Herramienta | Archivo destino |
+|---|---|---|---|
+| **A** | Fundación | `design-tokens` | `src/styles/tokens.css` + `src/styles/tokens.ts` |
+| **A** | Fundación | `css-base` | `src/styles/base.css` |
+| **B** | Contratos | `contracts` | `src/contracts/index.ts` |
+| **C** | Primitivas UI | `Container` | `src/ui/Container.tsx` |
+| **C** | Primitivas UI | `Section` | `src/ui/Section.tsx` |
+| **C** | Primitivas UI | `Button` | `src/ui/Button.tsx` |
+| **C** | Primitivas UI | `Tag` | `src/ui/Tag.tsx` |
+| **C** | Primitivas UI | `StatusBadge` | `src/ui/StatusBadge.tsx` |
+| **C** | Primitivas UI | `Avatar` | `src/ui/Avatar.tsx` |
+| **D** | Composiciones | `SiteHeader` | `src/sections/SiteHeader.tsx` |
+| **D** | Composiciones | `HeroBanner` | `src/sections/HeroBanner.tsx` |
+| **D** | Composiciones | `EngineeringLaws` | `src/sections/EngineeringLaws.tsx` |
+| **D** | Composiciones | `ProductGrid` | `src/sections/ProductGrid.tsx` |
+| **D** | Composiciones | `UseCaseGrid` | `src/sections/UseCaseGrid.tsx` |
+| **D** | Composiciones | `FounderProfile` | `src/sections/FounderProfile.tsx` |
+| **D** | Composiciones | `ContactPanel` | `src/sections/ContactPanel.tsx` |
+| **D** | Composiciones | `SiteFooter` | `src/sections/SiteFooter.tsx` |
+| **E** | Hooks | `useScrollSpy` | `src/hooks/useScrollSpy.ts` |
+| **E** | Hooks | `useReducedMotion` | `src/hooks/useReducedMotion.ts` |
+| **F** | Utilidades | `cx` | `src/utils/cx.ts` |
+| **F** | Utilidades | `formatInitials` | `src/utils/formatInitials.ts` |
+| **F** | Utilidades | `slugify` | `src/utils/slugify.ts` |
+| **G** | Infraestructura | `vite-preset` | `vite.config.ts` |
+| **G** | Infraestructura | `tsconfig-preset` | `tsconfig.json` |
+| **G** | Infraestructura | `content-registry` | `src/content/index.ts` |
+
+---
+
+# 🗂️ A. Fundación
+
+## A.1 · `design-tokens`
+
+**Uso:** capa única de verdad para colores, tipografía, radios, espaciados.
+**Fin:** evitar valores mágicos en CSS; permitir theming futuro.
+**Dependencias:** ninguna.
+**Consumido por:** todas las primitivas y secciones.
+
+### `src/styles/tokens.css`
+
+```css
+/* Omega Vision — Design Tokens
+ * Única fuente de verdad para variables visuales.
+ * Ley 6: contratos explícitos. */
+
+:root {
+  /* Color — superficie */
+  --color-bg: #0b0d10;
+  --color-bg-alt: #101319;
+  --color-surface: #151922;
+  --color-border: #232838;
+
+  /* Color — texto */
+  --color-text: #e7ecf3;
+  --color-text-muted: #9aa5b8;
+  --color-text-inverse: #000000;
+
+  /* Color — acento */
+  --color-accent: #6ea8fe;
+  --color-accent-hover: #8bbaff;
+  --color-accent-dim: #3a6bc4;
+
+  /* Color — semánticos */
+  --color-problem: #f0a5a5;
+  --color-approach: #a5f0c4;
+
+  /* Tipografía */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --fs-12: 0.75rem;
+  --fs-13: 0.8125rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-17: 1.0625rem;
+  --fs-18: 1.125rem;
+  --fs-20: 1.25rem;
+  --fs-26: 1.625rem;
+
+  /* Espaciado */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Radio */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-full: 999px;
+
+  /* Layout */
+  --layout-max: 1120px;
+  --layout-narrow: 760px;
+  --header-h: 60px;
+}
+```
+
+### `src/styles/tokens.ts`
+
+```ts
+// Tokens accesibles desde TS cuando se necesita un valor en lógica (no en CSS).
+// Mantener sincronizado con tokens.css.
+
+export const TOKENS = {
+  layout: {
+    max: 1120,
+    narrow: 760,
+    headerHeight: 60,
+  },
+  breakpoints: {
+    sm: 640,
+    md: 900,
+    lg: 1200,
+  },
+} as const;
+
+export type Tokens = typeof TOKENS;
+```
+
+---
+
+## A.2 · `css-base`
+
+**Uso:** reset mínimo, tipografía base, focus visible, utilidades globales.
+**Fin:** comportamiento consistente y accesible en toda la app.
+**Dependencias:** `design-tokens`.
+
+### `src/styles/base.css`
+
+```css
+/* Omega Vision — Base styles
+ * Reset mínimo + tipografía + a11y + utilidades globales. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-16);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1, h2, h3, h4 {
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Skip link — accesibilidad teclado */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  top: var(--space-3);
+}
+
+/* Respeta usuarios con motion reducido */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+```
+
+---
+
+# 🗂️ B. Contratos
+
+## B.1 · `contracts`
+
+**Uso:** tipos compartidos por data, componentes y hooks.
+**Fin:** Ley 6 — todo límite tipado. Nomenclatura corregida (`Law` → `EngineeringLaw`, `CompanyInfo` → `CompanyProfile`).
+**Dependencias:** ninguna.
+
+### `src/contracts/index.ts`
+
+```ts
+// Contratos de dominio del sitio Omega Vision.
+// Ley 6: interfaces explícitas, versionadas, exportadas.
+
+/** Estado de madurez de un producto. */
+export type ProductStatus = "production" | "beta" | "internal";
+
+/** Principio de ingeniería verificable (una de las 8 Leyes). */
+export interface EngineeringLaw {
+  readonly id: number;
+  readonly name: string;
+  readonly statement: string;
+  readonly enforcement: string;
+}
+
+/** Producto del portafolio Omega Vision. */
+export interface Product {
+  readonly slug: string;
+  readonly name: string;
+  readonly tagline: string;
+  readonly description: string;
+  readonly domain: string;
+  readonly status: ProductStatus;
+}
+
+/** Caso de uso sectorial. */
+export interface UseCase {
+  readonly sector: string;
+  readonly problem: string;
+  readonly approach: string;
+}
+
+/** Perfil del fundador. */
+export interface Founder {
+  readonly name: string;
+  readonly role: string;
+  readonly bio: string;
+}
+
+/** Datos de contacto públicos. */
+export interface ContactChannels {
+  readonly email: string;
+  readonly github: string;
+  readonly location: string;
+}
+
+/** Perfil de la empresa. */
+export interface CompanyProfile {
+  readonly name: string;
+  readonly legalName: string;
+  readonly legalNote: string;
+  readonly tagline: string;
+  readonly founded: number;
+  readonly founder: Founder;
+  readonly contact: ContactChannels;
+}
+
+/** Enlace de navegación del header. */
+export interface NavLink {
+  readonly id: string;
+  readonly label: string;
+}
+```
+
+---
+
+# 🗂️ C. Primitivas UI
+
+## C.1 · `Container`
+
+**Uso:** wrapper de ancho máximo con padding lateral consistente.
+**Fin:** centrar contenido sin duplicar reglas en cada sección.
+**API:** `size?: 'default' | 'narrow'`, `as?: keyof JSX.IntrinsicElements`.
+
+### `src/ui/Container.tsx`
+
+```tsx
+import type { ElementType, ReactNode } from "react";
+import { cx } from "../utils/cx";
+
+type ContainerSize = "default" | "narrow";
+
+export interface ContainerProps {
+  children: ReactNode;
+  size?: ContainerSize;
+  as?: ElementType;
+  className?: string;
+}
+
+export function Container({
+  children,
+  size = "default",
+  as: As = "div",
+  className,
+}: ContainerProps) {
+  return (
+    <As className={cx("container", size === "narrow" && "container--narrow", className)}>
+      {children}
+    </As>
+  );
+}
+```
+
+---
+
+## C.2 · `Section`
+
+**Uso:** envoltorio semántico de bloque con fondo alternativo y anclaje por `id`.
+**Fin:** consistencia de padding vertical + `aria-labelledby` obligatorio.
+**API:** `id`, `titleId`, `tone?: 'default'|'alt'`.
+
+### `src/ui/Section.tsx`
+
+```tsx
+import type { ReactNode } from "react";
+import { cx } from "../utils/cx";
+
+type SectionTone = "default" | "alt";
+
+export interface SectionProps {
+  id: string;
+  titleId: string;
+  tone?: SectionTone;
+  children: ReactNode;
+}
+
+export function Section({ id, titleId, tone = "default", children }: SectionProps) {
+  return (
+    <section
+      id={id}
+      aria-labelledby={titleId}
+      className={cx("section", tone === "alt" && "section--alt")}
+    >
+      {children}
+    </section>
+  );
+}
+```
+
+---
+
+## C.3 · `Button`
+
+**Uso:** acción primaria o secundaria; renderiza `<a>` si recibe `href`, `<button>` en caso contrario.
+**Fin:** unificar comportamiento visual + accesible.
+**API:** `variant`, `href`, `onClick`, `type`.
+
+### `src/ui/Button.tsx`
+
+```tsx
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { cx } from "../utils/cx";
+
+type ButtonVariant = "primary" | "ghost";
+
+interface BaseProps {
+  children: ReactNode;
+  variant?: ButtonVariant;
+  className?: string;
+}
+
+interface AsLink extends BaseProps {
+  href: string;
+  external?: boolean;
+}
+
+interface AsButton extends BaseProps {
+  href?: undefined;
+  onClick?: ButtonHTMLAttributes<HTMLButtonElement>["onClick"];
+  type?: "button" | "submit" | "reset";
+  disabled?: boolean;
+}
+
+export type ButtonProps = AsLink | AsButton;
+
+function isLink(props: ButtonProps): props is AsLink {
+  return typeof (props as AsLink).href === "string";
+}
+
+export function Button(props: ButtonProps) {
+  const classes = cx(
+    "btn",
+    props.variant === "ghost" ? "btn--ghost" : "btn--primary",
+    props.className,
+  );
+
+  if (isLink(props)) {
+    const { href, external, children } = props;
+    const externalProps = external
+      ? { target: "_blank", rel: "noreferrer noopener" as const }
+      : {};
+    return (
+      <a href={href} className={classes} {...externalProps}>
+        {children}
+      </a>
+    );
+  }
+
+  const { children, onClick, type = "button", disabled } = props;
+  return (
+    <button type={type} className={classes} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  );
+}
+```
+
+---
+
+## C.4 · `Tag`
+
+**Uso:** etiqueta pequeña para metadatos ("Dominio", "Problema", "Cómo se aplica").
+**Fin:** microtipografía monoespaciada consistente.
+**API:** `tone?: 'muted'|'problem'|'approach'`.
+
+### `src/ui/Tag.tsx`
+
+```tsx
+import type { ReactNode } from "react";
+import { cx } from "../utils/cx";
+
+export type TagTone = "muted" | "problem" | "approach";
+
+export interface TagProps {
+  tone?: TagTone;
+  children: ReactNode;
+}
+
+export function Tag({ tone = "muted", children }: TagProps) {
+  return <span className={cx("tag", `tag--${tone}`)}>{children}</span>;
+}
+```
+
+---
+
+## C.5 · `StatusBadge`
+
+**Uso:** píldora de estado de producto (Producción / Beta / Interno).
+**Fin:** mapear `ProductStatus` → etiqueta + color semántico.
+**API:** `status: ProductStatus`.
+
+### `src/ui/StatusBadge.tsx`
+
+```tsx
+import type { ProductStatus } from "../contracts";
+
+const LABELS: Record<ProductStatus, string> = {
+  production: "Producción",
+  beta: "Beta",
+  internal: "Interno",
+};
+
+export interface StatusBadgeProps {
+  status: ProductStatus;
+}
+
+export function StatusBadge({ status }: StatusBadgeProps) {
+  return (
+    <span className={`status status--${status}`} aria-label={`Estado: ${LABELS[status]}`}>
+      {LABELS[status]}
+    </span>
+  );
+}
+```
+
+---
+
+## C.6 · `Avatar`
+
+**Uso:** círculo con iniciales para perfiles sin imagen.
+**Fin:** evitar depender de assets; consistente en listas y perfiles.
+**API:** `name`, `size?: number`.
+
+### `src/ui/Avatar.tsx`
+
+```tsx
+import { formatInitials } from "../utils/formatInitials";
+
+export interface AvatarProps {
+  name: string;
+  size?: number;
+  ariaHidden?: boolean;
+}
+
+export function Avatar({ name, size = 72, ariaHidden = true }: AvatarProps) {
+  return (
+    <div
+      className="avatar"
+      style={{ width: size, height: size, fontSize: size * 0.34 }}
+      aria-hidden={ariaHidden}
+    >
+      {formatInitials(name)}
+    </div>
+  );
+}
+```
+
+---
+
+# 🗂️ D. Composiciones
+
+## D.1 · `SiteHeader` (antes `Nav`)
+
+**Uso:** navegación sticky con brand + enlaces de sección.
+**Fin:** orientación constante. Consume `useScrollSpy` para marcar sección activa.
+**Dependencias:** `Container`, `useScrollSpy`, `contracts`.
+
+### `src/sections/SiteHeader.tsx`
+
+```tsx
+import { useMemo } from "react";
+import { Container } from "../ui/Container";
+import { useScrollSpy } from "../hooks/useScrollSpy";
+import { cx } from "../utils/cx";
+import type { NavLink } from "../contracts";
+
+const NAV_LINKS: readonly NavLink[] = [
+  { id: "leyes", label: "Leyes" },
+  { id: "productos", label: "Productos" },
+  { id: "casos", label: "Casos de uso" },
+  { id: "sobre", label: "Sobre" },
+  { id: "contacto", label: "Contacto" },
+] as const;
+
+export interface SiteHeaderProps {
+  brandName: string;
+}
+
+export function SiteHeader({ brandName }: SiteHeaderProps) {
+  const ids = useMemo(() => NAV_LINKS.map((l) => l.id), []);
+  const activeId = useScrollSpy(ids, { offset: 80 });
+
+  return (
+    <header className="site-header">
+      <Container className="site-header__inner">
+        <a href="#hero" className="site-header__brand" aria-label={`${brandName}, inicio`}>
+          <span className="site-header__mark" aria-hidden="true">Ω</span>
+          <span className="site-header__name">{brandName}</span>
+        </a>
+        <nav aria-label="Principal">
+          <ul className="site-header__links">
+            {NAV_LINKS.map((link) => (
+              <li key={link.id}>
+                <a
+                  href={`#${link.id}`}
+                  className={cx("site-header__link", activeId === link.id && "is-active")}
+                  aria-current={activeId === link.id ? "location" : undefined}
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </Container>
+    </header>
+  );
+}
+```
+
+---
+
+## D.2 · `HeroBanner` (antes `Hero`)
+
+**Uso:** bloque inicial con propuesta de valor + CTAs + cifras clave.
+**Fin:** comunicar en 5 segundos qué hace la empresa.
+**Dependencias:** `Container`, `Button`, `contracts`.
+
+### `src/sections/HeroBanner.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import { Button } from "../ui/Button";
+import type { CompanyProfile } from "../contracts";
+
+export interface HeroBannerProps {
+  company: CompanyProfile;
+  stats: readonly { label: string; value: string }[];
+}
+
+export function HeroBanner({ company, stats }: HeroBannerProps) {
+  return (
+    <section id="hero" className="hero" aria-labelledby="hero-title">
+      <Container>
+        <p className="hero__eyebrow">
+          {company.legalName} · desde {company.founded}
+        </p>
+        <h1 id="hero-title" className="hero__title">
+          {company.tagline}
+        </h1>
+        <p className="hero__lead">
+          Omega Vision diseña y construye infraestructura para sistemas donde
+          el fallo no es una opción: <strong>banca</strong>,{" "}
+          <strong>salud</strong>, <strong>aviación</strong> e{" "}
+          <strong>inteligencia artificial</strong>. Determinismo, trazabilidad
+          y portabilidad desde el primer commit.
+        </p>
+        <div className="hero__actions">
+          <Button href="#productos">Ver productos</Button>
+          <Button href="#contacto" variant="ghost">Contactar</Button>
+        </div>
+        <dl className="hero__stats">
+          {stats.map((stat) => (
+            <div key={stat.label}>
+              <dt>{stat.label}</dt>
+              <dd>{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </Container>
+    </section>
+  );
+}
+```
+
+---
+
+## D.3 · `EngineeringLaws` (antes `Laws`)
+
+**Uso:** renderiza las 8 Leyes Omega como lista numerada.
+**Fin:** explicar principios de ingeniería verificables.
+**Dependencias:** `Container`, `Section`, `Tag`, `contracts`.
+
+### `src/sections/EngineeringLaws.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import { Section } from "../ui/Section";
+import { Tag } from "../ui/Tag";
+import type { EngineeringLaw } from "../contracts";
+
+export interface EngineeringLawsProps {
+  laws: readonly EngineeringLaw[];
+}
+
+export function EngineeringLaws({ laws }: EngineeringLawsProps) {
+  return (
+    <Section id="leyes" titleId="leyes-title">
+      <Container>
+        <header className="section__header">
+          <h2 id="leyes-title">Las 8 Leyes Omega</h2>
+          <p>
+            Principios de ingeniería aplicados a cada producto. No son un
+            manifiesto: son criterios verificables en código, tests y operación.
+          </p>
+        </header>
+        <ol className="laws">
+          {laws.map((law) => (
+            <li key={law.id} className="laws__item">
+              <div className="laws__number" aria-hidden="true">
+                {String(law.id).padStart(2, "0")}
+              </div>
+              <div>
+                <h3>{law.name}</h3>
+                <p className="laws__statement">{law.statement}</p>
+                <p className="laws__enforcement">
+                  <Tag>Cómo se aplica</Tag> {law.enforcement}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Container>
+    </Section>
+  );
+}
+```
+
+---
+
+## D.4 · `ProductGrid` (antes `Products`)
+
+**Uso:** grid de productos con estado y dominio.
+**Fin:** inventario público del portafolio.
+**Dependencias:** `Container`, `Section`, `StatusBadge`, `Tag`, `contracts`.
+
+### `src/sections/ProductGrid.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import { Section } from "../ui/Section";
+import { StatusBadge } from "../ui/StatusBadge";
+import { Tag } from "../ui/Tag";
+import type { Product } from "../contracts";
+
+export interface ProductGridProps {
+  products: readonly Product[];
+}
+
+export function ProductGrid({ products }: ProductGridProps) {
+  return (
+    <Section id="productos" titleId="productos-title" tone="alt">
+      <Container>
+        <header className="section__header">
+          <h2 id="productos-title">Productos</h2>
+          <p>
+            Cada pieza está construida bajo las mismas leyes. Algunas están en
+            producción, otras en beta cerrada, otras son infraestructura interna.
+          </p>
+        </header>
+        <ul className="products">
+          {products.map((product) => (
+            <li key={product.slug} className="product">
+              <div className="product__top">
+                <h3 className="product__name">{product.name}</h3>
+                <StatusBadge status={product.status} />
+              </div>
+              <p className="product__tagline">{product.tagline}</p>
+              <p className="product__description">{product.description}</p>
+              <p className="product__domain">
+                <Tag>Dominio</Tag> {product.domain}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </Container>
+    </Section>
+  );
+}
+```
+
+---
+
+## D.5 · `UseCaseGrid` (antes `UseCases`)
+
+**Uso:** sectores donde aplican las leyes + problema/enfoque.
+**Fin:** comunicar casos reales (banca, salud, aviación, IA).
+**Dependencias:** `Container`, `Section`, `Tag`, `contracts`.
+
+### `src/sections/UseCaseGrid.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import { Section } from "../ui/Section";
+import { Tag } from "../ui/Tag";
+import type { UseCase } from "../contracts";
+
+export interface UseCaseGridProps {
+  cases: readonly UseCase[];
+}
+
+export function UseCaseGrid({ cases }: UseCaseGridProps) {
+  return (
+    <Section id="casos" titleId="casos-title">
+      <Container>
+        <header className="section__header">
+          <h2 id="casos-title">Casos de uso</h2>
+          <p>
+            Dónde aplican las leyes y los productos. Cuatro sectores donde el
+            fallo silencioso no es aceptable.
+          </p>
+        </header>
+        <div className="usecases">
+          {cases.map((useCase) => (
+            <article key={useCase.sector} className="usecase">
+              <h3 className="usecase__sector">{useCase.sector}</h3>
+              <div className="usecase__row">
+                <Tag tone="problem">Problema</Tag>
+                <p>{useCase.problem}</p>
+              </div>
+              <div className="usecase__row">
+                <Tag tone="approach">Enfoque</Tag>
+                <p>{useCase.approach}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </Container>
+    </Section>
+  );
+}
+```
+
+---
+
+## D.6 · `FounderProfile` (antes `About`)
+
+**Uso:** bio del fundador + nota legal.
+**Fin:** credibilidad humana sin prometer ubicación específica.
+**Dependencias:** `Container`, `Section`, `Avatar`, `contracts`.
+
+### `src/sections/FounderProfile.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import { Section } from "../ui/Section";
+import { Avatar } from "../ui/Avatar";
+import type { CompanyProfile } from "../contracts";
+
+export interface FounderProfileProps {
+  company: CompanyProfile;
+}
+
+export function FounderProfile({ company }: FounderProfileProps) {
+  const { founder, legalNote } = company;
+  return (
+    <Section id="sobre" titleId="sobre-title" tone="alt">
+      <Container size="narrow">
+        <header className="section__header">
+          <h2 id="sobre-title">Quién está detrás</h2>
+        </header>
+        <div className="about">
+          <Avatar name={founder.name} />
+          <div>
+            <h3 className="about__name">{founder.name}</h3>
+            <p className="about__role">{founder.role}</p>
+            <p className="about__bio">{founder.bio}</p>
+          </div>
+        </div>
+        <p className="about__note">{legalNote}</p>
+      </Container>
+    </Section>
+  );
+}
+```
+
+---
+
+## D.7 · `ContactPanel` (antes `Contact`)
+
+**Uso:** canales de contacto (email, GitHub, ubicación).
+**Fin:** conversión y colaboración.
+**Dependencias:** `Container`, `Section`, `contracts`.
+
+### `src/sections/ContactPanel.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import { Section } from "../ui/Section";
+import type { ContactChannels } from "../contracts";
+
+export interface ContactPanelProps {
+  channels: ContactChannels;
+}
+
+export function ContactPanel({ channels }: ContactPanelProps) {
+  return (
+    <Section id="contacto" titleId="contacto-title">
+      <Container size="narrow">
+        <header className="section__header">
+          <h2 id="contacto-title">Contacto y colaboración</h2>
+          <p>
+            Colaboraciones técnicas, integraciones y due diligence. Respondemos
+            a todos los correos en menos de 72 h.
+          </p>
+        </header>
+        <ul className="contact">
+          <li>
+            <span className="contact__label">Email</span>
+            <a href={`mailto:${channels.email}`}>{channels.email}</a>
+          </li>
+          <li>
+            <span className="contact__label">GitHub</span>
+            <a href={channels.github} target="_blank" rel="noreferrer noopener">
+              {channels.github.replace("https://", "")}
+            </a>
+          </li>
+          <li>
+            <span className="contact__label">Ubicación</span>
+            <span>{channels.location}</span>
+          </li>
+        </ul>
+      </Container>
+    </Section>
+  );
+}
+```
+
+---
+
+## D.8 · `SiteFooter` (antes `Footer`)
+
+**Uso:** copyright + nota legal + licencia.
+**Fin:** cierre institucional. Año calculado, no hardcoded.
+**Dependencias:** `Container`, `contracts`.
+
+### `src/sections/SiteFooter.tsx`
+
+```tsx
+import { Container } from "../ui/Container";
+import type { CompanyProfile } from "../contracts";
+
+export interface SiteFooterProps {
+  company: CompanyProfile;
+}
+
+export function SiteFooter({ company }: SiteFooterProps) {
+  const year = new Date().getFullYear();
+  return (
+    <footer className="site-footer">
+      <Container className="site-footer__inner">
+        <p>
+          © {year} {company.legalName}. Todos los derechos reservados.
+        </p>
+        <p className="site-footer__meta">
+          {company.legalNote} · Licencia Apache-2.0
+        </p>
+      </Container>
+    </footer>
+  );
+}
+```
+
+---
+
+# 🗂️ E. Hooks
+
+## E.1 · `useScrollSpy`
+
+**Uso:** detecta la sección visible actual según scroll, para resaltar enlace activo.
+**Fin:** orientación del usuario sin depender de librerías externas. Usa `IntersectionObserver`.
+**API:** `useScrollSpy(ids, { offset }) → string | null`.
+
+### `src/hooks/useScrollSpy.ts`
+
+```ts
+import { useEffect, useState } from "react";
+
+interface ScrollSpyOptions {
+  offset?: number;
+}
+
+export function useScrollSpy(ids: readonly string[], options: ScrollSpyOptions = {}): string | null {
+  const { offset = 0 } = options;
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ids.length === 0) return;
+
+    const elements = ids
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+
+    if (elements.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible.length > 0) {
+          setActiveId(visible[0].target.id);
+        }
+      },
+      {
+        rootMargin: `-${offset}px 0px -55% 0px`,
+        threshold: [0.1, 0.25, 0.5, 0.75],
+      },
+    );
+
+    elements.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [ids, offset]);
+
+  return activeId;
+}
+```
+
+---
+
+## E.2 · `useReducedMotion`
+
+**Uso:** consulta `prefers-reduced-motion`.
+**Fin:** permitir a componentes desactivar animaciones.
+**API:** `useReducedMotion() → boolean`.
+
+### `src/hooks/useReducedMotion.ts`
+
+```ts
+import { useEffect, useState } from "react";
+
+const QUERY = "(prefers-reduced-motion: reduce)";
+
+export function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(QUERY);
+    setReduced(mql.matches);
+
+    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+
+  return reduced;
+}
+```
+
+---
+
+# 🗂️ F. Utilidades
+
+## F.1 · `cx`
+
+**Uso:** concatenar classNames ignorando falsy.
+**Fin:** evitar `"a " + (cond ? "b" : "")` repetido.
+
+### `src/utils/cx.ts`
+
+```ts
+export type ClassValue = string | number | false | null | undefined;
+
+export function cx(...values: ClassValue[]): string {
+  return values.filter(Boolean).join(" ");
+}
+```
+
+---
+
+## F.2 · `formatInitials`
+
+**Uso:** extrae hasta 2 iniciales de un nombre.
+**Fin:** avatares sin assets, con reglas deterministas (Ley 1).
+**API:** `formatInitials("Javier Abreu") → "JA"`.
+
+### `src/utils/formatInitials.ts`
+
+```ts
+export function formatInitials(fullName: string, max = 2): string {
+  return fullName
+    .trim()
+    .split(/\s+/)
+    .map((part) => part[0] ?? "")
+    .filter(Boolean)
+    .slice(0, max)
+    .join("")
+    .toUpperCase();
+}
+```
+
+---
+
+## F.3 · `slugify`
+
+**Uso:** convierte texto a slug URL-safe.
+**Fin:** ids/anclas estables sin dependencias.
+**API:** `slugify("Cristal TV") → "cristal-tv"`.
+
+### `src/utils/slugify.ts`
+
+```ts
+const DIACRITICS = /[\u0300-\u036f]/g;
+
+export function slugify(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(DIACRITICS, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+```
+
+---
+
+# 🗂️ G. Infraestructura
+
+## G.1 · `content-registry`
+
+**Uso:** único punto de importación de datos de dominio.
+**Fin:** los componentes nunca leen de archivos sueltos; consumen `content/`.
+**Dependencias:** `contracts`.
+
+### `src/content/index.ts`
+
+```ts
+import type {
+  CompanyProfile,
+  EngineeringLaw,
+  Product,
+  UseCase,
+} from "../contracts";
+
+import { COMPANY } from "./company";
+import { LAWS } from "./laws";
+import { PRODUCTS } from "./products";
+import { USE_CASES } from "./useCases";
+
+export const content = {
+  company: COMPANY,
+  laws: LAWS,
+  products: PRODUCTS,
+  useCases: USE_CASES,
+} as const satisfies {
+  company: CompanyProfile;
+  laws: readonly EngineeringLaw[];
+  products: readonly Product[];
+  useCases: readonly UseCase[];
+};
+
+export type Content = typeof content;
+```
+
+---
+
+## G.2 · `vite-preset`
+
+**Uso:** configuración Vite reproducible.
+**Fin:** build determinista, sourcemaps en prod.
+
+### `vite.config.ts`
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  server: { port: 5173, strictPort: true },
+  build: { target: "es2022", sourcemap: true },
+});
+```
+
+---
+
+## G.3 · `tsconfig-preset`
+
+**Uso:** configuración TypeScript estricta.
+**Fin:** Ley 6 — contratos explícitos forzados por el compilador.
+
+### `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": ["src"]
+}
+```
+
+> Nota: añadido `noUncheckedIndexedAccess` y `exactOptionalPropertyTypes` para rigor profesional. Si generan ruido durante la migración, desactivar temporalmente.
+
+---
+
+# 🎨 H. Hojas de estilo por componente
+
+Las hojas CSS también se desarticulan. En lugar de un `styles.css` monolítico, cada capa tiene su propio archivo:
+
+### `src/styles/ui.css`
+
+```css
+/* Primitivas: Container · Section · Button · Tag · StatusBadge · Avatar */
+
+.container {
+  max-width: var(--layout-max);
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+}
+.container--narrow { max-width: var(--layout-narrow); }
+
+.section { padding: var(--space-20) 0; }
+.section--alt {
+  background: var(--color-bg-alt);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+.section__header { margin-bottom: var(--space-10); max-width: 62ch; }
+.section__header h2 { font-size: clamp(22px, 3.2vw, 34px); margin-bottom: var(--space-2); }
+.section__header p { color: var(--color-text-muted); }
+
+.btn {
+  display: inline-block;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  font-size: var(--fs-14);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn--primary { background: var(--color-accent); color: var(--color-text-inverse); }
+.btn--primary:hover { background: var(--color-accent-hover); text-decoration: none; }
+.btn--ghost { background: transparent; color: var(--color-text); border-color: var(--color-border); }
+.btn--ghost:hover { border-color: var(--color-text-muted); text-decoration: none; }
+
+.tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.03em;
+}
+.tag--muted { background: rgba(154,165,184,0.12); color: var(--color-text-muted); }
+.tag--problem { background: rgba(240,165,165,0.12); color: var(--color-problem); }
+.tag--approach { background: rgba(165,240,196,0.12); color: var(--color-approach); }
+
+.status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.status--production { background: rgba(165,240,196,0.15); color: var(--color-approach); }
+.status--beta { background: rgba(110,168,254,0.15); color: var(--color-accent); }
+.status--internal { background: rgba(154,165,184,0.15); color: var(--color-text-muted); }
+
+.avatar {
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+```
+
+### `src/styles/sections.css`
+
+```css
+/* Secciones: SiteHeader · Hero · Laws · Products · UseCases · About · Contact · Footer */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(11,13,16,0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--color-border);
+}
+.site-header__inner { display: flex; align-items: center; justify-content: space-between; height: var(--header-h); }
+.site-header__brand { display: flex; align-items: center; gap: var(--space-2); color: var(--color-text); font-weight: 600; }
+.site-header__brand:hover { text-decoration: none; }
+.site-header__mark { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--radius-md); background: var(--color-accent); color: var(--color-text-inverse); font-weight: 700; }
+.site-header__links { display: flex; gap: 22px; list-style: none; margin: 0; padding: 0; }
+.site-header__link { color: var(--color-text-muted); font-size: var(--fs-14); font-weight: 500; }
+.site-header__link.is-active { color: var(--color-text); }
+.site-header__link:hover { color: var(--color-text); text-decoration: none; }
+
+.hero { padding: var(--space-24) 0 var(--space-20); border-bottom: 1px solid var(--color-border); }
+.hero__eyebrow { font-family: var(--font-mono); font-size: var(--fs-13); color: var(--color-text-muted); margin-bottom: var(--space-3); }
+.hero__title { font-size: clamp(28px, 5vw, 52px); line-height: 1.1; letter-spacing: -0.02em; margin-bottom: var(--space-5); max-width: 18ch; }
+.hero__lead { color: var(--color-text-muted); font-size: var(--fs-17); max-width: 62ch; margin-bottom: var(--space-8); }
+.hero__lead strong { color: var(--color-text); }
+.hero__actions { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-12); }
+.hero__stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); max-width: 560px; margin: 0; padding-top: var(--space-6); border-top: 1px solid var(--color-border); }
+.hero__stats dt { color: var(--color-text-muted); font-size: var(--fs-12); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+.hero__stats dd { margin: var(--space-1) 0 0; font-size: var(--fs-26); font-weight: 700; }
+
+.laws { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-3); }
+.laws__item { display: grid; grid-template-columns: 60px 1fr; gap: var(--space-5); padding: 22px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.laws__number { font-family: var(--font-mono); font-size: var(--fs-26); font-weight: 700; color: var(--color-accent); line-height: 1; }
+.laws__item h3 { margin-bottom: var(--space-1); font-size: var(--fs-18); }
+.laws__statement { margin-bottom: var(--space-2); }
+.laws__enforcement { color: var(--color-text-muted); font-size: var(--fs-14); }
+
+.products { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
+.product { padding: 22px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); display: flex; flex-direction: column; }
+.product__top { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); margin-bottom: var(--space-1); }
+.product__name { font-size: var(--fs-17); }
+.product__tagline { color: var(--color-accent); font-size: var(--fs-13); font-family: var(--font-mono); margin-bottom: var(--space-3); }
+.product__description { color: var(--color-text-muted); margin-bottom: var(--space-4); flex-grow: 1; font-size: var(--fs-14); }
+.product__domain { font-size: var(--fs-13); color: var(--color-text-muted); }
+
+.usecases { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); }
+.usecase { padding: 22px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.usecase__sector { margin-bottom: var(--space-4); font-size: var(--fs-18); color: var(--color-accent); }
+.usecase__row { display: grid; grid-template-columns: 88px 1fr; gap: var(--space-3); margin-bottom: var(--space-2); }
+.usecase__row p { color: var(--color-text-muted); font-size: var(--fs-14); }
+
+.about { display: flex; gap: 22px; align-items: flex-start; margin-bottom: var(--space-6); }
+.about__name { margin-bottom: var(--space-1); font-size: var(--fs-20); }
+.about__role { color: var(--color-accent); margin-bottom: var(--space-3); font-family: var(--font-mono); font-size: var(--fs-13); }
+.about__bio { color: var(--color-text-muted); }
+.about__note { padding: var(--space-3) var(--space-4); background: var(--color-surface); border-left: 3px solid var(--color-accent); border-radius: var(--radius-sm); color: var(--color-text-muted); font-size: var(--fs-13); }
+
+.contact { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-3); }
+.contact li { display: grid; grid-template-columns: 110px 1fr; gap: var(--space-4); padding: var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); align-items: center; }
+.contact__label { font-family: var(--font-mono); font-size: var(--fs-12); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.site-footer { border-top: 1px solid var(--color-border); padding: var(--space-8) 0; background: var(--color-bg-alt); }
+.site-footer__inner { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.site-footer p { color: var(--color-text-muted); font-size: var(--fs-13); }
+.site-footer__meta { font-family: var(--font-mono); }
+
+@media (max-width: 640px) {
+  .site-header__links { display: none; }
+  .hero { padding: var(--space-12) 0 var(--space-10); }
+  .hero__stats { grid-template-columns: 1fr 1fr; }
+  .laws__item { grid-template-columns: 44px 1fr; padding: var(--space-4); }
+  .about { flex-direction: column; }
+  .usecase__row { grid-template-columns: 1fr; gap: var(--space-1); }
+  .contact li { grid-template-columns: 1fr; gap: var(--space-1); }
+}
+```
+
+### `src/styles/index.css`
+
+```css
+/* Punto de entrada único de estilos. Importa en orden. */
+@import "./tokens.css";
+@import "./base.css";
+@import "./ui.css";
+@import "./sections.css";
+```
+
+---
+
+# 🔗 I. Ensamblaje — `App.tsx` refactorizado
+
+### `src/App.tsx`
+
+```tsx
+import { content } from "./content";
+import { SiteHeader } from "./sections/SiteHeader";
+import { HeroBanner } from "./sections/HeroBanner";
+import { EngineeringLaws } from "./sections/EngineeringLaws";
+import { ProductGrid } from "./sections/ProductGrid";
+import { UseCaseGrid } from "./sections/UseCaseGrid";
+import { FounderProfile } from "./sections/FounderProfile";
+import { ContactPanel } from "./sections/ContactPanel";
+import { SiteFooter } from "./sections/SiteFooter";
+
+const HERO_STATS = [
+  { label: "Año de fundación", value: String(content.company.founded) },
+  { label: "Leyes de ingeniería", value: String(content.laws.length) },
+  { label: "Productos activos", value: String(content.products.length) },
+] as const;
+
+export default function App() {
+  return (
+    <>
+      <a href="#main" className="skip-link">Saltar al contenido principal</a>
+      <SiteHeader brandName={content.company.name} />
+      <main id="main">
+        <HeroBanner company={content.company} stats={HERO_STATS} />
+        <EngineeringLaws laws={content.laws} />
+        <ProductGrid products={content.products} />
+        <UseCaseGrid cases={content.useCases} />
+        <FounderProfile company={content.company} />
+        <ContactPanel channels={content.company.contact} />
+      </main>
+      <SiteFooter company={content.company} />
+    </>
+  );
+}
+```
+
+### `src/main.tsx`
+
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+import "./styles/index.css";
+
+const container = document.getElementById("root");
+if (!container) {
+  throw new Error("Elemento #root no encontrado en index.html");
+}
+
+ReactDOM.createRoot(container).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+```
+
+---
+
+# 📊 J. Tabla de mapeo — antes → después
+
+| Antes | Después | Motivo |
+|---|---|---|
+| `Nav` | `SiteHeader` | nombre genérico ambiguo |
+| `Hero` | `HeroBanner` | describe el bloque |
+| `Laws` | `EngineeringLaws` | especifica el dominio |
+| `Products` | `ProductGrid` | describe la vista |
+| `UseCases` | `UseCaseGrid` | describe la vista |
+| `About` | `FounderProfile` | evita "About" genérico |
+| `Contact` | `ContactPanel` | describe el bloque |
+| `Footer` | `SiteFooter` | desambigua |
+| `Law` | `EngineeringLaw` | dominio explícito |
+| `CompanyInfo` | `CompanyProfile` | convención |
+| `company.author` | `company.founder` | semántica |
+| `styles.css` | `tokens.css` + `base.css` + `ui.css` + `sections.css` | separación por capas |
+| `Math.random()` (si había) | ❌ eliminado | Ley 1 |
+
+---
+
+# ✅ K. Verificaciones post-refactor
+
+| Ley | Cómo se cumple ahora |
+|---|---|
+| **1. Determinismo** | Sin `Math.random()`, datos estáticos, ids derivados de `slugify`. |
+| **2. Trazabilidad** | Todo dato proviene de `src/content/`. Un solo punto de cambio. |
+| **3. Aislamiento** | Primitivas sin estado, secciones reciben props tipadas. |
+| **4. Idempotencia** | Render puro de datos, sin efectos laterales. |
+| **5. Degradación** | `throw` explícito si `#root` no existe (`main.tsx`). |
+| **6. Contratos** | `contracts/index.ts` + `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`. |
+| **7. Observabilidad** | `content-registry` como único punto auditable. |
+| **8. Portabilidad** | Vite + CSS nativo; sin dependencias de nube ni runtime específico. |
+
+---
+
+## 🚦 Próximo paso
+
+Este es el **kit de herramientas extraído y profesionalizado**. Lo que sigue, según el roadmap:
+
+1. **Empaquetar** `design-tokens`, `contracts`, `ui/*`, `hooks/*`, `utils/*` como paquete interno `@omega-vision/ui` (npm local o pnpm workspace).
+2. Repetir el mismo ejercicio de extracción para **`[PHASE-CORE]`**, **`[Q-OMEGA]`**, etc.
+3. Añadir tests con `vitest` (Ley 1: reproducibilidad).
+
+¿Sigo con **(1)** — empaquetar como workspace mono-repo — o **(2)** — desarticular el siguiente proyecto?

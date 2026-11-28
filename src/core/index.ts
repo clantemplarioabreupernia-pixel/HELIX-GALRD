@@ -13,5 +13,7 @@ export * from './helixAutodidactLoop';
 export * from './holographicAcademicLibrary';
 export * from './helixQuantumDisplayPhysics';
 export * from './helixHolographicContainers';
+export * from './helixExtendedLabEngines';
 export * from '../data/disciplines33';
+
 

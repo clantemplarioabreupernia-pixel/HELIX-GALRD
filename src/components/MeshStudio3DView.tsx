@@ -568,18 +568,47 @@ export function MeshStudio3DView({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
+    let gl2: WebGL2RenderingContext | null = null;
+    try {
+      gl2 = canvas.getContext('webgl2', {
+        antialias: true,
+        powerPreference: 'default',
+        failIfMajorPerformanceCaveat: false,
+      }) as WebGL2RenderingContext | null;
+    } catch {
+      gl2 = null;
+    }
+
+    if (!gl2 || gl2.isContextLost()) {
+      const ctx2d = canvas.getContext('2d');
+      if (ctx2d) {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.max(320, rect.width || 640);
+        canvas.height = Math.max(240, rect.height || 480);
+        ctx2d.fillStyle = '#0b1120';
+        ctx2d.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      return;
+    }
+
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        canvas,
+        context: gl2,
+        antialias: true,
+        powerPreference: 'default',
+      });
+    } catch {
+      return;
+    }
 
     const gl = renderer.getContext();
     const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
     const rendererStr = debugInfo
       ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL))
       : String(gl.getParameter(gl.RENDERER));
-    const isSoftwareGl = /SwiftShader|llvmpipe|Software|Microsoft Basic Render/i.test(rendererStr);
+    const isSoftwareGl = /SwiftShader|llvmpipe|softpipe|Software|Microsoft Basic Render/i.test(rendererStr);
     isSoftwareGlRef.current = isSoftwareGl;
 
     renderer.setPixelRatio(isSoftwareGl ? 1 : Math.min(window.devicePixelRatio || 1, 2));

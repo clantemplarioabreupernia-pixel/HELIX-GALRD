@@ -562,6 +562,20 @@ const CANONICAL_OPCODE_GLYPH_MAP: Record<string, string> = {
   BLOCH_ROT: 'ᛒᚣ',
   BVN_LATTICE: 'ᛉᛣ',
   WEBER_GUARD: 'ᚹᛋ',
+  GEOM_SEAL: 'ᛟᚹ',
+  CAUCHY_OPTIC: 'ᚩᚫ',
+  GALDR_SYNTH: 'ᚫᛣ',
+  ORBIT_KEPLER: 'ᚱᚩ',
+  KINETIC_P33: 'ᛟᛡ',
+  TENSOR_VM: 'ᚹᚹ',
+  QASM_STATE: 'ᛒᛡ',
+  TERRAIN_FBM: 'ᛗᛚ',
+  RIGID_COLLIDE: 'ᛤᚹ',
+  LIPSYNC_DSP: 'ᚫᛚ',
+  LEDGER_MERKLE: 'ᚠᛥ',
+  CHEM_THERMO: 'ᚳᛜ',
+  NANO_BRUS: 'ᛡᛥ',
+  DISNEY_KIN12: 'ᛞᛒ',
 };
 
 const OPERATOR_BASIS_GLYPHS: Record<string, string> = {

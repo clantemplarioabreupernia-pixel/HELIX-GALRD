@@ -117,29 +117,40 @@ export interface MiniGPTHistorySuggestion {
   predictedScript: string;
 }
 
+const WORD_TOKEN_CACHE = new Map<string, Set<string>>();
+
 function tokenizeWords(text: string): Set<string> {
+  const cached = WORD_TOKEN_CACHE.get(text);
+  if (cached) return cached;
   const clean = text
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9\s]/g, ' ');
-  return new Set(
+  const set = new Set(
     clean
       .split(/\s+/)
       .map((w) => w.trim())
       .filter((w) => w.length >= 3),
   );
+  if (WORD_TOKEN_CACHE.size > 2048) {
+    WORD_TOKEN_CACHE.clear();
+  }
+  WORD_TOKEN_CACHE.set(text, set);
+  return set;
 }
 
-function promptCosineOverlap(a: string, b: string): number {
-  const setA = tokenizeWords(a);
-  const setB = tokenizeWords(b);
+function setCosineOverlap(setA: Set<string>, setB: Set<string>): number {
   if (setA.size === 0 || setB.size === 0) return 0;
   let overlap = 0;
   for (const tok of setA) {
     if (setB.has(tok)) overlap++;
   }
   return overlap / Math.sqrt(setA.size * setB.size);
+}
+
+function promptCosineOverlap(a: string, b: string): number {
+  return setCosineOverlap(tokenizeWords(a), tokenizeWords(b));
 }
 
 function encodeScriptToSequence(
@@ -310,15 +321,32 @@ export class MiniGPTEngine {
   private finalLoss = 0;
   private finalValLoss = 0;
   private checkpointJson = '';
+  private predictionCache = new Map<string, MiniGPTPredictionResult>();
+  private recordTokenCache = new Map<string, Set<string>>();
 
   constructor(config: NeuralModelConfig = DEFAULT_NEURAL_CONFIG) {
     this.config = { ...config };
+  }
+
+  private invalidateInferenceCaches(): void {
+    this.predictionCache.clear();
+    this.recordTokenCache.clear();
+  }
+
+  private getRecordTokens(prompt: string): Set<string> {
+    let toks = this.recordTokenCache.get(prompt);
+    if (!toks) {
+      toks = tokenizeWords(prompt);
+      this.recordTokenCache.set(prompt, toks);
+    }
+    return toks;
   }
 
   /**
    * Parsea e indexa en memoria un flujo JSONL (`dataset_capsules.jsonl`).
    */
   public loadCapsulesFromJsonl(rawJsonl: string): MiniGPTDatasetParseResult {
+    this.invalidateInferenceCaches();
     this.parsedDataset = parseCapsulesJsonl(rawJsonl);
     return this.parsedDataset;
   }
@@ -351,6 +379,7 @@ export class MiniGPTEngine {
       if (imported.shaMatched && imported.model.vocab.length === baseline.vocab.length) {
         this.model = imported.model;
         this.checkpointJson = checkpointJson;
+        this.invalidateInferenceCaches();
         const first = imported.model.lossHistory[0];
         const last = imported.model.lossHistory[imported.model.lossHistory.length - 1];
         this.initialLoss = first?.loss ?? this.initialLoss;
@@ -416,6 +445,7 @@ export class MiniGPTEngine {
     this.finalLoss = lastPoint?.loss ?? 0;
     this.finalValLoss = lastPoint?.valLoss ?? 0;
     this.checkpointJson = exportNeuralCheckpointPth(this.model);
+    this.invalidateInferenceCaches();
 
     return {
       totalLinesRead: this.parsedDataset.totalLines,
@@ -502,6 +532,7 @@ export class MiniGPTEngine {
       this.finalValLoss = lastPoint.valLoss;
     }
     this.checkpointJson = exportNeuralCheckpointPth(this.model!);
+    this.invalidateInferenceCaches();
     return true;
   }
 
@@ -517,12 +548,24 @@ export class MiniGPTEngine {
       this.trainOnCertifiedHistory({ steps: 12 });
     }
 
+    const temp = options.temperature ?? 0.72;
+    const maxLines = options.maxLines ?? 9;
+    const cacheKey =
+      options.seed === undefined
+        ? `${prompt}|${temp}|${maxLines}|${this.model!.trainedSteps}|${this.parsedDataset.accepted.length}`
+        : null;
+    if (cacheKey) {
+      const hit = this.predictionCache.get(cacheKey);
+      if (hit) return hit;
+    }
+
+    const promptTokens = tokenizeWords(prompt);
     let matchedRecord: MiniGPTCapsuleRecord | null = null;
     let bestScore = 0;
 
     for (const rec of this.parsedDataset.accepted) {
       if (!rec.prompt) continue;
-      const score = promptCosineOverlap(prompt, rec.prompt);
+      const score = setCosineOverlap(promptTokens, this.getRecordTokens(rec.prompt));
       if (score > bestScore) {
         bestScore = score;
         matchedRecord = rec;
@@ -560,13 +603,13 @@ export class MiniGPTEngine {
       this.model!,
       INITIAL_COMPOUND_VOCABULARY,
       DEFAULT_HELIX_CELLS,
-      options.temperature ?? 0.72,
-      options.maxLines ?? 9,
+      temp,
+      maxLines,
       seedPrefix,
       options.seed ?? (hash >>> 0),
     );
 
-    return {
+    const result: MiniGPTPredictionResult = {
       prompt,
       predictedScript: generation.script,
       seedPrefix,
@@ -581,6 +624,14 @@ export class MiniGPTEngine {
       godelValid: generation.godelReport.valid,
       generation,
     };
+
+    if (cacheKey) {
+      if (this.predictionCache.size > 128) {
+        this.predictionCache.clear();
+      }
+      this.predictionCache.set(cacheKey, result);
+    }
+    return result;
   }
 
   /**
@@ -620,14 +671,15 @@ export class MiniGPTEngine {
     const richCandidates = candidates.filter((c) => !isTrivialGreeting(c.prompt));
     const pool = richCandidates.length > 0 ? richCandidates : candidates;
 
+    const qTokens = qNorm.length >= 2 ? tokenizeWords(qNorm) : null;
     const totalPool = Math.max(1, this.parsedDataset.totalLines);
     const scored = pool.map((rec) => {
       const pNorm = rec.prompt.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const recency = (rec.index + 1) / totalPool;
       let matchScore = 0;
 
-      if (qNorm.length >= 2) {
-        const cosine = promptCosineOverlap(qNorm, pNorm);
+      if (qTokens) {
+        const cosine = setCosineOverlap(qTokens, this.getRecordTokens(pNorm));
         const substringHit = pNorm.includes(qNorm) ? 0.85 : 0;
         matchScore = Math.max(cosine, substringHit);
       }

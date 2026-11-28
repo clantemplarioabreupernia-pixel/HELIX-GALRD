@@ -1,0 +1,1662 @@
+# 🔧 DESARTICULACIÓN — Aether Thermal Node
+
+**Estrategia:** convertir el microservicio monolítico en **15 piezas reutilizables**, cada una con un propósito único, API pública estable y dependencias mínimas. Todas usan **solo biblioteca estándar de Go 1.22+** (cero dependencias externas), respetan las reglas R1–R5 y siguen nomenclatura profesional en inglés.
+
+---
+
+## 0. Mapa de piezas
+
+| # | Paquete | Uso | Consumidores en el Omega | Nuevo |
+|---|---|---|---|---|
+| 1 | `sysfs` | Lectura segura y tolerante de `/sys` | Todos | reciclado |
+| 2 | `topology` | Topología de CPU (cores, sockets, freqs) | Q-Omega, Cristal TV | reciclado |
+| 3 | `thermal` | Zonas térmicas y temperaturas | Todos | reciclado |
+| 4 | `pressure` | PSI: presión de CPU/IO/memoria | Q-Omega, Crystal Vault | **nuevo** |
+| 5 | `snapshot` | Agregador con caché TTL | API, CLI, alertas | **nuevo** |
+| 6 | `metrics` | Exportador Prometheus/OpenMetrics | Grafana, observabilidad | reciclado |
+| 7 | `alerts` | Evaluador de umbrales (warn/crit) | Cristal TV, Q-Omega | **nuevo** |
+| 8 | `history` | Ring buffer en memoria (tendencias) | Omega Music, dashboards | **nuevo** |
+| 9 | `ratelimit` | Token bucket (protege sysfs) | Interno | **nuevo** |
+| 10 | `config` | Carga flags + env (con defaults) | main | **nuevo** |
+| 11 | `logging` | Logger JSON (`slog`) | main, middlewares | **nuevo** |
+| 12 | `middleware` | Request-ID, log, recovery, CORS | API | **nuevo** |
+| 13 | `api` | Servidor HTTP (rutas versionadas) | Todos | reciclado |
+| 14 | `cli` | CLI standalone (read/watch/metrics) | Operadores | **nuevo** |
+| 15 | `version` | Metadatos de build (`-ldflags`) | Todos | **nuevo** |
+
+---
+
+## 1. Correcciones de nomenclatura aplicadas
+
+| Antes | Ahora | Motivo |
+|---|---|---|
+| `Server{}` literal | `api.NewServer(cfg, …)` | Constructor con dependencias inyectadas |
+| `writeError` genérico | `api.writeProblem` (RFC 7807 minimal) | Claridad semántica |
+| `handleX` sin contexto | `http.Handler` con `middleware.Chain` | Composición estándar |
+| Lógica de caché dentro de handlers | `snapshot.Provider` con TTL | Responsabilidad única |
+| Flags + env dispersos | `config.Load()` | Centraliza defaults |
+| Sin rate limit | `ratelimit.Limiter` en cada lectura | Evita saturar `sysfs` |
+| Sin tests sistemáticos | 4 paquetes con tests + tabla al final | Calidad medible |
+| Nombres genéricos | Terminología Linux estándar (`thermal_zone`, `physical_package_id`, `avg10`) | Alineación con kernel |
+
+---
+
+## 2. Pieza 1 — `sysfs`
+
+**Propósito:** lectura tolerante de entradas `sysfs` (`ErrNotFound` en lugar de pánico cuando la entrada no existe o no es Linux).
+**Consumidores:** `topology`, `thermal`, `pressure`.
+
+```go
+// Package sysfs provides safe, tolerant readers for Linux sysfs entries.
+//
+// Reads never panic: missing entries return ErrNotFound so callers can
+// degrade gracefully on non-Linux hosts or sandboxed containers.
+package sysfs
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+// Root is the sysfs mount point. Overridable for tests.
+var Root = "/sys"
+
+// ErrNotFound indicates the requested sysfs entry is absent.
+var ErrNotFound = errors.New("sysfs: entry not found")
+
+// ReadString reads a sysfs file and trims surrounding whitespace.
+func ReadString(parts ...string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(append([]string{Root}, parts...)...))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
+}
+
+// ReadInt reads a sysfs file as int64.
+func ReadInt(parts ...string) (int64, error) {
+	s, err := ReadString(parts...)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(s, 10, 64)
+}
+
+// ReadFloat reads a sysfs file as float64.
+func ReadFloat(parts ...string) (float64, error) {
+	s, err := ReadString(parts...)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseFloat(s, 64)
+}
+
+// Exists reports whether a sysfs entry exists.
+func Exists(parts ...string) bool {
+	_, err := os.Stat(filepath.Join(append([]string{Root}, parts...)...))
+	return err == nil
+}
+
+// List returns the names of entries directly under a sysfs directory.
+func List(parts ...string) ([]string, error) {
+	dir := filepath.Join(append([]string{Root}, parts...)...)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out, nil
+}
+```
+
+---
+
+## 3. Pieza 2 — `topology`
+
+**Propósito:** descubrir CPUs lógicas, núcleos físicos, sockets, siblings e hiperfrecuencia.
+**Consumidores:** `snapshot`, `api`, `metrics`.
+
+```go
+// Package topology discovers the CPU topology exposed by Linux sysfs.
+package topology
+
+import (
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/JavierAbreu/aether-thermal/internal/sysfs"
+)
+
+// Core describes one logical CPU.
+type Core struct {
+	CPU            int   `json:"cpu"`
+	CoreID         int   `json:"core_id"`
+	PackageID      int   `json:"package_id"`
+	ThreadSiblings []int `json:"thread_siblings,omitempty"`
+	Online         bool  `json:"online"`
+	CurrentFreqMHz int64 `json:"current_freq_mhz,omitempty"`
+}
+
+// Topology is the aggregated CPU topology.
+type Topology struct {
+	Cores        []Core `json:"cores"`
+	LogicalCPUs  int    `json:"logical_cpus"`
+	PhysicalCPUs int    `json:"physical_cores"`
+	Sockets      int    `json:"sockets"`
+}
+
+// Discover walks /sys/devices/system/cpu and returns the current topology.
+func Discover() (*Topology, error) {
+	names, err := sysfs.List("devices", "system", "cpu")
+	if err != nil {
+		return nil, err
+	}
+
+	var cpus []int
+	for _, n := range names {
+		if !strings.HasPrefix(n, "cpu") {
+			continue
+		}
+		id, err := strconv.Atoi(strings.TrimPrefix(n, "cpu"))
+		if err != nil {
+			continue
+		}
+		cpus = append(cpus, id)
+	}
+	sort.Ints(cpus)
+
+	t := &Topology{}
+	phys := make(map[[2]int]struct{})
+	sockets := make(map[int]struct{})
+
+	for _, id := range cpus {
+		dir := filepath.Join("devices", "system", "cpu", "cpu"+strconv.Itoa(id))
+		coreID, err := sysfs.ReadInt(dir, "topology", "core_id")
+		if err != nil {
+			continue
+		}
+		pkgID, err := sysfs.ReadInt(dir, "topology", "physical_package_id")
+		if err != nil {
+			continue
+		}
+
+		online := true
+		if v, err := sysfs.ReadInt(dir, "online"); err == nil {
+			online = v == 1
+		}
+
+		sibStr, _ := sysfs.ReadString(dir, "topology", "thread_siblings_list")
+		siblings := ParseCPUList(sibStr)
+
+		var freq int64
+		if v, err := sysfs.ReadInt(dir, "cpufreq", "scaling_cur_freq"); err == nil {
+			freq = v / 1000 // kHz → MHz
+		}
+
+		t.Cores = append(t.Cores, Core{
+			CPU:            id,
+			CoreID:         int(coreID),
+			PackageID:      int(pkgID),
+			ThreadSiblings: siblings,
+			Online:         online,
+			CurrentFreqMHz: freq,
+		})
+		phys[[2]int{int(pkgID), int(coreID)}] = struct{}{}
+		sockets[int(pkgID)] = struct{}{}
+	}
+
+	t.LogicalCPUs = len(t.Cores)
+	t.PhysicalCPUs = len(phys)
+	t.Sockets = len(sockets)
+	return t, nil
+}
+
+// ParseCPUList parses a Linux CPU list such as "0-3,5,7-9".
+func ParseCPUList(s string) []int {
+	if s == "" {
+		return nil
+	}
+	var out []int
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if a, b, ok := strings.Cut(part, "-"); ok {
+			lo, err1 := strconv.Atoi(strings.TrimSpace(a))
+			hi, err2 := strconv.Atoi(strings.TrimSpace(b))
+			if err1 != nil || err2 != nil || lo > hi {
+				continue
+			}
+			for i := lo; i <= hi; i++ {
+				out = append(out, i)
+			}
+		} else if n, err := strconv.Atoi(part); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+```
+
+---
+
+## 4. Pieza 3 — `thermal`
+
+**Propósito:** leer todas las zonas térmicas, temperaturas, máximos y críticos.
+**Consumidores:** `snapshot`, `alerts`, `metrics`, `api`.
+
+```go
+// Package thermal reads /sys/class/thermal thermal zones.
+package thermal
+
+import (
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/JavierAbreu/aether-thermal/internal/sysfs"
+)
+
+// Zone is one thermal zone reported by the kernel.
+type Zone struct {
+	Name        string  `json:"name"`
+	Type        string  `json:"type"`
+	TempCelsius float64 `json:"temp_celsius"`
+	MaxCelsius  float64 `json:"max_celsius,omitempty"`
+	CritCelsius float64 `json:"crit_celsius,omitempty"`
+}
+
+// Snapshot is the thermal state at a point in time.
+type Snapshot struct {
+	Zones      []Zone  `json:"zones"`
+	MaxCelsius float64 `json:"max_celsius"`
+	AvgCelsius float64 `json:"avg_celsius"`
+	Count      int     `json:"count"`
+}
+
+// Read returns the current thermal state.
+func Read() (*Snapshot, error) {
+	names, err := sysfs.List("class", "thermal")
+	if err != nil {
+		return nil, err
+	}
+
+	var zones []Zone
+	for _, n := range names {
+		if !strings.HasPrefix(n, "thermal_zone") {
+			continue
+		}
+		dir := filepath.Join("class", "thermal", n)
+		z := Zone{Name: n}
+
+		if v, err := sysfs.ReadString(dir, "type"); err == nil {
+			z.Type = v
+		}
+		if v, err := sysfs.ReadInt(dir, "temp"); err == nil {
+			z.TempCelsius = float64(v) / 1000.0
+		}
+		if v, err := sysfs.ReadInt(dir, "max"); err == nil {
+			z.MaxCelsius = float64(v) / 1000.0
+		}
+		if v, err := sysfs.ReadInt(dir, "crit"); err == nil {
+			z.CritCelsius = float64(v) / 1000.0
+		}
+		zones = append(zones, z)
+	}
+	sort.Slice(zones, func(i, j int) bool { return zones[i].Name < zones[j].Name })
+
+	s := &Snapshot{Zones: zones, Count: len(zones)}
+	if len(zones) == 0 {
+		return s, nil
+	}
+	var sum float64
+	for _, z := range zones {
+		sum += z.TempCelsius
+		if z.TempCelsius > s.MaxCelsius {
+			s.MaxCelsius = z.TempCelsius
+		}
+	}
+	s.AvgCelsius = sum / float64(len(zones))
+	return s, nil
+}
+```
+
+---
+
+## 5. Pieza 4 — `pressure` *(nueva)*
+
+**Propósito:** leer `/proc/pressure/*` (PSI). Correlaciona la presión de CPU/IO/memoria con picos térmicos — clave para Q-Omega (compilación) y Omega Music (renders).
+**Consumidores:** `snapshot`, `metrics`, `alerts`.
+
+```go
+// Package pressure reads Linux PSI (Pressure Stall Information) from
+// /proc/pressure/{cpu,memory,io}.
+package pressure
+
+import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+// Root is the procfs mount point. Overridable for tests.
+var Root = "/proc"
+
+// Resource is the metric set for one pressure resource.
+type Resource struct {
+	SomeAvg10  float64 `json:"some_avg10"`
+	SomeAvg60  float64 `json:"some_avg60"`
+	SomeAvg300 float64 `json:"some_avg300"`
+	FullAvg10  float64 `json:"full_avg10,omitempty"`
+	FullAvg60  float64 `json:"full_avg60,omitempty"`
+	FullAvg300 float64 `json:"full_avg300,omitempty"`
+	Total      uint64  `json:"total_usec"`
+}
+
+// Snapshot is the pressure state for all resources.
+type Snapshot struct {
+	CPU    *Resource `json:"cpu,omitempty"`
+	Memory *Resource `json:"memory,omitempty"`
+	IO     *Resource `json:"io,omitempty"`
+}
+
+// Read returns the current PSI state. Missing files are reported as nil.
+func Read() *Snapshot {
+	s := &Snapshot{}
+	if r, err := readOne("cpu"); err == nil {
+		s.CPU = r
+	}
+	if r, err := readOne("memory"); err == nil {
+		s.Memory = r
+	}
+	if r, err := readOne("io"); err == nil {
+		s.IO = r
+	}
+	return s
+}
+
+func readOne(resource string) (*Resource, error) {
+	b, err := os.ReadFile(filepath.Join(Root, "pressure", resource))
+	if err != nil {
+		return nil, err
+	}
+	r := &Resource{}
+	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+		kind, rest, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		fields := parseFields(rest)
+		switch kind {
+		case "some":
+			r.SomeAvg10 = fields["avg10"]
+			r.SomeAvg60 = fields["avg60"]
+			r.SomeAvg300 = fields["avg300"]
+			r.Total = uint64(fields["total"])
+		case "full":
+			r.FullAvg10 = fields["avg10"]
+			r.FullAvg60 = fields["avg60"]
+			r.FullAvg300 = fields["avg300"]
+		}
+	}
+	return r, nil
+}
+
+func parseFields(s string) map[string]float64 {
+	out := make(map[string]float64, 4)
+	for _, kv := range strings.Fields(s) {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			out[k] = f
+		}
+	}
+	return out
+}
+```
+
+---
+
+## 6. Pieza 5 — `snapshot`
+
+**Propósito:** agregar `topology + thermal + pressure` en una sola llamada con **caché TTL** para proteger `sysfs` de lecturas repetidas.
+**Consumidores:** `api`, `cli`, `alerts`, `metrics`.
+
+```go
+// Package snapshot aggregates topology, thermal and pressure readings
+// under a short TTL to protect sysfs from redundant reads.
+package snapshot
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"github.com/JavierAbreu/aether-thermal/internal/pressure"
+	"github.com/JavierAbreu/aether-thermal/internal/thermal"
+	"github.com/JavierAbreu/aether-thermal/internal/topology"
+)
+
+// Snapshot is the combined state at a point in time.
+type Snapshot struct {
+	Timestamp time.Time          `json:"timestamp"`
+	Topology  *topology.Topology `json:"topology"`
+	Thermal   *thermal.Snapshot  `json:"thermal"`
+	Pressure  *pressure.Snapshot `json:"pressure,omitempty"`
+}
+
+// Provider caches a Snapshot for TTL duration.
+type Provider struct {
+	ttl time.Duration
+
+	mu       sync.Mutex
+	cached   *Snapshot
+	cachedAt time.Time
+}
+
+// New returns a Provider with the given TTL. TTL <= 0 disables caching.
+func New(ttl time.Duration) *Provider {
+	return &Provider{ttl: ttl}
+}
+
+// Get returns a Snapshot, reusing the cache when fresh.
+func (p *Provider) Get(ctx context.Context) (*Snapshot, error) {
+	if p.ttl > 0 {
+		p.mu.Lock()
+		if p.cached != nil && time.Since(p.cachedAt) < p.ttl {
+			out := p.cached
+			p.mu.Unlock()
+			return out, nil
+		}
+		p.mu.Unlock()
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	topo, err := topology.Discover()
+	if err != nil {
+		return nil, err
+	}
+	therm, err := thermal.Read()
+	if err != nil {
+		return nil, err
+	}
+	s := &Snapshot{
+		Timestamp: time.Now().UTC(),
+		Topology:  topo,
+		Thermal:   therm,
+		Pressure:  pressure.Read(),
+	}
+
+	if p.ttl > 0 {
+		p.mu.Lock()
+		p.cached = s
+		p.cachedAt = time.Now()
+		p.mu.Unlock()
+	}
+	return s, nil
+}
+```
+
+---
+
+## 7. Pieza 6 — `metrics`
+
+**Propósito:** renderizar Prometheus/OpenMetrics sin dependencias.
+**Consumidores:** Prometheus, Grafana, `/metrics`.
+
+```go
+// Package metrics renders a Prometheus-compatible text exposition.
+package metrics
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/JavierAbreu/aether-thermal/internal/snapshot"
+)
+
+// Render produces the Prometheus text exposition for s.
+func Render(s *snapshot.Snapshot) string {
+	var b strings.Builder
+	b.Grow(2048)
+
+	writeGauge(&b, "aether_thermal_cpu_count", "Number of logical CPUs", float64(s.Topology.LogicalCPUs))
+	writeGauge(&b, "aether_thermal_physical_core_count", "Number of physical cores", float64(s.Topology.PhysicalCPUs))
+	writeGauge(&b, "aether_thermal_socket_count", "Number of CPU sockets", float64(s.Topology.Sockets))
+	writeGauge(&b, "aether_thermal_max_temp_celsius", "Maximum temperature across zones", s.Thermal.MaxCelsius)
+	writeGauge(&b, "aether_thermal_avg_temp_celsius", "Average temperature across zones", s.Thermal.AvgCelsius)
+
+	b.WriteString("# HELP aether_thermal_zone_temp_celsius Thermal zone temperature in Celsius.\n")
+	b.WriteString("# TYPE aether_thermal_zone_temp_celsius gauge\n")
+	for _, z := range s.Thermal.Zones {
+		fmt.Fprintf(&b, "aether_thermal_zone_temp_celsius{zone=%q,type=%q} %.3f\n",
+			z.Name, z.Type, z.TempCelsius)
+	}
+
+	b.WriteString("# HELP aether_thermal_cpu_freq_mhz Current CPU frequency in MHz.\n")
+	b.WriteString("# TYPE aether_thermal_cpu_freq_mhz gauge\n")
+	for _, c := range s.Topology.Cores {
+		if c.CurrentFreqMHz == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "aether_thermal_cpu_freq_mhz{cpu=\"%d\",core=\"%d\",package=\"%d\"} %d\n",
+			c.CPU, c.CoreID, c.PackageID, c.CurrentFreqMHz)
+	}
+
+	if s.Pressure != nil {
+		if s.Pressure.CPU != nil {
+			writeGauge(&b, "aether_thermal_pressure_cpu_some_avg10", "PSI cpu some avg10", s.Pressure.CPU.SomeAvg10)
+			writeGauge(&b, "aether_thermal_pressure_cpu_full_avg10", "PSI cpu full avg10", s.Pressure.CPU.FullAvg10)
+		}
+		if s.Pressure.Memory != nil {
+			writeGauge(&b, "aether_thermal_pressure_memory_some_avg10", "PSI memory some avg10", s.Pressure.Memory.SomeAvg10)
+			writeGauge(&b, "aether_thermal_pressure_memory_full_avg10", "PSI memory full avg10", s.Pressure.Memory.FullAvg10)
+		}
+		if s.Pressure.IO != nil {
+			writeGauge(&b, "aether_thermal_pressure_io_some_avg10", "PSI io some avg10", s.Pressure.IO.SomeAvg10)
+			writeGauge(&b, "aether_thermal_pressure_io_full_avg10", "PSI io full avg10", s.Pressure.IO.FullAvg10)
+		}
+	}
+
+	return b.String()
+}
+
+func writeGauge(b *strings.Builder, name, help string, v float64) {
+	fmt.Fprintf(b, "# HELP %s %s.\n# TYPE %s gauge\n%s %.3f\n", name, help, name, name, v)
+}
+```
+
+---
+
+## 8. Pieza 7 — `alerts` *(nueva)*
+
+**Propósito:** evaluar umbrales configurables (`warning` / `critical`) por zona térmica o cualquier zona.
+**Consumidores:** `api` (endpoint `/v1/alerts`), Cristal TV (bloquear grabación), Q-Omega (frenar builds).
+
+```go
+// Package alerts evaluates thermal thresholds against a Snapshot.
+package alerts
+
+import (
+	"fmt"
+	"sort"
+
+	"github.com/JavierAbreu/aether-thermal/internal/snapshot"
+)
+
+// Severity levels ordered from least to most urgent.
+type Severity int
+
+const (
+	SeverityOK Severity = iota
+	SeverityWarning
+	SeverityCritical
+)
+
+func (s Severity) String() string {
+	switch s {
+	case SeverityWarning:
+		return "warning"
+	case SeverityCritical:
+		return "critical"
+	default:
+		return "ok"
+	}
+}
+
+// Rule applies to a single zone. Empty Zone means "any zone".
+type Rule struct {
+	Zone  string
+	Warn  float64 // °C
+	Crit  float64 // °C
+}
+
+// Alert is one active alert.
+type Alert struct {
+	Zone     string   `json:"zone"`
+	Type     string   `json:"type"`
+	TempC    float64  `json:"temp_c"`
+	Severity Severity `json:"-"`
+	Level    string   `json:"level"`
+	Message  string   `json:"message"`
+}
+
+// Evaluator applies rules to snapshots.
+type Evaluator struct {
+	rules []Rule
+}
+
+// New builds an Evaluator. Rules are copied; the slice is not retained.
+func New(rules []Rule) *Evaluator {
+	out := make([]Rule, len(rules))
+	copy(out, rules)
+	return &Evaluator{rules: out}
+}
+
+// Evaluate returns the alerts triggered by s (may be empty).
+func (e *Evaluator) Evaluate(s *snapshot.Snapshot) []Alert {
+	var out []Alert
+	for _, z := range s.Thermal.Zones {
+		for _, r := range e.rules {
+			if r.Zone != "" && r.Zone != z.Name {
+				continue
+			}
+			sev := SeverityOK
+			switch {
+			case r.Crit > 0 && z.TempCelsius >= r.Crit:
+				sev = SeverityCritical
+			case r.Warn > 0 && z.TempCelsius >= r.Warn:
+				sev = SeverityWarning
+			}
+			if sev == SeverityOK {
+				continue
+			}
+			out = append(out, Alert{
+				Zone:     z.Name,
+				Type:     z.Type,
+				TempC:    z.TempCelsius,
+				Severity: sev,
+				Level:    sev.String(),
+				Message: fmt.Sprintf("%s %s: %.1f°C (warn=%.1f crit=%.1f)",
+					z.Name, z.Type, z.TempCelsius, r.Warn, r.Crit),
+			})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Severity != out[j].Severity {
+			return out[i].Severity > out[j].Severity
+		}
+		return out[i].Zone < out[j].Zone
+	})
+	return out
+}
+```
+
+---
+
+## 9. Pieza 8 — `history` *(nueva)*
+
+**Propósito:** ring buffer en memoria para tendencias (¿sube la temperatura durante un build?). Sin `math/rand`.
+**Consumidores:** `api` (`/v1/history`), dashboards, Omega Music.
+
+```go
+// Package history keeps an in-memory ring buffer of recent samples.
+package history
+
+import (
+	"sync"
+	"time"
+)
+
+// Sample is one point of thermal history.
+type Sample struct {
+	Time   time.Time `json:"time"`
+	MaxC   float64   `json:"max_c"`
+	AvgC   float64   `json:"avg_c"`
+	CPUs   int       `json:"cpus"`
+}
+
+// Stats summarizes the buffer contents.
+type Stats struct {
+	Count   int     `json:"count"`
+	MinC    float64 `json:"min_c"`
+	MaxC    float64 `json:"max_c"`
+	AvgC    float64 `json:"avg_c"`
+}
+
+// Buffer is a fixed-size, thread-safe ring buffer.
+type Buffer struct {
+	mu   sync.RWMutex
+	data []Sample
+	next int
+	full bool
+}
+
+// New creates a Buffer with the given capacity. capacity <= 0 panics.
+func New(capacity int) *Buffer {
+	if capacity <= 0 {
+		panic("history: capacity must be > 0")
+	}
+	return &Buffer{data: make([]Sample, capacity)}
+}
+
+// Add appends a sample, overwriting the oldest when full.
+func (b *Buffer) Add(s Sample) {
+	b.mu.Lock()
+	b.data[b.next] = s
+	b.next = (b.next + 1) % len(b.data)
+	if b.next == 0 {
+		b.full = true
+	}
+	b.mu.Unlock()
+}
+
+// Snapshot returns samples in chronological order.
+func (b *Buffer) Snapshot() []Sample {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if !b.full && b.next == 0 {
+		return nil
+	}
+	out := make([]Sample, 0, b.sizeLocked())
+	if b.full {
+		out = append(out, b.data[b.next:]...)
+	}
+	out = append(out, b.data[:b.next]...)
+	return out
+}
+
+// Stats returns aggregate stats over the buffer.
+func (b *Buffer) Stats() Stats {
+	samples := b.Snapshot()
+	st := Stats{Count: len(samples)}
+	if st.Count == 0 {
+		return st
+	}
+	st.MinC, st.MaxC = samples[0].MaxC, samples[0].MaxC
+	var sum float64
+	for _, s := range samples {
+		sum += s.MaxC
+		if s.MaxC < st.MinC {
+			st.MinC = s.MaxC
+		}
+		if s.MaxC > st.MaxC {
+			st.MaxC = s.MaxC
+		}
+	}
+	st.AvgC = sum / float64(st.Count)
+	return st
+}
+
+func (b *Buffer) sizeLocked() int {
+	if b.full {
+		return len(b.data)
+	}
+	return b.next
+}
+```
+
+---
+
+## 10. Pieza 9 — `ratelimit` *(nueva)*
+
+**Propósito:** token bucket para evitar saturar `sysfs` si muchos consumidores consultan a la vez.
+**Consumidores:** `snapshot.Provider` (opcional), handlers HTTP.
+
+```go
+// Package ratelimit implements a token-bucket rate limiter.
+package ratelimit
+
+import (
+	"context"
+	"math"
+	"sync"
+	"time"
+)
+
+// Limiter is a thread-safe token bucket.
+type Limiter struct {
+	mu     sync.Mutex
+	rate   float64
+	burst  float64
+	tokens float64
+	last   time.Time
+}
+
+// New creates a Limiter allowing rate tokens/second with given burst capacity.
+func New(rate float64, burst int) *Limiter {
+	return &Limiter{
+		rate:   rate,
+		burst:  float64(burst),
+		tokens: float64(burst),
+		last:   time.Now(),
+	}
+}
+
+// Allow reports whether a token is available and consumes it.
+func (l *Limiter) Allow() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	l.tokens = math.Min(l.burst, l.tokens+now.Sub(l.last).Seconds()*l.rate)
+	l.last = now
+
+	if l.tokens < 1 {
+		return false
+	}
+	l.tokens--
+	return true
+}
+
+// Wait blocks until a token is available or ctx is cancelled.
+func (l *Limiter) Wait(ctx context.Context) error {
+	for {
+		if l.Allow() {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+}
+```
+
+---
+
+## 11. Pieza 10 — `config`
+
+**Propósito:** centralizar defaults, flags y variables de entorno.
+**Consumidores:** `main`.
+
+```go
+// Package config loads runtime configuration from flags and environment.
+package config
+
+import (
+	"flag"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/JavierAbreu/aether-thermal/internal/alerts"
+)
+
+// Config holds every tunable of the service.
+type Config struct {
+	Addr        string
+	LogLevel    string
+	CacheTTL    time.Duration
+	SampleEvery time.Duration
+	HistorySize int
+	AlertRules  []alerts.Rule
+}
+
+// Load parses CLI flags and merges environment defaults.
+func Load(args []string) (Config, error) {
+	fs := flag.NewFlagSet("aether-thermal", flag.ContinueOnError)
+
+	cfg := Config{}
+
+	fs.StringVar(&cfg.Addr, "addr", env("AETHER_ADDR", ":8090"), "HTTP listen address")
+	fs.StringVar(&cfg.LogLevel, "log", env("AETHER_LOG", "info"), "log level: debug|info|warn|error")
+	fs.DurationVar(&cfg.CacheTTL, "cache-ttl", envDuration("AETHER_CACHE_TTL", 1*time.Second), "snapshot cache TTL")
+	fs.DurationVar(&cfg.SampleEvery, "sample-every", envDuration("AETHER_SAMPLE_EVERY", 2*time.Second), "history sample interval")
+	fs.IntVar(&cfg.HistorySize, "history", envInt("AETHER_HISTORY", 180), "history buffer size (samples)")
+
+	warn := fs.Float64("alert-warn", envFloat("AETHER_ALERT_WARN", 80), "global warning threshold °C")
+	crit := fs.Float64("alert-crit", envFloat("AETHER_ALERT_CRIT", 95), "global critical threshold °C")
+
+	if err := fs.Parse(args); err != nil {
+		return cfg, err
+	}
+	cfg.AlertRules = []alerts.Rule{{Zone: "", Warn: *warn, Crit: *crit}}
+	return cfg, nil
+}
+
+func env(k, d string) string {
+	if v, ok := os.LookupEnv(k); ok && v != "" {
+		return v
+	}
+	return d
+}
+
+func envInt(k string, d int) int {
+	if v, ok := os.LookupEnv(k); ok {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return d
+}
+
+func envFloat(k string, d float64) float64 {
+	if v, ok := os.LookupEnv(k); ok {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
+		}
+	}
+	return d
+}
+
+func envDuration(k string, d time.Duration) time.Duration {
+	if v, ok := os.LookupEnv(k); ok {
+		if t, err := time.ParseDuration(strings.TrimSpace(v)); err == nil {
+			return t
+		}
+	}
+	return d
+}
+```
+
+---
+
+## 12. Pieza 11 — `logging`
+
+**Propósito:** logger JSON estructurado vía `log/slog`.
+**Consumidores:** `main`, `middleware`.
+
+```go
+// Package logging builds structured slog loggers.
+package logging
+
+import (
+	"log/slog"
+	"os"
+)
+
+// New returns a JSON slog.Logger at the given level.
+func New(level string) *slog.Logger {
+	var l slog.Level
+	switch level {
+	case "debug":
+		l = slog.LevelDebug
+	case "warn":
+		l = slog.LevelWarn
+	case "error":
+		l = slog.LevelError
+	default:
+		l = slog.LevelInfo
+	}
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: l}))
+}
+```
+
+---
+
+## 13. Pieza 12 — `middleware` *(nueva)*
+
+**Propósito:** request-ID, logging de acceso, recovery, CORS.
+**Consumidores:** `api`.
+
+```go
+// Package middleware provides composable HTTP middlewares.
+package middleware
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"log/slog"
+	"net/http"
+	"time"
+)
+
+// Chain applies mws around h in order (mws[0] is the outermost).
+func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(mws) - 1; i >= 0; i-- {
+		h = mws[i](h)
+	}
+	return h
+}
+
+// RequestID injects a request ID header and context value.
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-Id")
+		if id == "" {
+			buf := make([]byte, 8)
+			_, _ = rand.Read(buf)
+			id = hex.EncodeToString(buf)
+		}
+		w.Header().Set("X-Request-Id", id)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Logging logs one line per request.
+func Logging(l *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &statusRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(rw, r)
+		l.Info("http",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", rw.status,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"request_id", w.Header().Get("X-Request-Id"),
+		)
+	})
+}
+
+// Recovery converts panics to 500 without killing the process.
+func Recovery(l *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				l.Error("panic", "err", rec, "path", r.URL.Path)
+				http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// CORS adds permissive CORS headers. Adjust origins for production.
+func CORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-Id")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
+```
+
+---
+
+## 14. Pieza 13 — `api`
+
+**Propósito:** servidor HTTP con rutas versionadas y dependencias inyectadas.
+**Consumidores:** todos.
+
+```go
+// Package api exposes the HTTP API of the microservice.
+package api
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/JavierAbreu/aether-thermal/internal/alerts"
+	"github.com/JavierAbreu/aether-thermal/internal/config"
+	"github.com/JavierAbreu/aether-thermal/internal/history"
+	"github.com/JavierAbreu/aether-thermal/internal/metrics"
+	"github.com/JavierAbreu/aether-thermal/internal/middleware"
+	"github.com/JavierAbreu/aether-thermal/internal/ratelimit"
+	"github.com/JavierAbreu/aether-thermal/internal/snapshot"
+	"github.com/JavierAbreu/aether-thermal/internal/version"
+)
+
+// Server bundles all dependencies of the HTTP layer.
+type Server struct {
+	cfg      config.Config
+	provider *snapshot.Provider
+	alerts   *alerts.Evaluator
+	history  *history.Buffer
+	logger   *slog.Logger
+	limiter  *ratelimit.Limiter
+	start    time.Time
+}
+
+// NewServer builds a Server. All dependencies must be non-nil except history.
+func NewServer(
+	cfg config.Config,
+	provider *snapshot.Provider,
+	evaluator *alerts.Evaluator,
+	buf *history.Buffer,
+	logger *slog.Logger,
+) *Server {
+	return &Server{
+		cfg:      cfg,
+		provider: provider,
+		alerts:   evaluator,
+		history:  buf,
+		logger:   logger,
+		limiter:  ratelimit.New(50, 100),
+		start:    time.Now(),
+	}
+}
+
+// Handler returns the fully wrapped handler with middlewares applied.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /version", s.handleVersion)
+	mux.HandleFunc("GET /v1/topology", s.handleTopology)
+	mux.HandleFunc("GET /v1/thermal", s.handleThermal)
+	mux.HandleFunc("GET /v1/snapshot", s.handleSnapshot)
+	mux.HandleFunc("GET /v1/alerts", s.handleAlerts)
+	mux.HandleFunc("GET /v1/history", s.handleHistory)
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
+
+	return middleware.Chain(mux,
+		middleware.RequestID,
+		middleware.CORS,
+		func(h http.Handler) http.Handler { return middleware.Recovery(s.logger, h) },
+		func(h http.Handler) http.Handler { return middleware.Logging(s.logger, h) },
+	)
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":         "ok",
+		"uptime_seconds": time.Since(s.start).Seconds(),
+	})
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, version.Info())
+}
+
+func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.provider.Get(r.Context())
+	if err != nil {
+		writeProblem(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap.Topology)
+}
+
+func (s *Server) handleThermal(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.provider.Get(r.Context())
+	if err != nil {
+		writeProblem(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap.Thermal)
+}
+
+func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.provider.Get(r.Context())
+	if err != nil {
+		writeProblem(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.provider.Get(r.Context())
+	if err != nil {
+		writeProblem(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"timestamp": snap.Timestamp,
+		"alerts":    s.alerts.Evaluate(snap),
+	})
+}
+
+func (s *Server) handleHistory(w http.ResponseWriter, _ *http.Request) {
+	if s.history == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"samples": []any{}, "stats": history.Stats{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"samples": s.history.Snapshot(),
+		"stats":   s.history.Stats(),
+	})
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if !s.limiter.Allow() {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	snap, err := s.provider.Get(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = w.Write([]byte(metrics.Render(snap)))
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(v)
+}
+
+func writeProblem(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+```
+
+---
+
+## 15. Pieza 14 — `cli` *(nueva)*
+
+**Propósito:** uso standalone del microservicio desde terminal (sin levantar HTTP).
+**Consumidores:** operadores, scripts, CI.
+
+```go
+// Package cli implements the command-line interface of aether-thermal.
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/JavierAbreu/aether-thermal/internal/config"
+	"github.com/JavierAbreu/aether-thermal/internal/history"
+	"github.com/JavierAbreu/aether-thermal/internal/logging"
+	"github.com/JavierAbreu/aether-thermal/internal/metrics"
+	"github.com/JavierAbreu/aether-thermal/internal/snapshot"
+	"github.com/JavierAbreu/aether-thermal/internal/version"
+)
+
+// Run executes the CLI and returns an exit code.
+//
+//	aether-thermal read      one-shot JSON snapshot
+//	aether-thermal metrics   one-shot Prometheus text
+//	aether-thermal watch     newline-delimited JSON stream
+//	aether-thermal version   build info
+func Run(args []string) int {
+	if len(args) < 1 {
+		usage()
+		return 2
+	}
+	switch args[0] {
+	case "read":
+		return cmdRead(args[1:])
+	case "metrics":
+		return cmdMetrics(args[1:])
+	case "watch":
+		return cmdWatch(args[1:])
+	case "version":
+		_ = json.NewEncoder(os.Stdout).Encode(version.Info())
+		return 0
+	default:
+		usage()
+		return 2
+	}
+}
+
+func cmdRead(args []string) int {
+	cfg, err := config.Load(args)
+	if err != nil {
+		return 1
+	}
+	_ = logging.New(cfg.LogLevel)
+	snap, err := snapshot.New(0).Get(context.Background())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return encode(os.Stdout, snap)
+}
+
+func cmdMetrics(args []string) int {
+	cfg, err := config.Load(args)
+	if err != nil {
+		return 1
+	}
+	snap, err := snapshot.New(cfg.CacheTTL).Get(context.Background())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Print(metrics.Render(snap))
+	return 0
+}
+
+func cmdWatch(args []string) int {
+	cfg, err := config.Load(args)
+	if err != nil {
+		return 1
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	provider := snapshot.New(0)
+	enc := json.NewEncoder(os.Stdout)
+	buf := history.New(16)
+
+	tick := time.NewTicker(cfg.SampleEvery)
+	defer tick.Stop()
+
+	for {
+		snap, err := provider.Get(ctx)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		if err := enc.Encode(snap); err != nil {
+			return 1
+		}
+		buf.Add(history.Sample{
+			Time: snap.Timestamp,
+			MaxC: snap.Thermal.MaxCelsius,
+			AvgC: snap.Thermal.AvgCelsius,
+			CPUs: snap.Topology.LogicalCPUs,
+		})
+		select {
+		case <-ctx.Done():
+			return 0
+		case <-tick.C:
+		}
+	}
+}
+
+func encode(f *os.File, v any) int {
+	enc := json.NewEncoder(f)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return 1
+	}
+	return 0
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, `Usage: aether-thermal <command> [flags]
+
+Commands:
+  read       Print one JSON snapshot and exit
+  metrics    Print Prometheus text and exit
+  watch      Stream newline-delimited JSON snapshots
+  version    Print build information`)
+}
+```
+
+---
+
+## 16. Pieza 15 — `version`
+
+**Propósito:** metadatos inyectables por `-ldflags`.
+**Consumidores:** `api`, `cli`.
+
+```go
+// Package version holds build metadata injected at link time.
+package version
+
+var (
+	// Version is the semantic version of the binary.
+	Version = "1.0.0"
+	// Commit is the git SHA (set via -ldflags).
+	Commit = "unknown"
+	// Date is the build timestamp (set via -ldflags).
+	Date = "unknown"
+)
+
+// Info returns the build metadata as a JSON-friendly map.
+func Info() map[string]string {
+	return map[string]string{
+		"name":    "aether-thermal",
+		"version": Version,
+		"commit":  Commit,
+		"date":    Date,
+	}
+}
+```
+
+---
+
+## 17. Ensamblaje — `cmd/aether-thermal/main.go`
+
+**Propósito:** cablear todas las piezas y arrancar el servidor (o delegar a CLI si el primer argumento es un comando).
+
+```go
+// Command aether-thermal runs the microservice (HTTP server) or a CLI command.
+package main
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/JavierAbreu/aether-thermal/internal/alerts"
+	"github.com/JavierAbreu/aether-thermal/internal/api"
+	"github.com/JavierAbreu/aether-thermal/internal/cli"
+	"github.com/JavierAbreu/aether-thermal/internal/config"
+	"github.com/JavierAbreu/aether-thermal/internal/history"
+	"github.com/JavierAbreu/aether-thermal/internal/logging"
+	"github.com/JavierAbreu/aether-thermal/internal/snapshot"
+)
+
+func main() {
+	// CLI dispatch when the first arg is a known command.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "read", "metrics", "watch", "version":
+			os.Exit(cli.Run(os.Args[1:]))
+		}
+	}
+
+	cfg, err := config.Load(os.Args[1:])
+	if err != nil {
+		slog.Error("config", "err", err)
+		os.Exit(2)
+	}
+	logger := logging.New(cfg.LogLevel)
+	slog.SetDefault(logger)
+
+	provider := snapshot.New(cfg.CacheTTL)
+	evaluator := alerts.New(cfg.AlertRules)
+	buf := history.New(cfg.HistorySize)
+
+	// Background sampler for history.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	go sampleLoop(ctx, provider, buf, cfg.SampleEvery, logger)
+
+	server := api.NewServer(cfg, provider, evaluator, buf, logger)
+	httpSrv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           server.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+
+	go func() {
+		logger.Info("aether-thermal listening", "addr", cfg.Addr)
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("shutdown", "err", err)
+	}
+	logger.Info("shutdown complete")
+}
+
+func sampleLoop(ctx context.Context, p *snapshot.Provider, buf *history.Buffer, every time.Duration, l *slog.Logger) {
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			snap, err := p.Get(ctx)
+			if err != nil {
+				l.Warn("sample", "err", err)
+				continue
+			}
+			buf.Add(history.Sample{
+				Time: snap.Timestamp,
+				MaxC: snap.Thermal.MaxCelsius,
+				AvgC: snap.Thermal.AvgCelsius,
+				CPUs: snap.Topology.LogicalCPUs,
+			})
+		}
+	}
+}
+```
+
+---
+
+## 18. `go.mod` (sin dependencias)
+
+```go
+module github.com/JavierAbreu/aether-thermal
+
+go 1.22
+```
+
+---
+
+## 19. `Makefile`
+
+```makefile
+BINARY   := aether-thermal
+VERSION  := 1.0.0
+COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS  := -s -w \
+	-X github.com/JavierAbreu/aether-thermal/internal/version.Version=$(VERSION) \
+	-X github.com/JavierAbreu/aether-thermal/internal/version.Commit=$(COMMIT) \
+	-X github.com/JavierAbreu/aether-thermal/internal/version.Date=$(DATE)
+
+.PHONY: build test lint run clean
+
+build:
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/aether-thermal
+
+test:
+	go test ./...
+
+lint:
+	go vet ./...
+
+run: build
+	./bin/$(BINARY)
+
+clean:
+	rm -rf bin
+```
+
+---
+
+## 20. Tabla de tests recomendados
+
+| Paquete | Qué probar |
+|---|---|
+| `sysfs` | `ReadString/ReadInt/ReadFloat` con `Root` en `t.TempDir()`, `ErrNotFound` en ausencia |
+| `topology` | `ParseCPUList` con `"0-3,5,7-9"`, `Discover()` con árbol falso |
+| `thermal` | Parseo de `temp` (m°C → °C), `crit`, cálculo `max/avg` |
+| `pressure` | Parseo de `some/full` desde fixture `t.TempDir()` |
+| `snapshot` | TTL: segunda llamada no toca sysfs (injectar contador vía build tags) |
+| `metrics` | Golden file con snapshot fijo |
+| `alerts` | `SeverityOK/Warning/Critical`, filtro `Zone == ""`, orden por severidad |
+| `history` | Ring buffer wraparound, `Stats` con datos ordenados |
+| `ratelimit` | `Allow` con `burst` inicial, `Wait` con `ctx` cancelado |
+| `config` | Defaults, env overrides, flags prioridad |
+| `api` | `httptest.NewServer` con handlers; `429` en `/metrics` tras burst |
+
+Ejemplo mínimo (patrón a replicar):
+
+```go
+// internal/topology/topology_test.go
+package topology
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestParseCPUList(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []int
+	}{
+		{"", nil},
+		{"0", []int{0}},
+		{"0-3", []int{0, 1, 2, 3}},
+		{"0-1,4,6-7", []int{0, 1, 4, 6, 7}},
+		{" 0 , 1 ", []int{0, 1}},
+	}
+	for _, c := range cases {
+		if got := ParseCPUList(c.in); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("ParseCPUList(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+```
+
+---
+
+## 21. Contrato de integración
+
+Cada pieza del Omega consume el microservicio **solo por HTTP**, sin acoplarse al lenguaje:
+
+```
+┌────────────────┐   GET /v1/snapshot   ┌──────────────────────┐
+│  Cristal TV    │ ───────────────────► │                      │
+├────────────────┤   GET /v1/alerts     │  Aether Thermal Node │
+│  Q-Omega       │ ───────────────────► │      :8090           │
+├────────────────┤   GET /metrics       │                      │
+│  Omega Music   │ ───────────────────► │  (cache TTL 1s)      │
+├────────────────┤   GET /v1/history    │  (rate limit 50/s)   │
+│  Crystal Vault │ ───────────────────► │                      │
+└────────────────┘                      └──────────────────────┘
+```
+
+| Endpoint | Respuesta | Uso típico |
+|---|---|---|
+| `GET /health` | `{status, uptime_seconds}` | K8s liveness / systemd `WatchdogSec` |
+| `GET /version` | `{name, version, commit, date}` | Compatibilidad entre piezas |
+| `GET /v1/topology` | JSON `Topology` | Q-Omega (paralelismo por núcleos físicos) |
+| `GET /v1/thermal` | JSON `Snapshot` | Cristal TV (monitor durante broadcast) |
+| `GET /v1/snapshot` | JSON combinado | Dashboards, health checks complejos |
+| `GET /v1/alerts` | `{timestamp, alerts[]}` | Omega Music (pausar render) |
+| `GET /v1/history` | `{samples[], stats}` | Tendencias para dashboards |
+| `GET /metrics` | text/plain 0.0.4 | Prometheus / Grafana / alertmanager |
+
+---
+
+## 22. Resumen ejecutivo
+
+- **15 piezas** independientes, cada una con un solo propósito.
+- **10 piezas nuevas** (`pressure`, `snapshot`, `alerts`, `history`, `ratelimit`, `config`, `logging`, `middleware`, `cli`, `version`).
+- **5 piezas recicladas y mejoradas** (`sysfs`, `topology`, `thermal`, `metrics`, `api`).
+- **Cero dependencias externas** — solo `go` 1.22+.
+- **Cero `math/rand`** — todo dato proviene del kernel o de `time`.
+- **Nomenclatura profesional**: nombres alineados con terminología Linux (`thermal_zone`, `physical_package_id`, `avg10`, `PSI`).
+- **API estable y versionada** (`/v1/…`) + formato Prometheus estándar → cualquier consumidor del Omega se integra sin acoplarse a Go.
+
+¿Sigo con la **batería completa de tests** para las 15 piezas (golden files incluidos), o pasamos a la siguiente pieza del Universo Omega?

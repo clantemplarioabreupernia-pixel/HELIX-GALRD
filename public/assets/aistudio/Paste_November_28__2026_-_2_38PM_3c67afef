@@ -1,0 +1,1109 @@
+# 🧩 OMEGA PHASE CORE — DESACOPLAMIENTO TOTAL
+### Extracción de herramientas · Herramientas desacopladas · Componentes extraídos
+
+**Objetivo:** convertir el monolito `phase-core` en un **workspace de paquetes independientes**, donde cada herramienta es publicable, testeable y reutilizable por sí sola. Cada herramienta a su vez se descompone en sus **sub-herramientas** (funciones puras o componentes atómicos). Sin dependencias circulares. Sin imports cruzados no declarados.
+
+---
+
+## 1. 🗺️ MAPA DE DESACOPLAMIENTO
+
+```
+phase-core-workspace/
+│
+├── packages/
+│   │
+│   ├── @phase-core/prng/                ← HERRAMIENTA: PRNG determinista
+│   │   └── sub-tools: xorshift32, seedGuard
+│   │
+│   ├── @phase-core/entropy/             ← HERRAMIENTA: Entropía
+│   │   └── sub-tools: toProbabilities, shannonEntropy, normalizedEntropy
+│   │
+│   ├── @phase-core/coherence/           ← HERRAMIENTA: Coherencia
+│   │   └── sub-tools: orderParameter, thresholdCheck, buildReport
+│   │
+│   ├── @phase-core/phase-engine/        ← HERRAMIENTA: Motor de fase
+│   │   ├── deps: prng
+│   │   └── sub-tools: initStates, evolveStep, snapshot, secureMemoryPurge
+│   │
+│   ├── @phase-core/three-renderer/      ← HERRAMIENTA: Render 3D
+│   │   ├── deps: three, react (peer)
+│   │   └── sub-tools: buildPointCloud, buildGrid, setupCamera, setupRenderer, useResize
+│   │
+│   ├── @phase-core/ui-kit/              ← HERRAMIENTA: Primitivas UI
+│   │   ├── deps: react (peer)
+│   │   └── sub-tools: ProgressBar, StatBlock, ActionButton, DangerButton
+│   │
+│   ├── @phase-core/api-server/          ← HERRAMIENTA: Backend
+│   │   ├── deps: phase-engine, entropy, coherence, express
+│   │   └── sub-tools: createServer, routes/state, routes/entropy, routes/coherence, routes/evolve, routes/purge
+│   │
+│   └── @phase-core/web-app/             ← COMPOSICIÓN final (no es herramienta)
+│       └── deps: three-renderer, ui-kit
+│
+├── package.json (workspace root)
+└── tsconfig.base.json
+```
+
+**Principio rector:** cada `@phase-core/*` es un paquete **npm independiente**. `web-app` es la única pieza que compone varias. Ninguna herramienta importa a otra salvo por dependencia declarada en su `package.json`.
+
+---
+
+## 2. ⚙️ WORKSPACE ROOT — `package.json`
+
+```json
+{
+  "name": "phase-core-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Decoupled workspace for Omega Phase Coherence Core.",
+  "author": "Javier Alberto Abreu Molina",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev -w @phase-core/web-app",
+    "server": "npm run start -w @phase-core/api-server"
+  }
+}
+```
+
+## `tsconfig.base.json`
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "composite": true,
+    "jsx": "react-jsx",
+    "allowImportingTsExtensions": false
+  }
+}
+```
+
+---
+
+## 3. 🎲 HERRAMIENTA 1 — `@phase-core/prng`
+**Propósito:** generador determinista. Sin dependencias. Publicable solo.
+
+### `packages/@phase-core/prng/package.json`
+
+```json
+{
+  "name": "@phase-core/prng",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `xorshift32.ts`
+
+```typescript
+export interface Xorshift32State { seed: number }
+
+/** Crea el estado inicial. Rechaza semilla 0 (estado degenerado). */
+export function createXorshift32(seed: number): Xorshift32State {
+  const s = seed >>> 0;
+  if (s === 0) throw new Error('seed must be non-zero');
+  return { seed: s };
+}
+
+/** Avanza un paso. Retorna [state, value ∈ [0,1)]. */
+export function nextXorshift32(state: Xorshift32State): [Xorshift32State, number] {
+  let x = state.seed;
+  x ^= x << 13;
+  x ^= x >>> 17;
+  x ^= x << 5;
+  const next = x >>> 0;
+  return [{ seed: next }, next / 0xffffffff];
+}
+```
+
+### Sub-herramienta `seedGuard.ts`
+
+```typescript
+export const DEFAULT_SEED = 0xc0ffee;
+
+export function normalizeSeed(seed: number | undefined): number {
+  const s = (seed ?? DEFAULT_SEED) >>> 0;
+  return s === 0 ? DEFAULT_SEED : s;
+}
+```
+
+### `index.ts`
+
+```typescript
+export { createXorshift32, nextXorshift32 } from './xorshift32.js';
+export type { Xorshift32State } from './xorshift32.js';
+export { normalizeSeed, DEFAULT_SEED } from './seedGuard.js';
+```
+
+---
+
+## 4. 📉 HERRAMIENTA 2 — `@phase-core/entropy`
+**Propósito:** entropía de Shannon. **Cero dependencias.** Funciones puras.
+
+### `packages/@phase-core/entropy/package.json`
+
+```json
+{
+  "name": "@phase-core/entropy",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `toProbabilities.ts`
+
+```typescript
+/** Normaliza amplitudes a una distribución de probabilidad. */
+export function toProbabilities(amplitudes: number[]): number[] {
+  const total = amplitudes.reduce((a, b) => a + Math.abs(b), 0);
+  if (total === 0) return amplitudes.map(() => 0);
+  return amplitudes.map((a) => Math.abs(a) / total);
+}
+```
+
+### Sub-herramienta `shannonEntropy.ts`
+
+```typescript
+import { toProbabilities } from './toProbabilities.js';
+
+/** Entropía de Shannon en bits (sin normalizar). */
+export function shannonEntropy(amplitudes: number[]): number {
+  const probs = toProbabilities(amplitudes);
+  let h = 0;
+  for (const p of probs) {
+    if (p > 0) h -= p * Math.log2(p);
+  }
+  return h;
+}
+```
+
+### Sub-herramienta `normalizedEntropy.ts`
+
+```typescript
+import { shannonEntropy } from './shannonEntropy.js';
+
+/** Entropía normalizada [0,1] respecto al máximo log2(N). */
+export function normalizedEntropy(amplitudes: number[]): number {
+  if (amplitudes.length <= 1) return 0;
+  const h = shannonEntropy(amplitudes);
+  const hMax = Math.log2(amplitudes.length);
+  return hMax > 0 ? h / hMax : 0;
+}
+```
+
+### `index.ts`
+
+```typescript
+export { toProbabilities } from './toProbabilities.js';
+export { shannonEntropy } from './shannonEntropy.js';
+export { normalizedEntropy } from './normalizedEntropy.js';
+```
+
+---
+
+## 5. ✅ HERRAMIENTA 3 — `@phase-core/coherence`
+**Propósito:** parámetro de orden + veredicto. Depende **solo** de `entropy`.
+
+### `packages/@phase-core/coherence/package.json`
+
+```json
+{
+  "name": "@phase-core/coherence",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": { "@phase-core/entropy": "^1.0.0" },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `orderParameter.ts`
+
+```typescript
+export interface PhaseState { amplitude: number; phase: number }
+
+/** Coherencia = |Σ e^{iφ}| / N. Rango [0,1]. */
+export function orderParameter(states: PhaseState[]): number {
+  if (states.length === 0) return 0;
+  let sc = 0, ss = 0;
+  for (const s of states) {
+    sc += Math.cos(s.phase);
+    ss += Math.sin(s.phase);
+  }
+  return Math.sqrt(sc * sc + ss * ss) / states.length;
+}
+```
+
+### Sub-herramienta `thresholdCheck.ts`
+
+```typescript
+export const DEFAULT_THRESHOLD = 0.35;
+
+export function belowThreshold(value: number, threshold = DEFAULT_THRESHOLD): boolean {
+  return value < threshold;
+}
+```
+
+### Sub-herramienta `buildReport.ts`
+
+```typescript
+import { normalizedEntropy } from '@phase-core/entropy';
+import { orderParameter, type PhaseState } from './orderParameter.js';
+import { belowThreshold, DEFAULT_THRESHOLD } from './thresholdCheck.js';
+
+export interface CoherenceReport {
+  coherence: number;
+  entropy: number;
+  defensiveCollapse: boolean;
+  threshold: number;
+  size: number;
+}
+
+export function buildReport(states: PhaseState[], threshold = DEFAULT_THRESHOLD): CoherenceReport {
+  const coherence = orderParameter(states);
+  const entropy = normalizedEntropy(states.map((s) => Math.abs(s.amplitude)));
+  return {
+    coherence,
+    entropy,
+    defensiveCollapse: belowThreshold(coherence, threshold),
+    threshold,
+    size: states.length,
+  };
+}
+```
+
+### `index.ts`
+
+```typescript
+export { orderParameter } from './orderParameter.js';
+export type { PhaseState } from './orderParameter.js';
+export { belowThreshold, DEFAULT_THRESHOLD } from './thresholdCheck.js';
+export { buildReport } from './buildReport.js';
+export type { CoherenceReport } from './buildReport.js';
+```
+
+---
+
+## 6. 🧠 HERRAMIENTA 4 — `@phase-core/phase-engine`
+**Propósito:** motor de evolución. Depende **solo** de `prng`.
+
+### `packages/@phase-core/phase-engine/package.json`
+
+```json
+{
+  "name": "@phase-core/phase-engine",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "dependencies": { "@phase-core/prng": "^1.0.0" },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `types.ts`
+
+```typescript
+export interface ComplexState { amplitude: number; phase: number }
+export interface PhaseEngineConfig {
+  seed?: number;
+  dimension: number;
+  coherenceThreshold?: number;
+}
+```
+
+### Sub-herramienta `initStates.ts`
+
+```typescript
+import { createXorshift32, nextXorshift32, normalizeSeed } from '@phase-core/prng';
+import type { ComplexState } from './types.js';
+
+export function initStates(dimension: number, seed?: number): ComplexState[] {
+  let state = createXorshift32(normalizeSeed(seed));
+  const out: ComplexState[] = [];
+  for (let i = 0; i < dimension; i++) {
+    const [s1, r1] = nextXorshift32(state);
+    const [s2, r2] = nextXorshift32(s1);
+    state = s2;
+    out.push({ amplitude: r1 * 2 - 1, phase: r2 * Math.PI * 2 });
+  }
+  return out;
+}
+```
+
+### Sub-herramienta `evolveStep.ts`
+
+```typescript
+import type { ComplexState } from './types.js';
+
+/** Un paso de evolución: acoplamiento local determinista. */
+export function evolveStep(states: ComplexState[]): ComplexState[] {
+  const n = states.length;
+  return states.map((cur, i) => {
+    const prev = states[(i - 1 + n) % n];
+    const next = states[(i + 1) % n];
+    const phase = (cur.phase + 0.01 * (prev.phase - next.phase)) % (Math.PI * 2);
+    const amplitude =
+      0.98 * cur.amplitude +
+      0.01 * (prev.amplitude + next.amplitude) * Math.cos(phase);
+    return { amplitude, phase };
+  });
+}
+```
+
+### Sub-herramienta `snapshot.ts`
+
+```typescript
+import type { ComplexState } from './types.js';
+
+export function snapshot(states: ComplexState[]): ComplexState[] {
+  return states.map((s) => ({ ...s }));
+}
+```
+
+### Sub-herramienta `secureMemoryPurge.ts`
+
+```typescript
+import type { ComplexState } from './types.js';
+
+/** Purga segura de memoria: sobrescribe y retorna campo en cero. */
+export function secureMemoryPurge(states: ComplexState[]): ComplexState[] {
+  return states.map(() => ({ amplitude: 0, phase: 0 }));
+}
+```
+
+### Composición `PhaseEngine.ts`
+
+```typescript
+import type { ComplexState, PhaseEngineConfig } from './types.js';
+import { initStates } from './initStates.js';
+import { evolveStep } from './evolveStep.js';
+import { snapshot } from './snapshot.js';
+import { secureMemoryPurge } from './secureMemoryPurge.js';
+
+export class PhaseEngine {
+  public readonly dimension: number;
+  public readonly coherenceThreshold: number;
+  public tick = 0;
+
+  private initialSeed: number;
+  private states: ComplexState[];
+
+  constructor(config: PhaseEngineConfig) {
+    this.dimension = config.dimension;
+    this.coherenceThreshold = config.coherenceThreshold ?? 0.35;
+    this.initialSeed = config.seed ?? 0xc0ffee;
+    this.states = initStates(this.dimension, this.initialSeed);
+  }
+
+  public evolve(steps: number): void {
+    for (let s = 0; s < steps; s++) {
+      this.states = evolveStep(this.states);
+      this.tick++;
+    }
+  }
+
+  public snapshot(): ComplexState[] { return snapshot(this.states); }
+  public amplitudes(): number[] { return this.states.map((s) => Math.abs(s.amplitude)); }
+
+  public secureMemoryPurge(): void {
+    this.states = secureMemoryPurge(this.states);
+    this.tick = 0;
+  }
+}
+```
+
+### `index.ts`
+
+```typescript
+export { PhaseEngine } from './PhaseEngine.js';
+export type { ComplexState, PhaseEngineConfig } from './types.js';
+export { initStates } from './initStates.js';
+export { evolveStep } from './evolveStep.js';
+export { snapshot } from './snapshot.js';
+export { secureMemoryPurge } from './secureMemoryPurge.js';
+```
+
+---
+
+## 7. 🎨 HERRAMIENTA 5 — `@phase-core/three-renderer`
+**Propósito:** capa de render. Depende de `three` + `react` (peer). **No conoce el engine.**
+
+### `packages/@phase-core/three-renderer/package.json`
+
+```json
+{
+  "name": "@phase-core/three-renderer",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "peerDependencies": { "react": "^19.0.0", "three": "^0.185.1" },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `buildPointCloud.ts`
+
+```typescript
+import * as THREE from 'three';
+
+export interface PointInput { amplitude: number; phase: number }
+
+export function buildPointCloud(states: PointInput[]): {
+  object: THREE.Points;
+  dispose: () => void;
+} {
+  const n = states.length;
+  const pos = new Float32Array(n * 3);
+  const col = new Float32Array(n * 3);
+  const color = new THREE.Color();
+
+  states.forEach((s, i) => {
+    pos[i * 3] = (i - n / 2) * 1.2;
+    pos[i * 3 + 1] = s.amplitude * 20;
+    pos[i * 3 + 2] = Math.sin(s.phase) * 15;
+    const hue = (s.phase / (Math.PI * 2)) % 1;
+    color.setHSL(hue, 0.85, 0.55);
+    col[i * 3] = color.r;
+    col[i * 3 + 1] = color.g;
+    col[i * 3 + 2] = color.b;
+  });
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({ size: 1.4, vertexColors: true });
+  const points = new THREE.Points(geo, mat);
+
+  return {
+    object: points,
+    dispose: () => { geo.dispose(); mat.dispose(); },
+  };
+}
+```
+
+### Sub-herramienta `buildGrid.ts`
+
+```typescript
+import * as THREE from 'three';
+
+export function buildGrid(size = 100, divisions = 40): THREE.GridHelper {
+  return new THREE.GridHelper(size, divisions, 0x223355, 0x111a2a);
+}
+```
+
+### Sub-herramienta `setupCamera.ts`
+
+```typescript
+import * as THREE from 'three';
+
+export function setupCamera(width: number, height: number): THREE.PerspectiveCamera {
+  const cam = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000);
+  cam.position.set(0, 30, 60);
+  cam.lookAt(0, 0, 0);
+  return cam;
+}
+```
+
+### Sub-herramienta `setupRenderer.ts`
+
+```typescript
+import * as THREE from 'three';
+
+export function setupRenderer(mount: HTMLElement): THREE.WebGLRenderer {
+  const r = new THREE.WebGLRenderer({ antialias: true });
+  r.setSize(mount.clientWidth, mount.clientHeight);
+  mount.appendChild(r.domElement);
+  return r;
+}
+```
+
+### Sub-herramienta `useResize.ts`
+
+```typescript
+import { useEffect } from 'react';
+import type * as THREE from 'three';
+
+export function useResize(
+  mount: React.RefObject<HTMLDivElement>,
+  camera: THREE.PerspectiveCamera | null,
+  renderer: THREE.WebGLRenderer | null,
+): void {
+  useEffect(() => {
+    if (!camera || !renderer) return;
+    const onResize = () => {
+      if (!mount.current) return;
+      const w = mount.current.clientWidth;
+      const h = mount.current.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [mount, camera, renderer]);
+}
+```
+
+### Componente `PhaseCanvas.tsx`
+
+```tsx
+import { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { buildPointCloud, type PointInput } from './buildPointCloud.js';
+import { buildGrid } from './buildGrid.js';
+import { setupCamera } from './setupCamera.js';
+import { setupRenderer } from './setupRenderer.js';
+import { useResize } from './useResize.js';
+
+export function PhaseCanvas({ states }: { states: PointInput[] }) {
+  const mount = useRef<HTMLDivElement>(null);
+  const [camera, setCamera] = useState<THREE.PerspectiveCamera | null>(null);
+  const [renderer, setRenderer] = useState<THREE.WebGLRenderer | null>(null);
+
+  useEffect(() => {
+    const el = mount.current;
+    if (!el) return;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a12);
+
+    const cam = setupCamera(el.clientWidth, el.clientHeight);
+    const rend = setupRenderer(el);
+    setCamera(cam);
+    setRenderer(rend);
+
+    const { object, dispose } = buildPointCloud(states);
+    const grid = buildGrid();
+    scene.add(object, grid);
+
+    let raf = 0;
+    const loop = () => {
+      object.rotation.y += 0.002;
+      rend.render(scene, cam);
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      dispose();
+      grid.dispose();
+      el.removeChild(rend.domElement);
+      rend.dispose();
+    };
+  }, [states]);
+
+  useResize(mount, camera, renderer);
+
+  return <div ref={mount} style={{ width: '100%', height: '70vh' }} />;
+}
+```
+
+### `index.ts`
+
+```typescript
+export { PhaseCanvas } from './PhaseCanvas.js';
+export { buildPointCloud } from './buildPointCloud.js';
+export type { PointInput } from './buildPointCloud.js';
+export { buildGrid } from './buildGrid.js';
+export { setupCamera } from './setupCamera.js';
+export { setupRenderer } from './setupRenderer.js';
+export { useResize } from './useResize.js';
+```
+
+---
+
+## 8. 🎛️ HERRAMIENTA 6 — `@phase-core/ui-kit`
+**Propósito:** primitivas de UI. `react` es peer. **Sin three.**
+
+### `packages/@phase-core/ui-kit/package.json`
+
+```json
+{
+  "name": "@phase-core/ui-kit",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json" },
+  "peerDependencies": { "react": "^19.0.0" },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `ProgressBar.tsx`
+
+```tsx
+export function ProgressBar({ value, color }: { value: number; color: string }) {
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div style={{ height: 6, background: '#1a1a22', borderRadius: 3 }}>
+      <div
+        style={{
+          width: `${pct}%`,
+          height: '100%',
+          background: color,
+          borderRadius: 3,
+          transition: 'width 200ms ease',
+        }}
+      />
+    </div>
+  );
+}
+```
+
+### Sub-herramienta `StatBlock.tsx`
+
+```tsx
+export function StatBlock({
+  label, value, hint, color,
+}: { label: string; value: string; hint?: string; color?: string }) {
+  return (
+    <div style={{ fontFamily: 'monospace', padding: 12 }}>
+      <div style={{ fontSize: 12, opacity: 0.7 }}>{label}</div>
+      <div style={{ fontSize: 28, color: color ?? '#e6e6f0' }}>{value}</div>
+      {hint && <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>{hint}</div>}
+    </div>
+  );
+}
+```
+
+### Sub-herramienta `ActionButton.tsx`
+
+```tsx
+export function ActionButton({
+  onClick, children,
+}: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 12px',
+        background: '#1a1a22',
+        color: '#e6e6f0',
+        border: '1px solid #2a2a3a',
+        borderRadius: 4,
+        cursor: 'pointer',
+        fontFamily: 'monospace',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+### Sub-herramienta `DangerButton.tsx`
+
+```tsx
+export function DangerButton({
+  onClick, children,
+}: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 12px',
+        background: '#2a1010',
+        color: '#e5484d',
+        border: '1px solid #e5484d',
+        borderRadius: 4,
+        cursor: 'pointer',
+        fontFamily: 'monospace',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+### `index.ts`
+
+```typescript
+export { ProgressBar } from './ProgressBar.js';
+export { StatBlock } from './StatBlock.js';
+export { ActionButton } from './ActionButton.js';
+export { DangerButton } from './DangerButton.js';
+```
+
+---
+
+## 9. 🖥️ HERRAMIENTA 7 — `@phase-core/api-server`
+**Propósito:** backend Express. Compone `phase-engine`, `entropy`, `coherence`. Publica `createServer()` factory.
+
+### `packages/@phase-core/api-server/package.json`
+
+```json
+{
+  "name": "@phase-core/api-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": { "build": "tsc -p tsconfig.json", "start": "node dist/index.js" },
+  "dependencies": {
+    "@phase-core/phase-engine": "^1.0.0",
+    "@phase-core/entropy": "^1.0.0",
+    "@phase-core/coherence": "^1.0.0",
+    "express": "^4.21.2"
+  },
+  "license": "Apache-2.0"
+}
+```
+
+### Sub-herramienta `routes/state.ts`
+
+```typescript
+import type { Router } from 'express';
+import type { PhaseEngine } from '@phase-core/phase-engine';
+
+export function stateRoute(router: Router, engine: PhaseEngine): void {
+  router.get('/state', (_req, res) => {
+    res.json({ dimension: engine.dimension, states: engine.snapshot(), tick: engine.tick });
+  });
+}
+```
+
+### Sub-herramienta `routes/entropy.ts`
+
+```typescript
+import type { Router } from 'express';
+import type { PhaseEngine } from '@phase-core/phase-engine';
+import { normalizedEntropy } from '@phase-core/entropy';
+
+export function entropyRoute(router: Router, engine: PhaseEngine): void {
+  router.get('/entropy', (_req, res) => {
+    const a = engine.amplitudes();
+    res.json({ entropy: normalizedEntropy(a), sampleSize: a.length });
+  });
+}
+```
+
+### Sub-herramienta `routes/coherence.ts`
+
+```typescript
+import type { Router } from 'express';
+import type { PhaseEngine } from '@phase-core/phase-engine';
+import { buildReport } from '@phase-core/coherence';
+
+export function coherenceRoute(router: Router, engine: PhaseEngine): void {
+  router.get('/coherence', (_req, res) => {
+    const report = buildReport(engine.snapshot(), engine.coherenceThreshold);
+    res.json({ ...report, tick: engine.tick });
+  });
+}
+```
+
+### Sub-herramienta `routes/evolve.ts`
+
+```typescript
+import type { Router } from 'express';
+import type { PhaseEngine } from '@phase-core/phase-engine';
+
+export function evolveRoute(router: Router, engine: PhaseEngine): void {
+  router.post('/evolve', (req, res) => {
+    const steps = Number(req.body?.steps ?? 1);
+    if (!Number.isFinite(steps) || steps < 0 || steps > 1000) {
+      return res.status(400).json({ error: 'steps must be 0..1000' });
+    }
+    engine.evolve(steps);
+    res.json({ ok: true, steps, tick: engine.tick });
+  });
+}
+```
+
+### Sub-herramienta `routes/purge.ts`
+
+```typescript
+import type { Router } from 'express';
+import type { PhaseEngine } from '@phase-core/phase-engine';
+
+export function purgeRoute(router: Router, engine: PhaseEngine): void {
+  router.post('/purge', (_req, res) => {
+    engine.secureMemoryPurge();
+    res.json({ ok: true, tick: engine.tick });
+  });
+}
+```
+
+### Composición `createServer.ts`
+
+```typescript
+import express from 'express';
+import { PhaseEngine } from '@phase-core/phase-engine';
+import { stateRoute } from './routes/state.js';
+import { entropyRoute } from './routes/entropy.js';
+import { coherenceRoute } from './routes/coherence.js';
+import { evolveRoute } from './routes/evolve.js';
+import { purgeRoute } from './routes/purge.js';
+
+export interface ServerConfig { dimension?: number; seed?: number; port?: number }
+
+export function createServer(config: ServerConfig = {}) {
+  const app = express();
+  app.use(express.json());
+
+  const engine = new PhaseEngine({
+    dimension: config.dimension ?? 64,
+    seed: config.seed ?? 0xc0ffee,
+  });
+
+  const router = express.Router();
+  stateRoute(router, engine);
+  entropyRoute(router, engine);
+  coherenceRoute(router, engine);
+  evolveRoute(router, engine);
+  purgeRoute(router, engine);
+
+  app.use('/api', router);
+  return { app, engine, port: config.port ?? 3001 };
+}
+```
+
+### `index.ts` (entrypoint)
+
+```typescript
+import { createServer } from './createServer.js';
+export { createServer } from './createServer.js';
+export type { ServerConfig } from './createServer.js';
+
+// Autoarranque solo si se ejecuta directamente
+if (process.argv[1]?.endsWith('index.js')) {
+  const { app, port } = createServer();
+  app.listen(port, () => console.log(`[phase-core] http://localhost:${port}`));
+}
+```
+
+---
+
+## 10. 🚀 COMPOSICIÓN — `@phase-core/web-app`
+
+### `packages/@phase-core/web-app/package.json`
+
+```json
+{
+  "name": "@phase-core/web-app",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build" },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.185.1",
+    "@phase-core/three-renderer": "^1.0.0",
+    "@phase-core/ui-kit": "^1.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.2.3",
+    "@vitejs/plugin-react": "^4.3.4"
+  },
+  "license": "Apache-2.0"
+}
+```
+
+### `src/App.tsx`
+
+```tsx
+import { useCallback, useEffect, useState } from 'react';
+import { PhaseCanvas } from '@phase-core/three-renderer';
+import { ProgressBar, StatBlock, ActionButton, DangerButton } from '@phase-core/ui-kit';
+
+interface State { amplitude: number; phase: number }
+interface Report {
+  coherence: number; entropy: number;
+  defensiveCollapse: boolean; threshold: number; size: number; tick: number;
+}
+
+export default function App() {
+  const [states, setStates] = useState<State[]>([]);
+  const [report, setReport] = useState<Report | null>(null);
+  const [entropy, setEntropy] = useState(0);
+  const [tick, setTick] = useState(0);
+
+  const refresh = useCallback(async () => {
+    const [s, c, e] = await Promise.all([
+      fetch('/api/state').then((r) => r.json()),
+      fetch('/api/coherence').then((r) => r.json()),
+      fetch('/api/entropy').then((r) => r.json()),
+    ]);
+    setStates(s.states); setReport(c); setEntropy(e.entropy); setTick(s.tick);
+  }, []);
+
+  const evolve = useCallback(async (n: number) => {
+    await fetch('/api/evolve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps: n }),
+    });
+    await refresh();
+  }, [refresh]);
+
+  const purge = useCallback(async () => {
+    await fetch('/api/purge', { method: 'POST' });
+    await refresh();
+  }, [refresh]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0a12', color: '#e6e6f0', fontFamily: 'monospace' }}>
+      <header style={{ padding: 16, borderBottom: '1px solid #1a1a22' }}>
+        <h1 style={{ margin: 0, fontSize: 18 }}>Omega Phase Coherence Core</h1>
+      </header>
+      <main style={{ padding: 16, display: 'grid', gap: 16 }}>
+        <PhaseCanvas states={states} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {report && (
+            <StatBlock
+              label="COHERENCE"
+              value={`${Math.round(report.coherence * 100)}%`}
+              color={report.defensiveCollapse ? '#e5484d' : '#46a758'}
+              hint={`threshold: ${report.threshold} · size: ${report.size}`}
+            />
+          )}
+          <StatBlock label="ENTROPY" value={entropy.toFixed(4)} hint={`tick: ${tick}`} />
+        </div>
+        {report && <ProgressBar value={report.coherence * 100} color={report.defensiveCollapse ? '#e5484d' : '#46a758'} />}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <ActionButton onClick={() => evolve(1)}>+1</ActionButton>
+          <ActionButton onClick={() => evolve(10)}>+10</ActionButton>
+          <ActionButton onClick={() => evolve(100)}>+100</ActionButton>
+          <DangerButton onClick={purge}>Purga segura</DangerButton>
+        </div>
+      </main>
+    </div>
+  );
+}
+```
+
+### `vite.config.ts`
+
+```typescript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: { port: 5173, proxy: { '/api': 'http://localhost:3001' } },
+});
+```
+
+---
+
+## 11. 🕸️ GRAFO DE DEPENDENCIAS (verificado acíclico)
+
+```
+prng ────────────────► phase-engine ──► api-server
+                            │               ▲
+entropy ──► coherence ──────┘               │
+                                            │
+three-renderer ─────────────────────────┐   │
+                                        ▼   │
+ui-kit ──────────────────────► web-app ◄───┘ (proxy HTTP)
+```
+
+| Paquete | Depende de | Es dependido por |
+|---|---|---|
+| `prng` | — | `phase-engine` |
+| `entropy` | — | `coherence` |
+| `coherence` | `entropy` | `api-server` |
+| `phase-engine` | `prng` | `api-server` |
+| `three-renderer` | `three`, `react` | `web-app` |
+| `ui-kit` | `react` | `web-app` |
+| `api-server` | `phase-engine`, `entropy`, `coherence`, `express` | (runtime) |
+| `web-app` | `three-renderer`, `ui-kit` | — |
+
+**Sin ciclos. Sin imports cruzados no declarados.**
+
+---
+
+## 12. 🧾 TABLA RESUMEN — QUÉ SE EXTRAJO Y DÓNDE
+
+| Antes (monolito) | Ahora (herramienta) | Sub-herramientas extraídas |
+|---|---|---|
+| `nextRandom()` en `PhaseEngine` | `@phase-core/prng` | `createXorshift32`, `nextXorshift32`, `normalizeSeed` |
+| `computeEntropy` en `lib/entropy.ts` | `@phase-core/entropy` | `toProbabilities`, `shannonEntropy`, `normalizedEntropy` |
+| `validateCoherence` en `lib/coherenceValidator.ts` | `@phase-core/coherence` | `orderParameter`, `belowThreshold`, `buildReport` |
+| `PhaseEngine` clase monolítica | `@phase-core/phase-engine` | `initStates`, `evolveStep`, `snapshot`, `secureMemoryPurge` |
+| `PhaseCanvas` con todo inline | `@phase-core/three-renderer` | `buildPointCloud`, `buildGrid`, `setupCamera`, `setupRenderer`, `useResize` |
+| `CoherenceMeter` + `EntropyPanel` | `@phase-core/ui-kit` | `ProgressBar`, `StatBlock`, `ActionButton`, `DangerButton` |
+| `server.ts` monolítico | `@phase-core/api-server` | `createServer` + 5 rutas independientes |
+| `App.tsx` | `@phase-core/web-app` | (composición, no herramienta) |
+
+---
+
+## 13. ▶️ EJECUCIÓN POST-DESACOPLAMIENTO
+
+```bash
+# Instalar todo el workspace
+npm install
+
+# Compilar todas las herramientas
+npm run build
+
+# Terminal 1 — backend
+npm run server            # @phase-core/api-server → :3001
+
+# Terminal 2 — frontend
+npm run dev               # @phase-core/web-app → :5173
+```
+
+**Uso de una herramienta aislada** (ejemplo: solo entropía):
+
+```bash
+cd packages/@phase-core/entropy
+npm run build
+node -e "import('./dist/index.js').then(m => console.log(m.normalizedEntropy([0.5,0.5,0.5,0.5])))"
+# → 1
+```
+
+**Publicación independiente:** cualquiera de los 7 paquetes puede publicarse a npm sin tocar los demás. `@phase-core/prng` y `@phase-core/entropy` son **cero dependencias** — publicables como utilidades genéricas bajo cualquier licencia compatible con Apache-2.0.
+
+---
+
+## 14. ✅ VEREDICTO DEL DESACOPLAMIENTO
+
+| Criterio | Estado |
+|---|---|
+| Cada herramienta es paquete npm independiente | ✅ 7 paquetes |
+| Cada herramienta expone API pública vía `index.ts` | ✅ |
+| Sub-herramientas extraídas y exportadas | ✅ 22 sub-módulos |
+| Grafo de dependencias acíclico | ✅ verificado en §11 |
+| `prng` y `entropy` con cero dependencias | ✅ |
+| Backend no importa código de frontend | ✅ |
+| Frontend solo consume backend vía HTTP | ✅ proxy `/api` |
+| Sin `Math.random()` (R3) | ✅ xorshift32 |
+| Nomenclatura R2 respetada | ✅ `ComplexState`, `secureMemoryPurge`, sin "Cúbit"/"Quantum Vanish" |
+| Publicable / testeable por paquete | ✅ |
+
+**Proyecto desacoplado. Herramientas extraídas. Componentes extraídos. Listo para `npm install`.**

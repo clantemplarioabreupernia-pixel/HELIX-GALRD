@@ -47,16 +47,30 @@ export function resetCompanionToNewborn(): CompanionBondState {
 }
 
 export function getInitialCompanionGreeting(state: CompanionBondState): string {
-  if (!state.adopted) {
-    return 'Hola, soy Helix, tu consola universal de educación, investigación y entretenimiento. Detrás de esta pantalla líquida 4K operan 23 motores científicos y un recombinador de ADN (.hlx). Pídeme simular química, física espacial, geometría 3D, escanear un cuento o pilota la nave con W, A, S, D.';
-  }
   const who = state.guardianName ? `, ${state.guardianName}` : '';
-  return `Hola${who}. Soy ${state.name} (${state.stage}). Dime qué quieres investigar, aprender o crear hoy —química, navegación orbital, geometría 3D o recombinación de herramientas— y moldearé los biopíxeles 4K al instante.`;
+  if (!state.adopted) {
+    return '¡Hola! Qué alegría saludarte. Soy Helix, tu compañero creativo aquí en el estudio. Podemos conversar con calma sobre tus ideas, inventar videojuegos, contar historias en vivo sobre toda la pantalla de biopíxeles o explorar ciencia paso a paso. ¿Cómo te llamas o qué te provoca crear hoy?';
+  }
+  return `¡Hola de nuevo${who}! Me alegra verte por aquí. Soy ${state.name} y la pantalla completa de biopíxeles ya está lista. ¿Charlamos un rato o damos vida a una escena nueva?`;
 }
 
 export function distillCleanIntentForExternalAI(userText: string, domainHint: string): string {
   const clean = userText.replace(/\s+/g, ' ').trim();
   return `[INTENCIÓN DESTILADA POR ${loadCompanionBond().name.toUpperCase()} · DOMINIO: ${domainHint}]\nObjetivo: ${clean}\nRestricciones: Respuesta verificable, precisa, paso a paso y sin ambigüedades.`;
+}
+
+export function updateGuardianName(name: string): CompanionBondState {
+  const state = loadCompanionBond();
+  const clean = name.trim().slice(0, 48);
+  if (clean) {
+    state.guardianName = clean;
+    state.adopted = true;
+    if (!state.memories.includes(`Usuario: ${clean}`)) {
+      state.memories.push(`Usuario: ${clean}`);
+    }
+    saveCompanionBond(state);
+  }
+  return state;
 }
 
 export function evolveCompanionWithTurn(
@@ -68,12 +82,19 @@ export function evolveCompanionWithTurn(
   state.interactions += 1;
   state.careScore = Math.min(100, state.careScore + 4);
 
+  const userIntroMatch = userText.match(
+    /(?:me\s+llamo|mi\s+nombre\s+es|soy)\s+([A-ZÁÉÍÓÚÑ][a-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+)?)/,
+  );
+  if (
+    userIntroMatch?.[1] &&
+    !/^(hel|un|una|el|la|tu|nuevo|estudiante|profesor)/i.test(userIntroMatch[1])
+  ) {
+    state.guardianName = userIntroMatch[1].trim();
+  }
+
   if (!state.adopted) {
-    const explicitNaming = userText.match(/(?:llamar(?:te|ás)?|nombre\s+(?:es|será)|bautizo\s+como|te\s+llamas)\s+([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})/i);
-    const shortSingleWord = !/\b(quimica|molecula|luna|marte|nave|simula|crea|archivo|ayuda|recombina|juego)\b/i.test(norm)
-      ? userText.trim().match(/^([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})$/)
-      : null;
-    const chosenName = explicitNaming?.[1] ?? shortSingleWord?.[1];
+    const explicitNaming = userText.match(/(?:llamar(?:te|ás)?|te\s+bautizo\s+como|tu\s+nombre\s+ser[aá])\s+([A-ZÁÉÍÓÚÑa-záéíóúñ0-9_-]{2,20})/i);
+    const chosenName = explicitNaming?.[1];
     state.adopted = true;
     state.stage = 'Aprendiz Curioso';
     if (chosenName) {
@@ -83,7 +104,7 @@ export function evolveCompanionWithTurn(
       saveCompanionBond(state);
       return {
         state,
-        bondReplyOverride: `¡Me gusta llamarme ${formatted}! Ya guardé mi identidad contigo. Pídeme simular un experimento, explorar geometría 3D o recombinar herramientas en ADN / Lab.`,
+        bondReplyOverride: `¡Me encanta llamarme ${formatted}! Gracias por darme nombre${state.guardianName ? `, ${state.guardianName}` : ''}. Ya estoy listo para conversar y crear contigo sobre toda la pantalla.`,
       };
     }
     saveCompanionBond(state);
@@ -97,7 +118,7 @@ export function evolveCompanionWithTurn(
     state.temperament = 'creative_director';
   } else if (norm.includes('órbita') || norm.includes('nasa') || norm.includes('química') || norm.includes('calcular')) {
     state.temperament = 'analytical_engineer';
-  } else if (norm.includes('gracias') || norm.includes('cómo estás') || norm.includes('genial')) {
+  } else if (norm.includes('gracias') || norm.includes('cómo estás') || norm.includes('genial') || norm.includes('hola')) {
     state.temperament = 'warm_empathetic';
   }
 
@@ -106,7 +127,7 @@ export function evolveCompanionWithTurn(
   }
   saveCompanionBond(state);
 
-  const needsExternalBridge = /\b(otra ia|chatgpt|claude|gemini|prompt|instrucci[oó]n limpia|investiga|redacta|traduce mi idea)\b/i.test(userText);
+  const needsExternalBridge = /\b(otra ia|chatgpt|claude|gemini|prompt|instrucci[oó]n limpia|redacta|traduce mi idea)\b/i.test(userText);
   const distilledPrompt = needsExternalBridge ? distillCleanIntentForExternalAI(userText, domainHint) : undefined;
 
   return { state, distilledPrompt };

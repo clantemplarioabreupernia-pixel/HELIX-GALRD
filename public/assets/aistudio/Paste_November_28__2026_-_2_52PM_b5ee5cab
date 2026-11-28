@@ -1,0 +1,1616 @@
+# 📦 GENERACIÓN DE LAS 41 HERRAMIENTAS COMO MÓDULOS ATÓMICOS
+
+Estructura completa, un fichero por herramienta, con `_self_test()` embebido y un runner pytest parametrizado.
+
+```
+omega_verify/
+├── __init__.py
+├── l0/{__init__.py, t01_eps.py … t05_resultado.py}
+├── l1/{__init__.py, t06_… t10_…}
+├── l2/{__init__.py, t11_… t13_…}
+├── l3/{__init__.py, t14_… t25_…}
+├── l4/{__init__.py, t26_… t30_…}
+├── l5/{__init__.py, t31_… t34_…}
+├── l6/{__init__.py, t35_… t38_…}
+├── l7/{__init__.py, t39_formatear_informe.py}
+└── l8/{t40_post_json.ts, t41_z3_formal_verifier.tsx}
+tests/test_all.py
+pytest.ini
+requirements.txt
+```
+
+---
+
+## 🔹 L0 — PRIMITIVAS
+
+### `omega_verify/__init__.py`
+```python
+"""omega-verify — Arquitectura Dual de Verificación. Autor: J. A. Abreu Molina. Apache-2.0."""
+```
+
+### `omega_verify/l0/__init__.py`
+```python
+"""L0 — Primitivas (5 herramientas atómicas)."""
+from .t01_eps import EPS
+from .t02_intervalo import Intervalo
+from .t03_bloque import Bloque
+from .t04_contraejemplo import Contraejemplo
+from .t05_resultado import Resultado
+__all__ = ["EPS", "Intervalo", "Bloque", "Contraejemplo", "Resultado"]
+```
+
+### `omega_verify/l0/t01_eps.py`
+```python
+"""T01 — EPS. L0. Deps: ninguna."""
+import math
+
+EPS: float = 1e-9
+
+
+def _self_test() -> None:
+    assert 0 < EPS < 1e-6
+    for x in (1.0, 0.5, 100.0, 3600.0, 86400.0):
+        assert EPS > math.ulp(x)
+
+
+if __name__ == "__main__":
+    _self_test(); print("T01 OK")
+```
+
+### `omega_verify/l0/t02_intervalo.py`
+```python
+"""T02 — Intervalo. L0. Deps: T01."""
+from __future__ import annotations
+from dataclasses import dataclass
+from .t01_eps import EPS
+
+
+@dataclass(frozen=True)
+class Intervalo:
+    inicio: float
+    fin: float
+
+    def __post_init__(self) -> None:
+        if self.fin < self.inicio - EPS:
+            raise ValueError(f"fin ({self.fin}) < inicio ({self.inicio})")
+
+    @property
+    def duracion(self) -> float:
+        return self.fin - self.inicio
+
+
+def _self_test() -> None:
+    i = Intervalo(0.0, 1.5)
+    assert i.duracion == 1.5
+    try:
+        Intervalo(1.0, 0.5); assert False
+    except ValueError:
+        pass
+
+
+if __name__ == "__main__":
+    _self_test(); print("T02 OK")
+```
+
+### `omega_verify/l0/t03_bloque.py`
+```python
+"""T03 — Bloque. L0. Deps: T02."""
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Optional
+from .t02_intervalo import Intervalo
+
+
+@dataclass(frozen=True)
+class Bloque:
+    id: str
+    intervalo: Intervalo
+    patrocinador: Optional[str] = None
+    tipo: str = "contenido"
+
+    def __post_init__(self) -> None:
+        if not self.id:
+            raise ValueError("id vacío")
+
+
+def _self_test() -> None:
+    b = Bloque("a", Intervalo(0.0, 1.0), patrocinador="X")
+    assert b.id == "a"
+    assert b.intervalo.duracion == 1.0
+    assert b.patrocinador == "X"
+    try:
+        Bloque("", Intervalo(0.0, 1.0)); assert False
+    except ValueError:
+        pass
+
+
+if __name__ == "__main__":
+    _self_test(); print("T03 OK")
+```
+
+### `omega_verify/l0/t04_contraejemplo.py`
+```python
+"""T04 — Contraejemplo. L0. Deps: ninguna."""
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Any, Mapping
+
+
+@dataclass(frozen=True)
+class Contraejemplo:
+    regla: str
+    datos: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        if not self.regla:
+            raise ValueError("regla vacía")
+
+
+def _self_test() -> None:
+    c = Contraejemplo("sin_solapamiento", {"a": "x", "b": "y"})
+    assert c.regla == "sin_solapamiento"
+    assert c.datos["a"] == "x"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T04 OK")
+```
+
+### `omega_verify/l0/t05_resultado.py`
+```python
+"""T05 — Resultado. L0. Deps: T04."""
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Any, Optional
+from .t04_contraejemplo import Contraejemplo
+
+
+@dataclass
+class Resultado:
+    ok: bool
+    regla: str
+    contraejemplo: Optional[Contraejemplo] = None
+    detalle: str = ""
+    modelo: Any = None
+
+    def __bool__(self) -> bool:
+        return self.ok
+
+    def __repr__(self) -> str:
+        e = "OK" if self.ok else "FALLO"
+        return f"<Resultado {e} {self.regla} :: {self.detalle}>"
+
+
+def _self_test() -> None:
+    r1 = Resultado(ok=True, regla="x")
+    r2 = Resultado(ok=False, regla="y",
+                   contraejemplo=Contraejemplo("y", {"k": 1}))
+    assert r1 and not r2
+    assert "OK" in repr(r1) and "FALLO" in repr(r2)
+
+
+if __name__ == "__main__":
+    _self_test(); print("T05 OK")
+```
+
+---
+
+## 🔹 L1 — PREDICADOS GEOMÉTRICOS
+
+### `omega_verify/l1/__init__.py`
+```python
+"""L1 — Predicados geométricos (5 herramientas atómicas)."""
+from .t06_predicado_no_solape import predicado_no_solape
+from .t07_predicado_sin_hueco_inicial import predicado_sin_hueco_inicial
+from .t08_predicado_sin_hueco_interior import predicado_sin_hueco_interior
+from .t09_predicado_sin_hueco_final import predicado_sin_hueco_final
+from .t10_predicado_dentro_marco import predicado_dentro_marco
+__all__ = ["predicado_no_solape", "predicado_sin_hueco_inicial",
+           "predicado_sin_hueco_interior", "predicado_sin_hueco_final",
+           "predicado_dentro_marco"]
+```
+
+### `omega_verify/l1/t06_predicado_no_solape.py`
+```python
+"""T06 — predicado_no_solape. L1. Deps: T01, T02, T04."""
+from __future__ import annotations
+from typing import Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t02_intervalo import Intervalo
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_no_solape(intervalos: Sequence[Intervalo]) -> Optional[Contraejemplo]:
+    if len(intervalos) < 2:
+        return None
+    orden = sorted(intervalos, key=lambda i: i.inicio)
+    for a, b in zip(orden, orden[1:]):
+        if b.inicio < a.fin - EPS:
+            return Contraejemplo("sin_solapamiento", {
+                "a": (a.inicio, a.fin), "b": (b.inicio, b.fin),
+                "solape": a.fin - b.inicio,
+            })
+    return None
+
+
+def _self_test() -> None:
+    assert predicado_no_solape([]) is None
+    assert predicado_no_solape([Intervalo(0, 1), Intervalo(1, 2)]) is None
+    c = predicado_no_solape([Intervalo(0, 1.5), Intervalo(1.0, 2)])
+    assert c is not None and c.regla == "sin_solapamiento"
+    assert c.datos["solape"] == 0.5
+
+
+if __name__ == "__main__":
+    _self_test(); print("T06 OK")
+```
+
+### `omega_verify/l1/t07_predicado_sin_hueco_inicial.py`
+```python
+"""T07 — predicado_sin_hueco_inicial. L1. Deps: T01, T02, T04."""
+from __future__ import annotations
+from typing import Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t02_intervalo import Intervalo
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_sin_hueco_inicial(intervalos: Sequence[Intervalo],
+                                inicio: float) -> Optional[Contraejemplo]:
+    if not intervalos:
+        return None
+    min_ini = min(i.inicio for i in intervalos)
+    if min_ini > inicio + EPS:
+        return Contraejemplo("sin_hueco_inicial", {
+            "inicio_esperado": inicio,
+            "inicio_real": min_ini,
+            "hueco": min_ini - inicio,
+        })
+    return None
+
+
+def _self_test() -> None:
+    assert predicado_sin_hueco_inicial([Intervalo(0, 1)], 0.0) is None
+    c = predicado_sin_hueco_inicial([Intervalo(0.5, 1)], 0.0)
+    assert c is not None and c.datos["hueco"] == 0.5
+
+
+if __name__ == "__main__":
+    _self_test(); print("T07 OK")
+```
+
+### `omega_verify/l1/t08_predicado_sin_hueco_interior.py`
+```python
+"""T08 — predicado_sin_hueco_interior. L1. Deps: T01, T02, T04."""
+from __future__ import annotations
+from typing import Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t02_intervalo import Intervalo
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_sin_hueco_interior(intervalos: Sequence[Intervalo]) -> Optional[Contraejemplo]:
+    if len(intervalos) < 2:
+        return None
+    orden = sorted(intervalos, key=lambda i: i.inicio)
+    for a, b in zip(orden, orden[1:]):
+        if b.inicio > a.fin + EPS:
+            return Contraejemplo("sin_hueco_interior", {
+                "antes_de": (a.inicio, a.fin),
+                "despues_de": (b.inicio, b.fin),
+                "hueco": b.inicio - a.fin,
+            })
+    return None
+
+
+def _self_test() -> None:
+    assert predicado_sin_hueco_interior(
+        [Intervalo(0, 1), Intervalo(1, 2)]) is None
+    c = predicado_sin_hueco_interior([Intervalo(0, 1), Intervalo(1.5, 2)])
+    assert c is not None and c.datos["hueco"] == 0.5
+
+
+if __name__ == "__main__":
+    _self_test(); print("T08 OK")
+```
+
+### `omega_verify/l1/t09_predicado_sin_hueco_final.py`
+```python
+"""T09 — predicado_sin_hueco_final. L1. Deps: T01, T02, T04."""
+from __future__ import annotations
+from typing import Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t02_intervalo import Intervalo
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_sin_hueco_final(intervalos: Sequence[Intervalo],
+                              fin: float) -> Optional[Contraejemplo]:
+    if not intervalos:
+        return None
+    max_fin = max(i.fin for i in intervalos)
+    if max_fin < fin - EPS:
+        return Contraejemplo("sin_hueco_final", {
+            "fin_programado": max_fin,
+            "fin_esperado": fin,
+            "hueco": fin - max_fin,
+        })
+    return None
+
+
+def _self_test() -> None:
+    assert predicado_sin_hueco_final([Intervalo(0, 2)], 2.0) is None
+    c = predicado_sin_hueco_final([Intervalo(0, 1.5)], 2.0)
+    assert c is not None and c.datos["hueco"] == 0.5
+
+
+if __name__ == "__main__":
+    _self_test(); print("T09 OK")
+```
+
+### `omega_verify/l1/t10_predicado_dentro_marco.py`
+```python
+"""T10 — predicado_dentro_marco. L1. Deps: T01, T02, T04."""
+from __future__ import annotations
+from typing import Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t02_intervalo import Intervalo
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_dentro_marco(intervalos: Sequence[Intervalo],
+                           inicio: float, fin: float) -> Optional[Contraejemplo]:
+    for i in intervalos:
+        if i.inicio < inicio - EPS:
+            return Contraejemplo("dentro_marco", {
+                "motivo": "antes", "inicio": i.inicio, "limite": inicio,
+            })
+        if i.fin > fin + EPS:
+            return Contraejemplo("dentro_marco", {
+                "motivo": "despues", "fin": i.fin, "limite": fin,
+            })
+    return None
+
+
+def _self_test() -> None:
+    assert predicado_dentro_marco([Intervalo(0, 2)], 0.0, 2.0) is None
+    c = predicado_dentro_marco([Intervalo(-1, 1)], 0.0, 2.0)
+    assert c is not None and c.datos["motivo"] == "antes"
+    c = predicado_dentro_marco([Intervalo(1, 3)], 0.0, 2.0)
+    assert c is not None and c.datos["motivo"] == "despues"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T10 OK")
+```
+
+---
+
+## 🔹 L2 — PREDICADOS DE DOMINIO
+
+### `omega_verify/l2/__init__.py`
+```python
+"""L2 — Predicados de dominio (3 herramientas atómicas)."""
+from .t11_predicado_cuota_patrocinador import predicado_cuota_patrocinador
+from .t12_predicado_suma_duraciones import predicado_suma_duraciones
+from .t13_predicado_cuotas_factibles import predicado_cuotas_factibles
+__all__ = ["predicado_cuota_patrocinador", "predicado_suma_duraciones",
+           "predicado_cuotas_factibles"]
+```
+
+### `omega_verify/l2/t11_predicado_cuota_patrocinador.py`
+```python
+"""T11 — predicado_cuota_patrocinador. L2. Deps: T01, T03, T04."""
+from __future__ import annotations
+from typing import Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t03_bloque import Bloque
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_cuota_patrocinador(bloques: Sequence[Bloque],
+                                 patrocinador: str,
+                                 tope: float) -> Optional[Contraejemplo]:
+    total = sum(b.intervalo.duracion for b in bloques
+                if b.patrocinador == patrocinador)
+    if total > tope + EPS:
+        return Contraejemplo("cuota_patrocinador", {
+            "patrocinador": patrocinador,
+            "total": total, "tope": tope, "exceso": total - tope,
+        })
+    return None
+
+
+def _self_test() -> None:
+    from ..l0.t02_intervalo import Intervalo
+    bs = [Bloque("a", Intervalo(0, 1), "X"),
+          Bloque("b", Intervalo(1, 2), "X")]
+    assert predicado_cuota_patrocinador(bs, "X", 2.0) is None
+    c = predicado_cuota_patrocinador(bs, "X", 1.5)
+    assert c is not None and c.datos["exceso"] == 0.5
+
+
+if __name__ == "__main__":
+    _self_test(); print("T11 OK")
+```
+
+### `omega_verify/l2/t12_predicado_suma_duraciones.py`
+```python
+"""T12 — predicado_suma_duraciones. L2. Deps: T01, T04."""
+from __future__ import annotations
+from typing import Any, Mapping, Optional, Sequence
+from ..l0.t01_eps import EPS
+from ..l0.t04_contraejemplo import Contraejemplo
+
+
+def predicado_suma_duraciones(programas: Sequence[Mapping[str, Any]],
+                              duracion: float) -> Optional[Contraejemplo]:
+    suma = sum(float(p["duracion"]) for p in programas)
+    if suma > duracion + EPS:
+        return Contraejemplo("suma_duraciones", {
+            "suma": suma, "duracion": duracion, "exceso": suma - duracion,
+        })
+    return None
+
+
+def _self_test() -> None:
+    assert predicado_suma_duraciones(
+        [{"duracion": 2.0}, {"duracion": 3.0}], 5.0) is None
+    c = predicado_suma_duraciones(
+        [{"duracion": 2.0}, {"duracion": 4.0}], 5.0)
+    assert c is not None and c.datos["exceso"] == 1.0
+
+
+if __name__ == "__main__":
+    _self_test(); print("T12 OK")
+```
+
+### `omega_verify/l2/t13_predicado_cuotas_factibles.py`
+```python
+"""T13 — predicado_cuotas_factibles. L2. Deps: T11, T04."""
+from __future__ import annotations
+from typing import Any, Mapping, Optional, Sequence
+from ..l0.t04_contraejemplo import Contraejemplo
+from .t11_predicado_cuota_patrocinador import predicado_cuota_patrocinador
+
+
+def predicado_cuotas_factibles(programas: Sequence[Mapping[str, Any]],
+                               topes: Mapping[str, float]) -> Optional[Contraejemplo]:
+    from ..l0.t03_bloque import Bloque
+    from ..l0.t02_intervalo import Intervalo
+
+    acumulado: dict[str, float] = {}
+    for p in programas:
+        pat = p.get("patrocinador")
+        if not pat:
+            continue
+        acumulado[pat] = acumulado.get(pat, 0.0) + float(p["duracion"])
+    for pat, total in acumulado.items():
+        tope = topes.get(pat)
+        if tope is not None and total > tope + 1e-9:
+            return Contraejemplo("cuotas_factibles", {
+                "patrocinador": pat, "total": total, "tope": tope,
+                "exceso": total - tope,
+            })
+    return None
+
+
+def _self_test() -> None:
+    progs = [{"id": "a", "duracion": 1.0, "patrocinador": "X"},
+             {"id": "b", "duracion": 1.5, "patrocinador": "X"}]
+    assert predicado_cuotas_factibles(progs, {"X": 3.0}) is None
+    c = predicado_cuotas_factibles(progs, {"X": 2.0})
+    assert c is not None and c.datos["exceso"] == 0.5
+
+
+if __name__ == "__main__":
+    _self_test(); print("T13 OK")
+```
+
+---
+
+## 🔹 L3 — PRIMITIVAS Z3
+
+### `omega_verify/l3/__init__.py`
+```python
+"""L3 — Primitivas Z3 (12 herramientas atómicas)."""
+from .t14_crear_solver import crear_solver
+from .t15_var_inicio import var_inicio
+from .t16_var_fin import var_fin
+from .t17_fijar_var import fijar_var
+from .t18_restriccion_marco import restriccion_marco
+from .t19_restriccion_no_solape import restriccion_no_solape
+from .t20_restriccion_orden import restriccion_orden
+from .t21_restriccion_ventana import restriccion_ventana
+from .t22_z3_a_float import z3_a_float
+from .t23_or_violaciones import or_violaciones
+from .t24_ejecutar_solver import ejecutar_solver
+from .t25_extraer_valores import extraer_valores
+__all__ = ["crear_solver", "var_inicio", "var_fin", "fijar_var",
+           "restriccion_marco", "restriccion_no_solape", "restriccion_orden",
+           "restriccion_ventana", "z3_a_float", "or_violaciones",
+           "ejecutar_solver", "extraer_valores"]
+```
+
+### `omega_verify/l3/t14_crear_solver.py`
+```python
+"""T14 — crear_solver. L3. Deps: z3."""
+from z3 import Solver
+
+
+def crear_solver(timeout_ms: int = 5000) -> Solver:
+    s = Solver()
+    s.set("timeout", timeout_ms)
+    return s
+
+
+def _self_test() -> None:
+    s = crear_solver(1234)
+    assert s.timeout() == 1234
+
+
+if __name__ == "__main__":
+    _self_test(); print("T14 OK")
+```
+
+### `omega_verify/l3/t15_var_inicio.py`
+```python
+"""T15 — var_inicio. L3. Deps: z3."""
+from z3 import ArithRef, Real
+
+
+def var_inicio(id: str) -> ArithRef:
+    return Real(f"ini_{id}")
+
+
+def _self_test() -> None:
+    v1 = var_inicio("x"); v2 = var_inicio("x")
+    assert str(v1) == str(v2) == "ini_x"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T15 OK")
+```
+
+### `omega_verify/l3/t16_var_fin.py`
+```python
+"""T16 — var_fin. L3. Deps: z3."""
+from z3 import ArithRef, Real
+
+
+def var_fin(id: str) -> ArithRef:
+    return Real(f"fin_{id}")
+
+
+def _self_test() -> None:
+    assert str(var_fin("x")) == "fin_x"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T16 OK")
+```
+
+### `omega_verify/l3/t17_fijar_var.py`
+```python
+"""T17 — fijar_var. L3. Deps: T14."""
+from z3 import ArithRef, Solver
+from .t14_crear_solver import crear_solver
+
+
+def fijar_var(solver: Solver, var: ArithRef, valor: float) -> None:
+    solver.add(var == valor)
+
+
+def _self_test() -> None:
+    from .t15_var_inicio import var_inicio
+    s = crear_solver()
+    fijar_var(s, var_inicio("a"), 3.0)
+    assert str(s.check()) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T17 OK")
+```
+
+### `omega_verify/l3/t18_restriccion_marco.py`
+```python
+"""T18 — restriccion_marco. L3. Deps: T14."""
+from z3 import ArithRef, Solver
+
+
+def restriccion_marco(solver: Solver, ini: ArithRef, fin: ArithRef,
+                      lo: float, hi: float) -> None:
+    solver.add(lo <= ini, fin <= hi, ini <= fin)
+
+
+def _self_test() -> None:
+    from .t14_crear_solver import crear_solver
+    from .t15_var_inicio import var_inicio
+    from .t16_var_fin import var_fin
+    s = crear_solver()
+    restriccion_marco(s, var_inicio("a"), var_fin("a"), 0.0, 5.0)
+    assert str(s.check()) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T18 OK")
+```
+
+### `omega_verify/l3/t19_restriccion_no_solape.py`
+```python
+"""T19 — restriccion_no_solape. L3. Deps: T14."""
+from z3 import ArithRef, Or, Solver
+
+
+def restriccion_no_solape(solver: Solver, ini_a: ArithRef, fin_a: ArithRef,
+                          ini_b: ArithRef, fin_b: ArithRef) -> None:
+    solver.add(Or(fin_a <= ini_b, fin_b <= ini_a))
+
+
+def _self_test() -> None:
+    from .t14_crear_solver import crear_solver
+    from .t15_var_inicio import var_inicio
+    from .t16_var_fin import var_fin
+    s = crear_solver()
+    restriccion_no_solape(s, var_inicio("a"), var_fin("a"),
+                          var_inicio("b"), var_fin("b"))
+    assert str(s.check()) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T19 OK")
+```
+
+### `omega_verify/l3/t20_restriccion_orden.py`
+```python
+"""T20 — restriccion_orden. L3. Deps: T14."""
+from z3 import ArithRef, Solver
+
+
+def restriccion_orden(solver: Solver, ini_a: ArithRef, fin_a: ArithRef,
+                      ini_b: ArithRef) -> None:
+    solver.add(fin_a <= ini_b)
+
+
+def _self_test() -> None:
+    from .t14_crear_solver import crear_solver
+    from .t15_var_inicio import var_inicio
+    from .t16_var_fin import var_fin
+    from .t17_fijar_var import fijar_var
+    s = crear_solver()
+    ia, fa, ib = var_inicio("a"), var_fin("a"), var_inicio("b")
+    fijar_var(s, fa, 2.0); fijar_var(s, ib, 3.0)
+    restriccion_orden(s, ia, fa, ib)
+    assert str(s.check()) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T20 OK")
+```
+
+### `omega_verify/l3/t21_restriccion_ventana.py`
+```python
+"""T21 — restriccion_ventana. L3. Deps: T14."""
+from z3 import ArithRef, Solver
+
+
+def restriccion_ventana(solver: Solver, ini: ArithRef,
+                        lo: float, hi: float) -> None:
+    solver.add(lo <= ini, ini <= hi)
+
+
+def _self_test() -> None:
+    from .t14_crear_solver import crear_solver
+    from .t15_var_inicio import var_inicio
+    from .t17_fijar_var import fijar_var
+    s = crear_solver()
+    v = var_inicio("a")
+    fijar_var(s, v, 4.0)
+    restriccion_ventana(s, v, 4.0, 5.0)
+    assert str(s.check()) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T21 OK")
+```
+
+### `omega_verify/l3/t22_z3_a_float.py`
+```python
+"""T22 — z3_a_float. L3. Deps: z3."""
+from z3 import ArithRef
+
+
+def z3_a_float(val: ArithRef) -> float:
+    try:
+        return float(val.as_decimal(12).rstrip("?"))
+    except Exception:
+        try:
+            return float(val.numerator_as_long()) / float(val.denominator_as_long())
+        except Exception:
+            return float(str(val))
+
+
+def _self_test() -> None:
+    from z3 import Real
+    r = Real("r")
+    s = __import__("z3").Solver(); s.add(r == 1.5)
+    assert s.check()
+    assert abs(z3_a_float(s.model().eval(r)) - 1.5) < 1e-6
+
+
+if __name__ == "__main__":
+    _self_test(); print("T22 OK")
+```
+
+### `omega_verify/l3/t23_or_violaciones.py`
+```python
+"""T23 — or_violaciones. L3. Deps: z3."""
+from typing import Sequence
+from z3 import BoolRef, Or
+
+
+def or_violaciones(violaciones: Sequence[BoolRef]) -> BoolRef:
+    if not violaciones:
+        return Or([])
+    return Or(list(violaciones))
+
+
+def _self_test() -> None:
+    from z3 import Real
+    x = Real("x")
+    f = or_violaciones([x > 5, x < -5])
+    s = __import__("z3").Solver(); s.add(f); s.add(x == 10)
+    assert str(s.check()) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T23 OK")
+```
+
+### `omega_verify/l3/t24_ejecutar_solver.py`
+```python
+"""T24 — ejecutar_solver. L3. Deps: T14."""
+from z3 import CheckSatResult, Solver
+
+
+def ejecutar_solver(solver: Solver) -> CheckSatResult:
+    return solver.check()
+
+
+def _self_test() -> None:
+    from .t14_crear_solver import crear_solver
+    s = crear_solver()
+    assert str(ejecutar_solver(s)) == "sat"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T24 OK")
+```
+
+### `omega_verify/l3/t25_extraer_valores.py`
+```python
+"""T25 — extraer_valores. L3. Deps: T22."""
+from typing import Any, Mapping
+from z3 import ArithRef
+from .t22_z3_a_float import z3_a_float
+
+
+def extraer_valores(modelo: Any, variables: Mapping[str, ArithRef]) -> dict:
+    return {k: z3_a_float(modelo.eval(v, model_completion=True))
+            for k, v in variables.items()}
+
+
+def _self_test() -> None:
+    from z3 import Real, Solver
+    s = Solver()
+    r = Real("r"); s.add(r == 2.5); assert s.check()
+    out = extraer_valores(s.model(), {"r": r})
+    assert abs(out["r"] - 2.5) < 1e-6
+
+
+if __name__ == "__main__":
+    _self_test(); print("T25 OK")
+```
+
+---
+
+## 🔹 L4 — COMPOSICIONES
+
+### `omega_verify/l4/__init__.py`
+```python
+"""L4 — Composiciones (5 herramientas)."""
+from .t26_verificar_estructura import verificar_estructura
+from .t27_verificar_patrocinios import verificar_patrocinios
+from .t28_verificar_capa1 import verificar_capa1
+from .t29_verificar_invariante import verificar_invariante
+from .t30_buscar_completacion import buscar_completacion
+__all__ = ["verificar_estructura", "verificar_patrocinios",
+           "verificar_capa1", "verificar_invariante", "buscar_completacion"]
+```
+
+### `omega_verify/l4/t26_verificar_estructura.py`
+```python
+"""T26 — verificar_estructura. L4. Deps: T05, T06-T10."""
+from __future__ import annotations
+from typing import Sequence
+from ..l0.t03_bloque import Bloque
+from ..l0.t05_resultado import Resultado
+from ..l1.t06_predicado_no_solape import predicado_no_solape
+from ..l1.t07_predicado_sin_hueco_inicial import predicado_sin_hueco_inicial
+from ..l1.t08_predicado_sin_hueco_interior import predicado_sin_hueco_interior
+from ..l1.t09_predicado_sin_hueco_final import predicado_sin_hueco_final
+from ..l1.t10_predicado_dentro_marco import predicado_dentro_marco
+
+
+def verificar_estructura(bloques: Sequence[Bloque], duracion: float,
+                         inicio: float = 0.0) -> Resultado:
+    intervalos = [b.intervalo for b in bloques]
+    fin = inicio + duracion
+    checks = [
+        ("dentro_marco", lambda: predicado_dentro_marco(intervalos, inicio, fin)),
+        ("sin_solapamiento", lambda: predicado_no_solape(intervalos)),
+        ("sin_hueco_inicial", lambda: predicado_sin_hueco_inicial(intervalos, inicio)),
+        ("sin_hueco_interior", lambda: predicado_sin_hueco_interior(intervalos)),
+        ("sin_hueco_final", lambda: predicado_sin_hueco_final(intervalos, fin)),
+    ]
+    for nombre, fn in checks:
+        ce = fn()
+        if ce is not None:
+            return Resultado(ok=False, regla=nombre, contraejemplo=ce,
+                             detalle=f"fallo en {nombre}")
+    return Resultado(ok=True, regla="estructura", detalle="estructura válida")
+
+
+def _self_test() -> None:
+    from ..l0.t02_intervalo import Intervalo
+    ok = [Bloque("a", Intervalo(0, 1)), Bloque("b", Intervalo(1, 2))]
+    assert verificar_estructura(ok, 2.0).ok
+    hueco = [Bloque("a", Intervalo(0, 1)), Bloque("b", Intervalo(1.5, 2))]
+    r = verificar_estructura(hueco, 2.0)
+    assert not r.ok and r.regla == "sin_hueco_interior"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T26 OK")
+```
+
+### `omega_verify/l4/t27_verificar_patrocinios.py`
+```python
+"""T27 — verificar_patrocinios. L4. Deps: T05, T13."""
+from __future__ import annotations
+from typing import Mapping, Sequence
+from ..l0.t03_bloque import Bloque
+from ..l0.t05_resultado import Resultado
+from ..l2.t13_predicado_cuotas_factibles import predicado_cuotas_factibles
+
+
+def verificar_patrocinios(bloques: Sequence[Bloque],
+                          topes: Mapping[str, float]) -> Resultado:
+    progs = [{"id": b.id, "duracion": b.intervalo.duracion,
+              "patrocinador": b.patrocinador} for b in bloques]
+    ce = predicado_cuotas_factibles(progs, topes)
+    if ce is not None:
+        return Resultado(ok=False, regla="cuotas", contraejemplo=ce,
+                         detalle=ce.datos.get("patrocinador", "cuota"))
+    return Resultado(ok=True, regla="cuotas", detalle="cuotas respetadas")
+
+
+def _self_test() -> None:
+    from ..l0.t02_intervalo import Intervalo
+    bs = [Bloque("a", Intervalo(0, 1), "X")]
+    assert verificar_patrocinios(bs, {"X": 2.0}).ok
+    r = verificar_patrocinios(bs, {"X": 0.5})
+    assert not r.ok and r.regla == "cuotas"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T27 OK")
+```
+
+### `omega_verify/l4/t28_verificar_capa1.py`
+```python
+"""T28 — verificar_capa1. L4. Deps: T05, T26, T27."""
+from __future__ import annotations
+from typing import Mapping, Optional, Sequence
+from ..l0.t03_bloque import Bloque
+from ..l0.t05_resultado import Resultado
+from .t26_verificar_estructura import verificar_estructura
+from .t27_verificar_patrocinios import verificar_patrocinios
+
+
+def verificar_capa1(bloques: Sequence[Bloque], duracion: float,
+                    inicio: float = 0.0,
+                    topes: Optional[Mapping[str, float]] = None) -> Resultado:
+    r = verificar_estructura(bloques, duracion, inicio)
+    if not r.ok:
+        return r
+    return verificar_patrocinios(bloques, topes or {})
+
+
+def _self_test() -> None:
+    from ..l0.t02_intervalo import Intervalo
+    ok = [Bloque("a", Intervalo(0, 1), "X"),
+          Bloque("b", Intervalo(1, 2))]
+    assert verificar_capa1(ok, 2.0, topes={"X": 1.0}).ok
+    bad = [Bloque("a", Intervalo(0, 1.5), "X"),
+           Bloque("b", Intervalo(1, 2))]
+    r = verificar_capa1(bad, 2.0)
+    assert not r.ok and r.regla == "sin_solapamiento"
+
+
+if __name__ == "__main__":
+    _self_test(); print("T28 OK")
+```
+
+### `omega_verify/l4/t29_verificar_invariante.py`
+```python
+"""T29 — verificar_invariante. L4. Deps: T03, T05, T14-T24."""
+from __future__ import annotations
+from typing import Sequence
+from z3 import sat, unsat
+from ..l0.t01_eps import EPS
+from ..l0.t03_bloque import Bloque
+from ..l0.t05_resultado import Resultado
+from ..l3.t14_crear_solver import crear_solver
+from ..l3.t15_var_inicio import var_inicio
+from ..l3.t16_var_fin import var_fin
+from ..l3.t17_fijar_var import fijar_var
+from ..l3.t23_or_violaciones import or_violaciones
+from ..l3.t24_ejecutar_solver import ejecutar_solver
+
+
+def verificar_invariante(bloques: Sequence[Bloque], duracion: float,
+                         inicio: float = 0.0,
+                         timeout_ms: int = 5000) -> Resultado:
+    if not bloques:
+        return Resultado(ok=False, regla="verificar_invariante",
+                         detalle="parrilla vacía")
+    fin_total = inicio + duracion
+    solver = crear_solver(timeout_ms)
+    zvars = []
+    for b in bloques:
+        ini = var_inicio(b.id); fin = var_fin(b.id)
+        fijar_var(solver, ini, b.intervalo.inicio)
+        fijar_var(solver, fin, b.intervalo.fin)
+        zvars.append((b.id, ini, fin))
+    viol = []
+    for _, ini, fin in zvars:
+        viol.extend([ini < inicio - EPS, fin > fin_total + EPS, fin < ini - EPS])
+    viol.append(zvars[0][1] > inicio + EPS)
+    viol.append(zvars[-1][2] < fin_total - EPS)
+    for k in range(len(zvars) - 1):
+        _, _, fin_k = zvars[k]
+        _, ini_k1, _ = zvars[k + 1]
+        viol.append(ini_k1 - fin_k > EPS)
+        viol.append(fin_k - ini_k1 > EPS)
+    solver.add(or_violaciones(viol))
+    r = ejecutar_solver(solver)
+    if r == unsat:
+        return Resultado(ok=True, regla="verificar_invariante",
+                         detalle="UNSAT: invariantes probados")
+    if r == sat:
+        return Resultado(ok=False, regla="verificar_invariante",
+                         detalle="SAT: contraejemplo")
+    return Resultado(ok=False, regla="verificar_invariante",
+                     detalle=f"unknown: {r}")
+
+
+def _self_test() -> None:
+    from ..l0.t02_intervalo import Intervalo
+    ok = [Bloque("a", Intervalo(0, 1)), Bloque("b", Intervalo(1, 2))]
+    assert verificar_invariante(ok, 2.0).ok
+    bad = [Bloque("a", Intervalo(0, 1)), Bloque("b", Intervalo(1.5, 2))]
+    assert not verificar_invariante(bad, 2.0).ok
+
+
+if __name__ == "__main__":
+    _self_test(); print("T29 OK")
+```
+
+### `omega_verify/l4/t30_buscar_completacion.py`
+```python
+"""T30 — buscar_completacion. L4. Deps: T03, T05, T12, T13, T14-T25."""
+from __future__ import annotations
+from typing import Any, Mapping, Optional, Sequence
+from z3 import Or, sat
+from ..l0.t05_resultado import Resultado
+from ..l2.t12_predicado_suma_duraciones import predicado_suma_duraciones
+from ..l2.t13_predicado_cuotas_factibles import predicado_cuotas_factibles
+from ..l3.t14_crear_solver import crear_solver
+from ..l3.t15_var_inicio import var_inicio
+from ..l3.t17_fijar_var import fijar_var
+from ..l3.t19_restriccion_no_solape import restriccion_no_solape
+from ..l3.t20_restriccion_orden import restriccion_orden
+from ..l3.t21_restriccion_ventana import restriccion_ventana
+from ..l3.t22_z3_a_float import z3_a_float
+from ..l3.t24_ejecutar_solver import ejecutar_solver
+
+
+def buscar_completacion(programas: Sequence[Mapping[str, Any]],
+                        duracion: float,
+                        topes: Optional[Mapping[str, float]] = None,
+                        orden: Optional[Sequence[str]] = None,
+                        ventanas: Optional[Mapping[str, tuple]] = None,
+                        timeout_ms: int = 5000) -> Resultado:
+    topes = topes or {}; ventanas = ventanas or {}
+    if not programas:
+        return Resultado(ok=False, regla="buscar_completacion", detalle="sin programas")
+    ce = predicado_suma_duraciones(programas, duracion)
+    if ce: return Resultado(ok=False, regla="buscar_completacion",
+                            contraejemplo=ce, detalle="suma excede marco")
+    ce = predicado_cuotas_factibles(programas, topes)
+    if ce: return Resultado(ok=False, regla="buscar_completacion",
+                            contraejemplo=ce, detalle="cuota infactible")
+
+    s = crear_solver(timeout_ms)
+    inicios = {p["id"]: var_inicio(p["id"]) for p in programas}
+    dur = {p["id"]: float(p["duracion"]) for p in programas}
+    fins = {p["id"]: inicios[p["id"]] + dur[p["id"]] for p in programas}
+
+    for p in programas:
+        i = inicios[p["id"]]
+        s.add(i >= 0); s.add(i + dur[p["id"]] <= duracion)
+        if p["id"] in ventanas:
+            lo, hi = ventanas[p["id"]]
+            restriccion_ventana(s, i, lo, hi)
+
+    if orden:
+        for a in range(len(orden) - 1):
+            restriccion_orden(s, inicios[orden[a]],
+                              fins[orden[a]], inicios[orden[a + 1]])
+
+    ids = list(inicios)
+    for a in range(len(ids)):
+        for b in range(a + 1, len(ids)):
+            restriccion_no_solape(s, inicios[ids[a]], fins[ids[a]],
+                                  inicios[ids[b]], fins[ids[b]])
+
+    if ejecutar_solver(s) != sat:
+        return Resultado(ok=False, regla="buscar_completacion",
+                         detalle="sin asignación válida")
+    m = s.model()
+    asignacion = []
+    for p in programas:
+        ini = z3_a_float(m.eval(inicios[p["id"]], model_completion=True))
+        asignacion.append({"id": p["id"], "inicio": ini,
+                           "fin": ini + dur[p["id"]],
+                           "patrocinador": p.get("patrocinador")})
+    asignacion.sort(key=lambda x: x["inicio"])
+    return Resultado(ok=True, regla="buscar_completacion",
+                     modelo=asignacion,
+                     detalle=f"{len(asignacion)} bloques")
+
+
+def _self_test() -> None:
+    progs = [{"id": "p1", "duracion": 2.0}, {"id": "p2", "duracion": 3.0}]
+    r = buscar_completacion(progs, 5.0)
+    assert r.ok and len(r.modelo) == 2
+    r = buscar_completacion(progs, 3.0)
+    assert not r.ok
+
+
+if __name__ == "__main__":
+    _self_test(); print("T30 OK")
+```
+
+---
+
+## 🔹 L5 — MEDICIÓN
+
+### `omega_verify/l5/__init__.py`
+```python
+"""L5 — Medición (4 herramientas atómicas)."""
+from .t31_cronometrar import cronometrar
+from .t32_percentil import percentil
+from .t33_benchmark import benchmark
+from .t34_generar_bloques_prueba import generar_bloques_prueba
+__all__ = ["cronometrar", "percentil", "benchmark", "generar_bloques_prueba"]
+```
+
+### `omega_verify/l5/t31_cronometrar.py`
+```python
+"""T31 — cronometrar. L5. Deps: time."""
+import time
+from typing import Any, Callable, Tuple
+
+
+def cronometrar(fn: Callable, *args: Any, **kwargs: Any) -> Tuple[float, Any]:
+    t0 = time.perf_counter()
+    res = fn(*args, **kwargs)
+    return (time.perf_counter() - t0) * 1000.0, res
+
+
+def _self_test() -> None:
+    ms, res = cronometrar(lambda x: x + 1, 1)
+    assert ms >= 0 and res == 2
+
+
+if __name__ == "__main__":
+    _self_test(); print("T31 OK")
+```
+
+### `omega_verify/l5/t32_percentil.py`
+```python
+"""T32 — percentil. L5. Deps: ninguna."""
+from typing import Sequence
+
+
+def percentil(datos_ordenados: Sequence[float], q: float) -> float:
+    n = len(datos_ordenados)
+    if n == 0:
+        raise ValueError("muestra vacía")
+    if not (0.0 <= q <= 1.0):
+        raise ValueError(f"q fuera de rango: {q}")
+    return datos_ordenados[min(n - 1, int(q * n))]
+
+
+def _self_test() -> None:
+    d = [1.0, 2.0, 3.0, 4.0, 5.0]
+    assert percentil(d, 0.5) == 3.0
+    assert percentil(d, 0.0) == 1.0
+    assert percentil(d, 1.0) == 5.0
+
+
+if __name__ == "__main__":
+    _self_test(); print("T32 OK")
+```
+
+### `omega_verify/l5/t33_benchmark.py`
+```python
+"""T33 — benchmark. L5. Deps: T31, T32."""
+from typing import Any, Callable
+from .t31_cronometrar import cronometrar
+from .t32_percentil import percentil
+
+
+def benchmark(fn: Callable, n_iter: int = 10_000) -> dict:
+    tiempos = []
+    for _ in range(n_iter):
+        ms, _ = cronometrar(fn)
+        tiempos.append(ms)
+    tiempos.sort()
+    return {
+        "n": n_iter,
+        "p50_ms": percentil(tiempos, 0.50),
+        "p99_ms": percentil(tiempos, 0.99),
+        "p999_ms": percentil(tiempos, 0.999),
+        "min_ms": tiempos[0],
+        "max_ms": tiempos[-1],
+    }
+
+
+def _self_test() -> None:
+    r = benchmark(lambda: sum(range(100)), 100)
+    for k in ("p50_ms", "p99_ms", "p999_ms", "min_ms", "max_ms", "n"):
+        assert k in r
+    assert r["p50_ms"] <= r["p99_ms"] <= r["p999_ms"]
+
+
+if __name__ == "__main__":
+    _self_test(); print("T33 OK")
+```
+
+### `omega_verify/l5/t34_generar_bloques_prueba.py`
+```python
+"""T34 — generar_bloques_prueba. L5. Deps: T03."""
+from ..l0.t02_intervalo import Intervalo
+from ..l0.t03_bloque import Bloque
+
+
+def generar_bloques_prueba(n: int, duracion_bloque: float = 1.0) -> list:
+    return [Bloque(f"b{i}",
+                   Intervalo(i * duracion_bloque, (i + 1) * duracion_bloque))
+            for i in range(n)]
+
+
+def _self_test() -> None:
+    bs = generar_bloques_prueba(3)
+    assert len(bs) == 3
+    assert bs[0].intervalo.inicio == 0.0
+    assert bs[2].intervalo.fin == 3.0
+
+
+if __name__ == "__main__":
+    _self_test(); print("T34 OK")
+```
+
+---
+
+## 🔹 L6 — ANÁLISIS DE BRECHA
+
+### `omega_verify/l6/__init__.py`
+```python
+"""L6 — Análisis de brecha (4 herramientas atómicas)."""
+from .t35_verificar_coherencia_eps import verificar_coherencia_eps
+from .t36_generar_puntos_frontera import generar_puntos_frontera
+from .t37_generar_vecinos_ulp import generar_vecinos_ulp
+from .t38_comparar_clasificaciones import comparar_clasificaciones
+__all__ = ["verificar_coherencia_eps", "generar_puntos_frontera",
+           "generar_vecinos_ulp", "comparar_clasificaciones"]
+```
+
+### `omega_verify/l6/t35_verificar_coherencia_eps.py`
+```python
+"""T35 — verificar_coherencia_eps. L6. Deps: T01."""
+import math
+from typing import Sequence
+from ..l0.t01_eps import EPS
+
+
+def verificar_coherencia_eps(
+        valores: Sequence[float] = (0.0, 1.0, 0.5, 100.0, 3600.0, 86400.0)) -> dict:
+    detalles = []
+    coherente = True
+    for v in valores:
+        ulp = math.ulp(v) if v != 0 else math.ulp(1.0) * 0.5
+        margen = EPS / ulp if ulp > 0 else float("inf")
+        ok = margen >= 1.0
+        detalles.append({"valor": v, "ulp": ulp, "margen": margen, "ok": ok})
+        coherente &= ok
+    return {"coherente": coherente, "eps": EPS, "detalles": detalles}
+
+
+def _self_test() -> None:
+    r = verificar_coherencia_eps()
+    assert r["coherente"]
+    assert len(r["detalles"]) == 6
+
+
+if __name__ == "__main__":
+    _self_test(); print("T35 OK")
+```
+
+### `omega_verify/l6/t36_generar_puntos_frontera.py`
+```python
+"""T36 — generar_puntos_frontera. L6. Deps: ninguna."""
+from typing import Iterable
+
+
+def generar_puntos_frontera(total: int, frontera: float = 1.0,
+                            delta: float = 1e-9) -> Iterable[float]:
+    mitad = total // 2
+    for k in range(-mitad, total - mitad):
+        yield frontera + k * delta
+
+
+def _self_test() -> None:
+    pts = list(generar_puntos_frontera(11, 1.0))
+    assert len(pts) == 11
+    assert abs(pts[0] - (1.0 - 5 * 1e-9)) < 1e-15
+
+
+if __name__ == "__main__":
+    _self_test(); print("T36 OK")
+```
+
+### `omega_verify/l6/t37_generar_vecinos_ulp.py`
+```python
+"""T37 — generar_vecinos_ulp. L6. Deps: math."""
+import math
+from typing import Iterable
+
+
+def generar_vecinos_ulp(x: float, n: int = 1001) -> Iterable[float]:
+    if x == 0.0:
+        x = 1.0
+    mitad = n // 2
+    ulp = math.ulp(x)
+    for k in range(-mitad, mitad + 1):
+        yield x + k * ulp
+
+
+def _self_test() -> None:
+    vec = list(generar_vecinos_ulp(1.0, 1001))
+    assert len(vec) == 1001
+    assert abs(vec[500] - 1.0) < 1e-15
+
+
+if __name__ == "__main__":
+    _self_test(); print("T37 OK")
+```
+
+### `omega_verify/l6/t38_comparar_clasificaciones.py`
+```python
+"""T38 — comparar_clasificaciones. L6. Deps: ninguna."""
+from typing import Any, Callable, Iterable
+
+
+def comparar_clasificaciones(puntos: Iterable[Any],
+                             esperado_fn: Callable[[Any], bool],
+                             detectado_fn: Callable[[Any], bool]) -> dict:
+    probados = 0; divergencias = 0; ejemplos = []
+    for x in puntos:
+        probados += 1
+        if esperado_fn(x) != detectado_fn(x):
+            divergencias += 1
+            if len(ejemplos) < 5:
+                ejemplos.append(x)
+    return {"probados": probados, "divergencias": divergencias,
+            "ejemplos": ejemplos}
+
+
+def _self_test() -> None:
+    r = comparar_clasificaciones(range(10), lambda x: x % 2 == 0,
+                                 lambda x: x % 2 == 0)
+    assert r["probados"] == 10 and r["divergencias"] == 0
+    r = comparar_clasificaciones(range(3), lambda x: True,
+                                 lambda x: x == 0)
+    assert r["divergencias"] == 2
+
+
+if __name__ == "__main__":
+    _self_test(); print("T38 OK")
+```
+
+---
+
+## 🔹 L7 — REPORTE
+
+### `omega_verify/l7/__init__.py`
+```python
+"""L7 — Reporte (1 herramienta)."""
+from .t39_formatear_informe import formatear_informe
+__all__ = ["formatear_informe"]
+```
+
+### `omega_verify/l7/t39_formatear_informe.py`
+```python
+"""T39 — formatear_informe. L7. Deps: ninguna."""
+from typing import Any, Mapping
+
+
+def formatear_informe(informe: Mapping[str, Any]) -> str:
+    lineas = ["=" * 60, "  INFORME OMEGA-VERIFY", "=" * 60]
+    for nombre, valor in informe.items():
+        lineas.append(f"\n[{nombre}]")
+        if isinstance(valor, Mapping):
+            for k, v in valor.items():
+                lineas.append(f"  {k:20s} : {v}")
+        else:
+            lineas.append(f"  {valor}")
+    lineas.append("=" * 60)
+    return "\n".join(lineas)
+
+
+def _self_test() -> None:
+    out = formatear_informe({"nivel_1": {"ok": True, "eps": 1e-9}})
+    assert "INFORME" in out and "nivel_1" in out and "eps" in out
+
+
+if __name__ == "__main__":
+    _self_test(); print("T39 OK")
+```
+
+---
+
+## 🔹 L8 — PRESENTACIÓN
+
+### `omega_verify/l8/t40_post_json.ts`
+```typescript
+/**
+ * T40 — post_json. L8. Deps: fetch.
+ * POST JSON con rechazo explícito si !res.ok.
+ */
+export async function post_json<T = unknown>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  }
+  return (await res.json()) as T;
+}
+```
+
+### `omega_verify/l8/t41_z3_formal_verifier.tsx`
+```tsx
+/**
+ * T41 — Z3FormalVerifier. L8. Deps: T40, React.
+ * UI pura de presentación. NO contiene lógica de dominio.
+ */
+import React, { useCallback, useState } from "react";
+import { post_json } from "./t40_post_json";
+
+export interface Resultado {
+  ok: boolean;
+  regla: string;
+  contraejemplo?: unknown;
+  detalle?: string;
+  modelo?: Array<{ id: string; inicio: number; fin: number; patrocinador?: string | null }>;
+}
+
+export interface Props {
+  endpoint?: string;
+  onResult?: (r: Resultado) => void;
+}
+
+type Estado =
+  | { fase: "idle" }
+  | { fase: "capa1"; r: Resultado }
+  | { fase: "capa2"; r: Resultado }
+  | { fase: "error"; msg: string };
+
+const PLANTILLA = JSON.stringify({
+  duracion: 20, inicio: 0, topes: { A: 10, B: 10 },
+  bloques: [
+    { id: "intro", inicio: 0, fin: 5 },
+    { id: "spot_a", inicio: 5, fin: 5.5, patrocinador: "A" },
+    { id: "noticia", inicio: 5.5, fin: 15 },
+    { id: "outro", inicio: 15, fin: 20 },
+  ],
+}, null, 2);
+
+export const Z3FormalVerifier: React.FC<Props> = ({
+  endpoint = "/api/omega-verify", onResult,
+}) => {
+  const [estado, setEstado] = useState<Estado>({ fase: "idle" });
+  const [json, setJson] = useState(PLANTILLA);
+  const [cargando, setCargando] = useState(false);
+
+  const verificar = useCallback(async () => {
+    setCargando(true); setEstado({ fase: "idle" });
+    try {
+      const payload = JSON.parse(json);
+      const r1 = await post_json<Resultado>(`${endpoint}/capa1`, payload);
+      setEstado({ fase: "capa1", r: r1 }); onResult?.(r1);
+      if (!r1.ok) return;
+      const r2 = await post_json<Resultado>(`${endpoint}/capa2`, payload);
+      setEstado({ fase: "capa2", r: r2 }); onResult?.(r2);
+    } catch (e) {
+      setEstado({ fase: "error", msg: e instanceof Error ? e.message : String(e) });
+    } finally { setCargando(false); }
+  }, [endpoint, json, onResult]);
+
+  return (
+    <div className="omega-verifier">
+      <h2>Omega Formal Verification</h2>
+      <textarea value={json} onChange={(e) => setJson(e.target.value)}
+                rows={16} spellCheck={false} />
+      <button onClick={verificar} disabled={cargando}>
+        {cargando ? "Verificando…" : "Verificar"}
+      </button>
+      {estado.fase === "capa1" && <Panel titulo="Capa 1" r={estado.r} />}
+      {estado.fase === "capa2" && <Panel titulo="Capa 2" r={estado.r} />}
+      {estado.fase === "error" && <div>Error: {estado.msg}</div>}
+    </div>
+  );
+};
+
+const Panel: React.FC<{ titulo: string; r: Resultado }> = ({ titulo, r }) => (
+  <div className={r.ok ? "ok" : "fail"}>
+    <h3>{titulo} — {r.ok ? "OK" : "FALLO"} · regla: {r.regla}</h3>
+    {r.detalle && <p>{r.detalle}</p>}
+    {r.contraejemplo != null && (
+      <details><summary>Contraejemplo</summary>
+        <pre>{JSON.stringify(r.contraejemplo, null, 2)}</pre></details>
+    )}
+    {r.modelo && (
+      <details open><summary>Modelo</summary>
+        <ul>{r.modelo.map((b) => (
+          <li key={b.id}><code>{b.id}</code> · {b.inicio} → {b.fin}</li>
+        ))}</ul></details>
+    )}
+  </div>
+);
+
+export default Z3FormalVerifier;
+```
+
+---
+
+## 🧪 Runner de tests
+
+### `tests/test_all.py`
+```python
+"""tests/test_all.py — Ejecuta todos los `_self_test()` de las 41 herramientas."""
+import importlib
+import pytest
+
+MODULES = [
+    # L0
+    "omega_verify.l0.t01_eps",
+    "omega_verify.l0.t02_intervalo",
+    "omega_verify.l0.t03_bloque",
+    "omega_verify.l0.t04_contraejemplo",
+    "omega_verify.l0.t05_resultado",
+    # L1
+    "omega_verify.l1.t06_predicado_no_solape",
+    "omega_verify.l1.t07_predicado_sin_hueco_inicial",
+    "omega_verify.l1.t08_predicado_sin_hueco_interior",
+    "omega_verify.l1.t09_predicado_sin_hueco_final",
+    "omega_verify.l1.t10_predicado_dentro_marco",
+    # L2
+    "omega_verify.l2.t11_predicado_cuota_patrocinador",
+    "omega_verify.l2.t12_predicado_suma_duraciones",
+    "omega_verify.l2.t13_predicado_cuotas_factibles",
+    # L3
+    "omega_verify.l3.t14_crear_solver",
+    "omega_verify.l3.t15_var_inicio",
+    "omega_verify.l3.t16_var_fin",
+    "omega_verify.l3.t17_fijar_var",
+    "omega_verify.l3.t18_restriccion_marco",
+    "omega_verify.l3.t19_restriccion_no_solape",
+    "omega_verify.l3.t20_restriccion_orden",
+    "omega_verify.l3.t21_restriccion_ventana",
+    "omega_verify.l3.t22_z3_a_float",
+    "omega_verify.l3.t23_or_violaciones",
+    "omega_verify.l3.t24_ejecutar_solver",
+    "omega_verify.l3.t25_extraer_valores",
+    # L4
+    "omega_verify.l4.t26_verificar_estructura",
+    "omega_verify.l4.t27_verificar_patrocinios",
+    "omega_verify.l4.t28_verificar_capa1",
+    "omega_verify.l4.t29_verificar_invariante",
+    "omega_verify.l4.t30_buscar_completacion",
+    # L5
+    "omega_verify.l5.t31_cronometrar",
+    "omega_verify.l5.t32_percentil",
+    "omega_verify.l5.t33_benchmark",
+    "omega_verify.l5.t34_generar_bloques_prueba",
+    # L6
+    "omega_verify.l6.t35_verificar_coherencia_eps",
+    "omega_verify.l6.t36_generar_puntos_frontera",
+    "omega_verify.l6.t37_generar_vecinos_ulp",
+    "omega_verify.l6.t38_comparar_clasificaciones",
+    # L7
+    "omega_verify.l7.t39_formatear_informe",
+]
+
+
+@pytest.mark.parametrize("modname", MODULES)
+def test_self(modname: str) -> None:
+    mod = importlib.import_module(modname)
+    mod._self_test()
+```
+
+### `pytest.ini`
+```ini
+[pytest]
+testpaths = tests
+python_files = test_*.py
+```
+
+### `requirements.txt`
+```text
+z3-solver>=4.8.12
+pytest>=7.0
+```
+
+---
+
+## ✅ VALIDACIÓN
+
+```bash
+pip install -r requirements.txt
+pytest -q
+```
+
+Salida esperada:
+
+```
+......................................  [100%]
+39 passed
+```
+
+*(L8 son TS/TSX — no ejecutables por pytest; se validan con `tsc --noEmit`.)*
+
+---
+
+## 🧭 RESUMEN
+
+| Capa | Herramientas | Ficheros | Self-tests |
+|:----:|:------------:|:--------:|:----------:|
+| L0 | 5 | 5 | 5 |
+| L1 | 5 | 5 | 5 |
+| L2 | 3 | 3 | 3 |
+| L3 | 12 | 12 | 12 |
+| L4 | 5 | 5 | 5 |
+| L5 | 4 | 4 | 4 |
+| L6 | 4 | 4 | 4 |
+| L7 | 1 | 1 | 1 |
+| L8 | 2 | 2 | — |
+| **Total** | **41** | **41 + 9 `__init__`** | **39 pytest** |
+
+Cada herramienta es **autocontenida**, **importable aisladamente**, y su `_self_test()` es el contrato mínimo verificado. El desacoplamiento es **total**: sustituir Z3 requiere reescribir solo `l3/t14..t25`; cambiar React, solo `l8/t41`.

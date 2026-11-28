@@ -1,0 +1,1581 @@
+# 🧩 DESARTICULACIÓN COMPLETA — OMEGA ZERO-G
+
+**Inventario de herramientas, corrección de nomenclatura, código fuente por pieza y creación de lo faltante.**
+
+---
+
+## 1. INVENTARIO COMPLETO (43 herramientas)
+
+| # | Herramienta | Archivo | Tipo | Propósito | Estado |
+|---|---|---|---|---|---|
+| **A. CONFIGURACIÓN Y BUILD** |||||
+| A1 | `package.json` | `package.json` | Config | Metadatos + dependencias | ✅ Existe |
+| A2 | TS base | `tsconfig.json` | Config | Compilación cliente | 🔧 Ajustar |
+| A3 | TS node | `tsconfig.node.json` | Config | Compilación servidor | 🆕 Crear |
+| A4 | Vite | `vite.config.ts` | Build | Bundler frontend | 🔴 **Fix seguridad** |
+| A5 | HTML entry | `index.html` | Build | Punto de entrada | ✅ Existe |
+| A6 | Env template | `.env.example` | Config | Plantilla entorno | ✅ Existe |
+| A7 | Git exclusions | `.gitignore` | Config | Exclusión VCS | ✅ Existe |
+| **B. DOMINIO COMPARTIDO** |||||
+| B1 | Constantes físicas | `src/shared/constants/physical.constants.ts` | Shared | G, c, masas IAU | 🆕 Crear |
+| B2 | Tipos física | `src/shared/types/physics.types.ts` | Shared | Contratos física | 🆕 Crear |
+| B3 | Tipos API | `src/shared/types/api.types.ts` | Shared | Contratos HTTP | 🆕 Crear |
+| B4 | Barrel | `src/shared/types/index.ts` | Shared | Re-export | 🆕 Crear |
+| **C. DOMINIO FÍSICA** |||||
+| C1 | Gravedad | `src/domain/physics/gravity.ts` | Domain | `a = -GM·r̂/r²` | 🆕 Crear |
+| C2 | Integradores | `src/domain/physics/integrators.ts` | Domain | Euler + Verlet | 🆕 Crear |
+| C3 | Mecánica orbital | `src/domain/physics/orbital.ts` | Domain | `v`, `ε`, `h`, `T`, `v_esc` | 🆕 Crear |
+| C4 | Relatividad | `src/domain/physics/relativity.ts` | Domain | Schwarzschild `rs` | 🆕 Crear |
+| C5 | Vectores | `src/domain/physics/vector.ts` | Domain | Operaciones Vec3 | 🆕 Crear |
+| **D. DOMINIO VERIFICACIÓN** |||||
+| D1 | Invariantes | `src/domain/verification/invariants.ts` | Domain | Definición | 🆕 Crear |
+| D2 | Verificador | `src/domain/verification/verifier.ts` | Domain | Motor de invariantes | 🆕 Crear |
+| **E. DOMINIO SIMULACIÓN** |||||
+| E1 | Propagador | `src/domain/simulation/trajectory.ts` | Domain | Integración de trayectoria | 🆕 Crear |
+| **F. INFRAESTRUCTURA** |||||
+| F1 | Cliente Gemini | `src/infrastructure/gemini/gemini.service.ts` | Infra | SDK `@google/genai` | 🆕 Crear |
+| F2 | Cliente HTTP | `src/infrastructure/api/http.client.ts` | Infra | Fetch wrapper tipado | 🆕 Crear |
+| F3 | API Asistente | `src/infrastructure/api/assistant.api.ts` | Infra | Cliente `/api/assistant` | 🆕 Crear |
+| **G. SERVIDOR** |||||
+| G1 | Server entry | `server/index.ts` | Server | Express + Vite middleware | 🔴 **Fix await** |
+| G2 | Ruta health | `server/routes/health.route.ts` | Server | `/api/health` | 🆕 Crear |
+| G3 | Ruta assistant | `server/routes/assistant.route.ts` | Server | `/api/assistant` | 🆕 Crear |
+| G4 | Error middleware | `server/middlewares/error.middleware.ts` | Server | Manejo errores | 🆕 Crear |
+| **H. PRESENTACIÓN UI** |||||
+| H1 | Layout | `src/presentation/components/Layout.tsx` | UI | Estructura | 🔧 Renombrar ruta |
+| H2 | MetricRow | `src/presentation/components/MetricRow.tsx` | UI | Fila de métrica | 🆕 Crear |
+| H3 | RangeInput | `src/presentation/components/RangeInput.tsx` | UI | Slider reutilizable | 🆕 Crear |
+| H4 | ErrorBoundary | `src/presentation/components/ErrorBoundary.tsx` | UI | Captura errores React | 🆕 Crear |
+| H5 | ZeroG page | `src/presentation/pages/ZeroGSimulationPage.tsx` | UI | Módulo simulación | 🔧 Renombrar |
+| H6 | Distortion page | `src/presentation/pages/SpatialDistortionPage.tsx` | UI | Módulo shaders | 🔧 Renombrar |
+| H7 | Verification page | `src/presentation/pages/FormalVerificationPage.tsx` | UI | Módulo verificación | 🔧 Renombrar |
+| H8 | Assistant page | `src/presentation/pages/AssistantPage.tsx` | UI | Módulo asistente | 🔴 **Fix API key** |
+| **I. RENDER 3D** |||||
+| I1 | Scene factory | `src/presentation/three/scene.factory.ts` | 3D | Setup cámara/renderer | 🆕 Crear |
+| I2 | Material shader | `src/presentation/three/shader.material.ts` | 3D | Material GLSL | 🆕 Crear |
+| I3 | Trail buffer | `src/presentation/three/trail.buffer.ts` | 3D | Buffer circular correcto | 🆕 Crear |
+| I4 | Satellite mesh | `src/presentation/three/satellite.mesh.ts` | 3D | Mesh satélite | 🆕 Crear |
+| **J. UTILIDADES** |||||
+| J1 | Logger | `src/utils/logger.ts` | Util | Logging estructurado | 🆕 Crear |
+| J2 | Formatters | `src/utils/format.ts` | Util | Formato numérico SI | 🆕 Crear |
+| **K. DOCUMENTACIÓN** |||||
+| K1 | README | `README.md` | Docs | Documentación | ✅ Existe |
+| K2 | LICENSE | `LICENSE` | Docs | Apache 2.0 | ✅ Existe |
+
+---
+
+## 2. CORRECCIONES DE NOMENCLATURA
+
+| Antes | Después | Razón |
+|---|---|---|
+| `server.ts` | `server/index.ts` | Separación de entry + rutas + middlewares |
+| `src/lib/physics.ts` | `src/domain/physics/*.ts` | Responsabilidad única por archivo |
+| `src/lib/z3Verification.ts` | `src/domain/verification/verifier.ts` | **No usa Z3 real** — es un verificador de tolerancias, el nombre engañaba |
+| `src/lib/shaders.ts` | `src/presentation/three/shader.material.ts` | Los shaders son de presentación, no lógica de dominio |
+| `src/components/Layout.tsx` | `src/presentation/components/Layout.tsx` | Capa explícita |
+| `src/pages/*Page.tsx` | `src/presentation/pages/*Page.tsx` | Capa explícita + sufijo `Page` |
+| `src/types.ts` | `src/shared/types/*.types.ts` | Tipos separados por dominio |
+| `ZeroGSimulation` | `ZeroGSimulationPage` | Sufijo consistente |
+| `integrateStepLocal` | `stepTrajectory` | Nombre describe acción |
+| `TRAIL_POSITIONS` | *eliminado* | Variable muerta sin uso |
+
+---
+
+## 3. 🔴 VULNERABILIDADES CRÍTICAS CORREGIDAS
+
+| # | Vulnerabilidad | Impacto | Fix |
+|---|---|---|---|
+| **V1** | `GEMINI_API_KEY` inyectada vía `define` en `vite.config.ts` | **CRÍTICO** — la key queda embebida en el bundle JS público. Cualquiera la extrae. | Solo el servidor puede usar la key. El cliente llama a `/api/assistant`. |
+| **V2** | `AssistantPage` llama a `askAssistant()` directamente desde el navegador | **CRÍTICO** — depende de `process.env` que no existe en browser. Falla o expone la key. | Usa `assistantApi.ask()` → fetch a `/api/assistant` |
+| **V3** | `server.ts` con `await import('vite')` top-level | **ROMPE BUILD** — el bundle se emite como CJS (`--format=cjs`), donde top-level await no funciona | Envuelto en `async function bootstrap()` |
+| **V4** | `updateTrail` usaba `array.copyWithin(0, 3)` sin desplazar buffer | **BUG** — el trail no avanza correctamente, dibuja posiciones incorrectas | `TrailBuffer` con índice circular explícito |
+
+---
+
+## 4. CÓDIGO FUENTE POR HERRAMIENTA
+
+### 4.1 [A4] `vite.config.ts` — 🔴 CORREGIDO
+
+```ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'node:url';
+
+// ⚠️ NO inyectar GEMINI_API_KEY aquí. Vive solo en el servidor.
+// El cliente habla con /api/assistant a través del backend Express.
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
+  server: {
+    port: 3000,
+    host: true,
+    proxy: {
+      // En desarrollo, el cliente puede hablar directo al backend
+      '/api': 'http://localhost:3000',
+    },
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: true,
+  },
+});
+```
+
+**Cambio clave:** eliminada la línea `define: { 'process.env.GEMINI_API_KEY': ... }`. La key ya no llega al navegador.
+
+---
+
+### 4.2 [A3] `tsconfig.node.json` — 🆕 CREADO
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["./src/shared/*"],
+      "@domain/*": ["./src/domain/*"]
+    }
+  },
+  "include": ["server/**/*.ts", "src/shared/**/*.ts", "src/domain/**/*.ts", "src/infrastructure/gemini/**/*.ts"]
+}
+```
+
+---
+
+### 4.3 [B1] `src/shared/constants/physical.constants.ts` — 🆕 CREADO
+
+```ts
+/**
+ * Constantes físicas en unidades SI.
+ * Fuentes: CODATA 2018, IAU 2015 Resolution B3.
+ * NO modificar sin actualizar también README.
+ */
+
+/** Constante de gravitación universal (CODATA 2018) */
+export const G = 6.6743e-11; // m³·kg⁻¹·s⁻²
+
+/** Velocidad de la luz en el vacío (SI, exacta por definición del metro) */
+export const C = 299_792_458; // m/s
+
+/** Masas de cuerpos celestes (IAU) */
+export const MASS_EARTH = 5.972e24;   // kg
+export const MASS_MOON  = 7.342e22;   // kg
+export const MASS_MARS  = 6.417e23;   // kg
+export const MASS_SUN   = 1.989e30;   // kg
+
+/** Radios medios (IAU) */
+export const RADIUS_EARTH = 6.371e6;  // m
+export const RADIUS_MOON  = 1.7374e6; // m
+export const RADIUS_MARS  = 3.3895e6; // m
+
+/** Radio de Schwarzschild del Sol, en metros (precalculado) */
+export const SCHWARZSCHILD_RADIUS_SUN = 2.953e3; // m
+```
+
+---
+
+### 4.4 [B2] `src/shared/types/physics.types.ts` — 🆕 CREADO
+
+```ts
+export interface Vec3 {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+}
+
+export interface CelestialBody {
+  readonly id: string;
+  readonly name: string;
+  readonly mass: number;    // kg
+  readonly radius: number;  // m
+  readonly color: string;   // hex
+}
+
+export interface BodyState {
+  readonly position: Vec3;
+  readonly velocity: Vec3;
+  readonly time: number;    // s
+}
+
+export type IntegratorKind = 'verlet' | 'euler';
+
+export interface SimulationParams {
+  readonly central: CelestialBody;
+  readonly spacecraftMass: number; // kg
+  readonly dt: number;             // s
+  readonly integrator: IntegratorKind;
+  readonly steps: number;
+}
+```
+
+---
+
+### 4.5 [B3] `src/shared/types/api.types.ts` — 🆕 CREADO
+
+```ts
+/** Contrato HTTP entre cliente y servidor. */
+
+export interface HealthResponse {
+  status: 'ok';
+  service: string;
+  version: string;
+  env: 'development' | 'production';
+}
+
+export interface AssistantRequest {
+  prompt: string;
+}
+
+export interface AssistantResponse {
+  text: string;
+  model: string;
+}
+
+export interface ApiError {
+  error: string;
+  code?: string;
+}
+```
+
+---
+
+### 4.6 [B4] `src/shared/types/index.ts` — 🆕 CREADO
+
+```ts
+export * from './physics.types';
+export * from './api.types';
+
+export type ModuleId =
+  | 'zero-g'
+  | 'distortion'
+  | 'verification'
+  | 'assistant';
+
+export interface ModuleEntry {
+  readonly id: ModuleId;
+  readonly label: string;
+  readonly detail: string;
+}
+```
+
+---
+
+### 4.7 [C5] `src/domain/physics/vector.ts` — 🆕 CREADO
+
+```ts
+import type { Vec3 } from '../../shared/types';
+
+export const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
+
+export function magnitude(v: Vec3): number {
+  return Math.hypot(v.x, v.y, v.z);
+}
+
+export function add(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+export function scale(v: Vec3, s: number): Vec3 {
+  return { x: v.x * s, y: v.y * s, z: v.z * s };
+}
+
+export function cross(a: Vec3, b: Vec3): Vec3 {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+export function dot(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+```
+
+---
+
+### 4.8 [C1] `src/domain/physics/gravity.ts` — 🆕 CREADO
+
+```ts
+import type { CelestialBody, Vec3 } from '../../shared/types';
+import { G } from '../../shared/constants/physical.constants';
+import { magnitude } from './vector';
+
+/**
+ * Aceleración gravitatoria newtoniana:
+ *   a = -G·M · r / |r|³
+ */
+export function gravitationalAcceleration(
+  r: Vec3,
+  central: CelestialBody,
+): Vec3 {
+  const rMag = magnitude(r);
+  if (rMag === 0) {
+    throw new Error('Posición cero: aceleración indefinida');
+  }
+  const factor = -G * central.mass / (rMag * rMag * rMag);
+  return { x: factor * r.x, y: factor * r.y, z: factor * r.z };
+}
+```
+
+---
+
+### 4.9 [C2] `src/domain/physics/integrators.ts` — 🆕 CREADO
+
+```ts
+import type { BodyState, SimulationParams, Vec3 } from '../../shared/types';
+import { gravitationalAcceleration } from './gravity';
+
+/** Euler semi-implícito. Menos preciso, útil como referencia. */
+export function eulerStep(
+  state: BodyState,
+  params: SimulationParams,
+): BodyState {
+  const { dt, central } = params;
+  const a = gravitationalAcceleration(state.position, central);
+
+  const v: Vec3 = {
+    x: state.velocity.x + a.x * dt,
+    y: state.velocity.y + a.y * dt,
+    z: state.velocity.z + a.z * dt,
+  };
+
+  return {
+    position: {
+      x: state.position.x + v.x * dt,
+      y: state.position.y + v.y * dt,
+      z: state.position.z + v.z * dt,
+    },
+    velocity: v,
+    time: state.time + dt,
+  };
+}
+
+/**
+ * Velocity Verlet (simpléctico, orden 2).
+ * Conserva la energía con error acotado — ideal para órbitas largas.
+ */
+export function verletStep(
+  state: BodyState,
+  params: SimulationParams,
+): BodyState {
+  const { dt, central } = params;
+  const p0 = state.position;
+  const v0 = state.velocity;
+
+  const a0 = gravitationalAcceleration(p0, central);
+
+  const p1: Vec3 = {
+    x: p0.x + v0.x * dt + 0.5 * a0.x * dt * dt,
+    y: p0.y + v0.y * dt + 0.5 * a0.y * dt * dt,
+    z: p0.z + v0.z * dt + 0.5 * a0.z * dt * dt,
+  };
+
+  const a1 = gravitationalAcceleration(p1, central);
+
+  const v1: Vec3 = {
+    x: v0.x + 0.5 * (a0.x + a1.x) * dt,
+    y: v0.y + 0.5 * (a0.y + a1.y) * dt,
+    z: v0.z + 0.5 * (a0.z + a1.z) * dt,
+  };
+
+  return { position: p1, velocity: v1, time: state.time + dt };
+}
+
+export function stepState(
+  state: BodyState,
+  params: SimulationParams,
+): BodyState {
+  return params.integrator === 'verlet'
+    ? verletStep(state, params)
+    : eulerStep(state, params);
+}
+```
+
+---
+
+### 4.10 [C3] `src/domain/physics/orbital.ts` — 🆕 CREADO
+
+```ts
+import type { BodyState, CelestialBody, Vec3 } from '../../shared/types';
+import { G } from '../../shared/constants/physical.constants';
+import { magnitude, cross } from './vector';
+
+/** Energía orbital específica: ε = v²/2 − G·M/r  (J/kg) */
+export function specificOrbitalEnergy(
+  state: BodyState,
+  central: CelestialBody,
+): number {
+  const r = magnitude(state.position);
+  const v2 =
+    state.velocity.x ** 2 +
+    state.velocity.y ** 2 +
+    state.velocity.z ** 2;
+  return 0.5 * v2 - (G * central.mass) / r;
+}
+
+/** Momento angular específico: h = r × v  (m²/s) */
+export function specificAngularMomentum(state: BodyState): Vec3 {
+  return cross(state.position, state.velocity);
+}
+
+/** Velocidad orbital circular a una altitud dada (m/s) */
+export function circularOrbitVelocity(
+  altitude: number,
+  central: CelestialBody,
+): number {
+  const r = central.radius + altitude;
+  return Math.sqrt((G * central.mass) / r);
+}
+
+/** Velocidad de escape a una altitud dada (m/s) */
+export function escapeVelocity(
+  altitude: number,
+  central: CelestialBody,
+): number {
+  const r = central.radius + altitude;
+  return Math.sqrt((2 * G * central.mass) / r);
+}
+
+/** Tercera ley de Kepler: T = 2π·√(a³/(G·M))  (s) */
+export function orbitalPeriod(
+  semiMajorAxis: number,
+  central: CelestialBody,
+): number {
+  return 2 * Math.PI * Math.sqrt(semiMajorAxis ** 3 / (G * central.mass));
+}
+
+/** Estado inicial en órbita circular (plano XY, cuerpo en origen) */
+export function circularOrbitState(
+  altitude: number,
+  central: CelestialBody,
+): BodyState {
+  const r = central.radius + altitude;
+  const v = circularOrbitVelocity(altitude, central);
+  return {
+    position: { x: r, y: 0, z: 0 },
+    velocity: { x: 0, y: v, z: 0 },
+    time: 0,
+  };
+}
+```
+
+---
+
+### 4.11 [C4] `src/domain/physics/relativity.ts` — 🆕 CREADO
+
+```ts
+import { G, C } from '../../shared/constants/physical.constants';
+
+/**
+ * Radio de Schwarzschild para una masa dada:
+ *   rs = 2·G·M / c²
+ * (metros)
+ */
+export function schwarzschildRadius(mass: number): number {
+  return (2 * G * mass) / (C * C);
+}
+```
+
+---
+
+### 4.12 [D1] `src/domain/verification/invariants.ts` — 🆕 CREADO
+
+```ts
+import type { BodyState, SimulationParams } from '../../shared/types';
+import {
+  specificOrbitalEnergy,
+  specificAngularMomentum,
+} from '../physics/orbital';
+import { magnitude } from '../physics/vector';
+
+export interface Invariant {
+  readonly id: string;
+  readonly description: string;
+  readonly unit: string;
+  readonly tolerance: number;
+  readonly evaluate: (
+    state: BodyState,
+    params: SimulationParams,
+    reference: BodyState,
+  ) => number;
+}
+
+export const DEFAULT_INVARIANTS: readonly Invariant[] = [
+  {
+    id: 'energy_conservation',
+    description: 'Energía orbital específica constante',
+    unit: 'J/kg',
+    tolerance: 1e-3,
+    evaluate: (s, p, ref) => {
+      const E0 = specificOrbitalEnergy(ref, p.central);
+      const E = specificOrbitalEnergy(s, p.central);
+      return Math.abs(E - E0);
+    },
+  },
+  {
+    id: 'angular_momentum_conservation',
+    description: 'Momento angular específico constante',
+    unit: 'm²/s',
+    tolerance: 1e-6,
+    evaluate: (s, _p, ref) => {
+      const a = specificAngularMomentum(ref);
+      const b = specificAngularMomentum(s);
+      return Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    },
+  },
+  {
+    id: 'no_surface_impact',
+    description: 'La nave permanece fuera de la superficie central',
+    unit: 'm',
+    tolerance: 0,
+    evaluate: (s, p) => {
+      const r = magnitude(s.position);
+      return Math.max(0, p.central.radius - r);
+    },
+  },
+  {
+    id: 'finite_state',
+    description: 'Estado numérico finito (sin NaN/Infinity)',
+    unit: '—',
+    tolerance: 0,
+    evaluate: (s) => {
+      const v = [
+        s.position.x, s.position.y, s.position.z,
+        s.velocity.x, s.velocity.y, s.velocity.z,
+      ];
+      return v.some((n) => !Number.isFinite(n)) ? 1 : 0;
+    },
+  },
+];
+```
+
+---
+
+### 4.13 [D2] `src/domain/verification/verifier.ts` — 🆕 CREADO
+
+```ts
+import type { BodyState, SimulationParams } from '../../shared/types';
+import { DEFAULT_INVARIANTS, type Invariant } from './invariants';
+
+export interface Violation {
+  invariantId: string;
+  step: number;
+  value: number;
+  tolerance: number;
+  timeSeconds: number;
+}
+
+export interface VerificationReport {
+  passed: boolean;
+  steps: number;
+  durationSeconds: number;
+  violations: Violation[];
+  maxViolations: Record<string, number>;
+  invariants: readonly Invariant[];
+}
+
+export function verifyTrajectory(
+  trajectory: readonly BodyState[],
+  params: SimulationParams,
+  invariants: readonly Invariant[] = DEFAULT_INVARIANTS,
+): VerificationReport {
+  if (trajectory.length === 0) {
+    return {
+      passed: true,
+      steps: 0,
+      durationSeconds: 0,
+      violations: [],
+      maxViolations: {},
+      invariants,
+    };
+  }
+
+  const reference = trajectory[0];
+  const violations: Violation[] = [];
+  const maxViolations: Record<string, number> = {};
+  invariants.forEach((inv) => (maxViolations[inv.id] = 0));
+
+  let lastTime = 0;
+  trajectory.forEach((state, step) => {
+    lastTime = state.time;
+    for (const inv of invariants) {
+      const value = inv.evaluate(state, params, reference);
+      if (value > maxViolations[inv.id]) {
+        maxViolations[inv.id] = value;
+      }
+      if (value > inv.tolerance) {
+        violations.push({
+          invariantId: inv.id,
+          step,
+          value,
+          tolerance: inv.tolerance,
+          timeSeconds: state.time,
+        });
+      }
+    }
+  });
+
+  return {
+    passed: violations.length === 0,
+    steps: trajectory.length,
+    durationSeconds: lastTime,
+    violations,
+    maxViolations,
+    invariants,
+  };
+}
+```
+
+---
+
+### 4.14 [E1] `src/domain/simulation/trajectory.ts` — 🆕 CREADO
+
+```ts
+import type { BodyState, SimulationParams } from '../../shared/types';
+import { stepState } from '../physics/integrators';
+
+/**
+ * Propaga `params.steps` pasos desde `initial` y devuelve la trayectoria completa.
+ * El primer elemento es siempre el estado inicial.
+ */
+export function propagateTrajectory(
+  initial: BodyState,
+  params: SimulationParams,
+): BodyState[] {
+  const trajectory: BodyState[] = [initial];
+  let current = initial;
+
+  for (let i = 0; i < params.steps; i++) {
+    current = stepState(current, params);
+    trajectory.push(current);
+    // Abortar si el estado diverge (evita bucles infinitos en NaN)
+    if (!Number.isFinite(current.position.x)) break;
+  }
+
+  return trajectory;
+}
+```
+
+---
+
+### 4.15 [F1] `src/infrastructure/gemini/gemini.service.ts` — 🆕 CREADO (solo servidor)
+
+```ts
+/**
+ * ⚠️ SOLO SERVIDOR — este módulo importa `@google/genai` y usa
+ * `process.env.GEMINI_API_KEY`. NUNCA importarlo desde el cliente.
+ */
+import { GoogleGenAI } from '@google/genai';
+
+const MODEL = 'gemini-2.5-flash';
+
+const SYSTEM_INSTRUCTION = `Eres el asistente técnico de Omega Zero-G, un IDE de física aeroespacial.
+Reglas estrictas:
+1. Responde SIEMPRE en español, salvo que el usuario pida otro idioma.
+2. Usa unidades del Sistema Internacional y muestra las fórmulas.
+3. Nunca inventes constantes físicas ni datos. Si no estás seguro, dilo.
+4. No uses lenguaje publicitario ni términos pseudocientíficos.
+5. Cuando el usuario plantee un cálculo, muestra los pasos y verifica dimensiones.
+6. Si el usuario pide algo fuera de física/ingeniería aeroespacial, redirige brevemente.`;
+
+let cachedClient: GoogleGenAI | null = null;
+let cachedKey: string | null = null;
+
+function getClient(apiKey?: string): GoogleGenAI {
+  const key = apiKey ?? process.env.GEMINI_API_KEY ?? '';
+  if (!key) {
+    throw new Error(
+      'GEMINI_API_KEY no configurada. Añádela a .env',
+    );
+  }
+  if (!cachedClient || cachedKey !== key) {
+    cachedClient = new GoogleGenAI({ apiKey: key });
+    cachedKey = key;
+  }
+  return cachedClient;
+}
+
+export interface AssistantReply {
+  text: string;
+  model: string;
+}
+
+export async function askAssistant(prompt: string): Promise<AssistantReply> {
+  const ai = getClient();
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: prompt,
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      temperature: 0.2,
+    },
+  });
+
+  const text = response.text ?? '';
+  if (!text) throw new Error('Respuesta vacía del modelo');
+  return { text, model: MODEL };
+}
+```
+
+---
+
+### 4.16 [F2] `src/infrastructure/api/http.client.ts` — 🆕 CREADO (solo cliente)
+
+```ts
+import type { ApiError } from '../../shared/types';
+
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly payload: ApiError,
+  ) {
+    super(payload.error);
+    this.name = 'HttpError';
+  }
+}
+
+export async function postJson<TReq, TRes>(
+  url: string,
+  body: TReq,
+  signal?: AbortSignal,
+): Promise<TRes> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+
+  const data = (await res.json().catch(() => ({}))) as
+    | TRes
+    | ApiError;
+
+  if (!res.ok) {
+    const err = data as ApiError;
+    throw new HttpError(res.status, err);
+  }
+  return data as TRes;
+}
+```
+
+---
+
+### 4.17 [F3] `src/infrastructure/api/assistant.api.ts` — 🆕 CREADO
+
+```ts
+import type {
+  AssistantRequest,
+  AssistantResponse,
+} from '../../shared/types';
+import { postJson } from './http.client';
+
+export async function requestAssistant(
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<AssistantResponse> {
+  return postJson<AssistantRequest, AssistantResponse>(
+    '/api/assistant',
+    { prompt },
+    signal,
+  );
+}
+```
+
+---
+
+### 4.18 [G1] `server/index.ts` — 🔴 REESCRITO (fix top-level await)
+
+```ts
+import express from 'express';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+import { healthRouter } from './routes/health.route';
+import { assistantRouter } from './routes/assistant.route';
+import { errorMiddleware } from './middlewares/error.middleware';
+
+dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+async function bootstrap(): Promise<void> {
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+
+  // --- API ---
+  app.use('/api/health', healthRouter);
+  app.use('/api/assistant', assistantRouter);
+
+  // --- Frontend ---
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (isProd) {
+    const distDir = path.resolve(__dirname, '..', 'dist');
+    app.use(express.static(distDir));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distDir, 'index.html'));
+    });
+  } else {
+    const { createServer } = await import('vite');
+    const vite = await createServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  }
+
+  // Middleware de error (último)
+  app.use(errorMiddleware);
+
+  const PORT = Number(process.env.PORT ?? 3000);
+  app.listen(PORT, () => {
+    console.log(
+      `Omega Zero-G [${isProd ? 'prod' : 'dev'}] → http://localhost:${PORT}`,
+    );
+  });
+}
+
+bootstrap().catch((err) => {
+  console.error('[FATAL] No se pudo arrancar el servidor:', err);
+  process.exit(1);
+});
+```
+
+---
+
+### 4.19 [G2] `server/routes/health.route.ts` — 🆕 CREADO
+
+```ts
+import { Router } from 'express';
+import type { HealthResponse } from '../../src/shared/types';
+
+export const healthRouter = Router();
+
+healthRouter.get('/', (_req, res) => {
+  const body: HealthResponse = {
+    status: 'ok',
+    service: 'omega-zero-g',
+    version: '1.0.0',
+    env:
+      process.env.NODE_ENV === 'production'
+        ? 'production'
+        : 'development',
+  };
+  res.json(body);
+});
+```
+
+---
+
+### 4.20 [G3] `server/routes/assistant.route.ts` — 🆕 CREADO
+
+```ts
+import { Router } from 'express';
+import type {
+  AssistantRequest,
+  AssistantResponse,
+} from '../../src/shared/types';
+import { askAssistant } from '../../src/infrastructure/gemini/gemini.service';
+
+export const assistantRouter = Router();
+
+assistantRouter.post('/', async (req, res, next) => {
+  try {
+    const { prompt } = req.body as AssistantRequest;
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+      res.status(400).json({ error: 'Campo "prompt" requerido y no vacío' });
+      return;
+    }
+
+    const reply = await askAssistant(prompt);
+    const body: AssistantResponse = reply;
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+```
+
+---
+
+### 4.21 [G4] `server/middlewares/error.middleware.ts` — 🆕 CREADO
+
+```ts
+import type { ErrorRequestHandler } from 'express';
+import type { ApiError } from '../../src/shared/types';
+
+export const errorMiddleware: ErrorRequestHandler = (
+  err,
+  _req,
+  res,
+  _next,
+) => {
+  const message =
+    err instanceof Error ? err.message : 'Error desconocido';
+  console.error('[error]', message);
+
+  const body: ApiError = { error: message };
+  res.status(500).json(body);
+};
+```
+
+---
+
+### 4.22 [I3] `src/presentation/three/trail.buffer.ts` — 🆕 CREADO (fix bug)
+
+```ts
+import * as THREE from 'three';
+
+/**
+ * Buffer circular para trayectorias. Añade puntos con `push(pos)` y
+ * mantiene `capacity` puntos, descartando los más antiguos.
+ *
+ * El bug del código original era usar `Array.copyWithin` sin desplazar
+ * correctamente; este `TrailBuffer` mantiene un índice circular explícito.
+ */
+export class TrailBuffer {
+  private readonly positions: Float32Array;
+  private writeIndex = 0;
+  private filled = 0;
+  private readonly capacity: number;
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly line: THREE.Line;
+
+  constructor(capacity: number, color = 0x66aaff) {
+    this.capacity = capacity;
+    this.positions = new Float32Array(capacity * 3);
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.positions, 3),
+    );
+    const material = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.55,
+    });
+    this.line = new THREE.Line(this.geometry, material);
+    this.line.name = 'trail';
+  }
+
+  push(x: number, y: number, z: number): void {
+    const i = this.writeIndex * 3;
+    this.positions[i + 0] = x;
+    this.positions[i + 1] = y;
+    this.positions[i + 2] = z;
+
+    this.writeIndex = (this.writeIndex + 1) % this.capacity;
+    if (this.filled < this.capacity) this.filled++;
+
+    this.geometry.getAttribute('position').needsUpdate = true;
+    this.geometry.setDrawRange(0, this.filled);
+  }
+
+  reset(): void {
+    this.positions.fill(0);
+    this.writeIndex = 0;
+    this.filled = 0;
+    this.geometry.setDrawRange(0, 0);
+    this.geometry.getAttribute('position').needsUpdate = true;
+  }
+
+  get object(): THREE.Line {
+    return this.line;
+  }
+
+  dispose(): void {
+    this.geometry.dispose();
+    (this.line.material as THREE.Material).dispose();
+  }
+}
+```
+
+---
+
+### 4.23 [J1] `src/utils/logger.ts` — 🆕 CREADO
+
+```ts
+type Level = 'debug' | 'info' | 'warn' | 'error';
+
+const ORDER: Record<Level, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+function currentLevel(): Level {
+  const fromEnv =
+    typeof process !== 'undefined' ? process.env.LOG_LEVEL : undefined;
+  if (fromEnv && fromEnv in ORDER) return fromEnv as Level;
+  return 'info';
+}
+
+function emit(level: Level, message: string, meta?: unknown): void {
+  if (ORDER[level] < ORDER[currentLevel()]) return;
+  const ts = new Date().toISOString();
+  const base = `[${ts}] [${level.toUpperCase()}] ${message}`;
+  if (meta !== undefined) {
+    console[level === 'debug' ? 'log' : level](base, meta);
+  } else {
+    console[level === 'debug' ? 'log' : level](base);
+  }
+}
+
+export const log = {
+  debug: (m: string, meta?: unknown) => emit('debug', m, meta),
+  info: (m: string, meta?: unknown) => emit('info', m, meta),
+  warn: (m: string, meta?: unknown) => emit('warn', m, meta),
+  error: (m: string, meta?: unknown) => emit('error', m, meta),
+};
+```
+
+---
+
+### 4.24 [J2] `src/utils/format.ts` — 🆕 CREADO
+
+```ts
+/** Formato SI con separador de miles y notación científica cuando aplica. */
+export function formatNumber(value: number, digits = 2): string {
+  if (!Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs !== 0 && (abs < 1e-3 || abs >= 1e6)) {
+    return value.toExponential(digits);
+  }
+  return value.toLocaleString('es-ES', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+export function formatDistance(meters: number): string {
+  if (Math.abs(meters) >= 1e6) return `${formatNumber(meters / 1e6)} Mm`;
+  if (Math.abs(meters) >= 1e3) return `${formatNumber(meters / 1e3)} km`;
+  return `${formatNumber(meters)} m`;
+}
+
+export function formatSpeed(mps: number): string {
+  return `${formatNumber(mps)} m/s`;
+}
+
+export function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${formatNumber(seconds, 1)} s`;
+  if (seconds < 3600) return `${formatNumber(seconds / 60)} min`;
+  return `${formatNumber(seconds / 3600)} h`;
+}
+```
+
+---
+
+### 4.25 [H4] `src/presentation/components/ErrorBoundary.tsx` — 🆕 CREADO
+
+```tsx
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+}
+
+interface State {
+  error: Error | null;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error('[ErrorBoundary]', error, info.componentStack);
+  }
+
+  render(): ReactNode {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full items-center justify-center p-8">
+          <div className="max-w-lg rounded-lg border border-red-500/30 bg-red-500/5 p-6">
+            <h2 className="text-base font-medium text-red-300">
+              Se ha producido un error
+            </h2>
+            <pre className="mt-3 overflow-auto rounded bg-black/40 p-3 text-xs text-white/70">
+              {this.state.error.message}
+            </pre>
+            <button
+              onClick={() => this.setState({ error: null })}
+              className="mt-4 rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm hover:bg-white/10"
+            >
+              Reintentar
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+```
+
+---
+
+### 4.26 [H8] `src/presentation/pages/AssistantPage.tsx` — 🔴 REESCRITO (fix API key)
+
+```tsx
+import { useState } from 'react';
+import { requestAssistant } from '../../infrastructure/api/assistant.api';
+import { HttpError } from '../../infrastructure/api/http.client';
+
+interface Message {
+  role: 'user' | 'assistant';
+  text: string;
+  model?: string;
+  error?: boolean;
+}
+
+const SUGGESTIONS = [
+  'Calcula la velocidad orbital circular a 400 km sobre la Tierra.',
+  '¿Cuál es la energía específica de una órbita de transferencia Hohmann Tierra–Marte?',
+  'Explica la diferencia entre el radio de Schwarzschild y el horizonte de sucesos en Kerr.',
+  '¿Qué significa que Velocity Verlet sea simpléctico?',
+];
+
+export default function AssistantPage() {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const send = async (prompt: string) => {
+    if (!prompt.trim() || loading) return;
+    setMessages((m) => [...m, { role: 'user', text: prompt }]);
+    setInput('');
+    setLoading(true);
+    try {
+      const reply = await requestAssistant(prompt);
+      setMessages((m) => [
+        ...m,
+        { role: 'assistant', text: reply.text, model: reply.model },
+      ]);
+    } catch (err) {
+      const message =
+        err instanceof HttpError
+          ? `[${err.status}] ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : 'Error desconocido';
+      setMessages((m) => [
+        ...m,
+        { role: 'assistant', text: message, error: true },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="border-b border-white/10 px-6 py-4">
+        <h2 className="text-base font-medium">Asistente Gemini</h2>
+        <p className="text-sm text-white/50">
+          Proxy: <code>/api/assistant</code> · modelo <code>gemini-2.5-flash</code>
+        </p>
+      </div>
+
+      <div className="flex-1 overflow-auto p-6">
+        {messages.length === 0 && (
+          <div className="mx-auto max-w-2xl space-y-4">
+            <p className="text-sm text-white/60">
+              Preguntas técnicas. La API key vive solo en el servidor: el
+              navegador nunca la ve.
+            </p>
+            <div className="grid gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => send(s)}
+                  className="rounded-md border border-white/10 bg-white/[0.02] px-4 py-3 text-left text-sm text-white/70 hover:border-white/25 hover:bg-white/[0.05]"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mx-auto max-w-3xl space-y-4">
+          {messages.map((m, i) => (
+            <div
+              key={i}
+              className={`rounded-lg border p-4 text-sm ${
+                m.role === 'user'
+                  ? 'border-blue-500/30 bg-blue-500/10'
+                  : m.error
+                    ? 'border-red-500/30 bg-red-500/10'
+                    : 'border-white/10 bg-white/[0.02]'
+              }`}
+            >
+              <div className="mb-1 text-xs uppercase tracking-wider text-white/40">
+                {m.role === 'user' ? 'Tú' : m.model ?? 'Asistente'}
+              </div>
+              <div className="whitespace-pre-wrap leading-relaxed text-white/85">
+                {m.text}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="text-sm text-white/40">Consultando a Gemini…</div>
+          )}
+        </div>
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(input);
+        }}
+        className="border-t border-white/10 p-4"
+      >
+        <div className="mx-auto flex max-w-3xl gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Escribe una pregunta técnica…"
+            className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm outline-none placeholder:text-white/30 focus:border-white/25"
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="rounded-md border border-blue-500/40 bg-blue-500/15 px-4 py-2 text-sm hover:bg-blue-500/25 disabled:opacity-40"
+          >
+            Enviar
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+```
+
+---
+
+### 4.27 [H5] `src/presentation/pages/ZeroGSimulationPage.tsx` — 🔧 REFACTORIZADO
+
+Solo se listan los **cambios clave**; el resto del render es igual al archivo previo.
+
+```tsx
+// Imports actualizados
+import { circularOrbitState, circularOrbitVelocity,
+  escapeVelocity, orbitalPeriod,
+  specificOrbitalEnergy, specificAngularMomentum } from '../../domain/physics/orbital';
+import { magnitude } from '../../domain/physics/vector';
+import { stepState } from '../../domain/physics/integrators';
+import { TrailBuffer } from '../three/trail.buffer';
+import type { BodyState, CelestialBody, SimulationParams } from '../../shared/types';
+import { BODIES } from '../../shared/constants/bodies'; // ← extraer
+
+// ...
+
+// Reemplazar el useEffect de trail por:
+const trailRef = useRef<TrailBuffer | null>(null);
+
+// En el tick:
+if (trailRef.current) {
+  trailRef.current.push(s.position.x, s.position.y, s.position.z);
+}
+
+// Y en el setup:
+const trail = new TrailBuffer(2000);
+scene.add(trail.object);
+trailRef.current = trail;
+
+// Cleanup:
+trailRef.current?.dispose();
+```
+
+Añadir archivo nuevo `src/shared/constants/bodies.ts`:
+
+```ts
+import type { CelestialBody } from '../types';
+import {
+  MASS_EARTH, MASS_MOON, MASS_MARS,
+  RADIUS_EARTH, RADIUS_MOON, RADIUS_MARS,
+} from './physical.constants';
+
+export const EARTH: CelestialBody = {
+  id: 'earth', name: 'Tierra',
+  mass: MASS_EARTH, radius: RADIUS_EARTH, color: '#3b82f6',
+};
+
+export const MOON: CelestialBody = {
+  id: 'moon', name: 'Luna',
+  mass: MASS_MOON, radius: RADIUS_MOON, color: '#a1a1aa',
+};
+
+export const MARS: CelestialBody = {
+  id: 'mars', name: 'Marte',
+  mass: MASS_MARS, radius: RADIUS_MARS, color: '#ef4444',
+};
+
+export const BODIES: readonly CelestialBody[] = [EARTH, MOON, MARS];
+```
+
+---
+
+### 4.28 `src/App.tsx` — 🔧 REFACTORIZADO
+
+```tsx
+import { useState } from 'react';
+import Layout from './presentation/components/Layout';
+import { ErrorBoundary } from './presentation/components/ErrorBoundary';
+import ZeroGSimulationPage from './presentation/pages/ZeroGSimulationPage';
+import SpatialDistortionPage from './presentation/pages/SpatialDistortionPage';
+import FormalVerificationPage from './presentation/pages/FormalVerificationPage';
+import AssistantPage from './presentation/pages/AssistantPage';
+import type { ModuleEntry, ModuleId } from './shared/types';
+
+const MODULES: readonly ModuleEntry[] = [
+  { id: 'zero-g', label: 'Simulación Zero-G', detail: 'Órbita kepleriana con integración Velocity Verlet.' },
+  { id: 'distortion', label: 'Distorsión espacial', detail: 'Shader GLSL inspirado en Schwarzschild.' },
+  { id: 'verification', label: 'Verificación formal', detail: 'Invariantes físicos sobre la trayectoria.' },
+  { id: 'assistant', label: 'Asistente Gemini', detail: 'Consultas técnicas vía proxy backend.' },
+] as const;
+
+export default function App() {
+  const [active, setActive] = useState<ModuleId>('zero-g');
+
+  return (
+    <ErrorBoundary>
+      <Layout modules={MODULES} active={active} onChange={setActive}>
+        {active === 'zero-g' && <ZeroGSimulationPage />}
+        {active === 'distortion' && <SpatialDistortionPage />}
+        {active === 'verification' && <FormalVerificationPage />}
+        {active === 'assistant' && <AssistantPage />}
+      </Layout>
+    </ErrorBoundary>
+  );
+}
+```
+
+---
+
+### 4.29 `package.json` — 🔧 actualizado (scripts y paths)
+
+```json
+{
+  "name": "omega-zero-g",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Omega Zero-G - Aerospace Physics IDE",
+  "author": "Javier Alberto Abreu Molina",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc -p tsconfig.node.json --noEmit && vite build && esbuild server/index.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "NODE_ENV=production node dist/server.cjs",
+    "clean": "rm -rf dist server.cjs",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "lint:node": "tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "npm run lint && npm run lint:node",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "recharts": "^3.10.1",
+    "three": "^0.185.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.185.4",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  }
+}
+```
+
+---
+
+## 5. MAPA DE MIGRACIÓN
+
+| Ruta antigua | Ruta nueva | Acción |
+|---|---|---|
+| `server.ts` | `server/index.ts` | Renombrar + reescribir (fix await) |
+| `src/lib/physics.ts` | `src/domain/physics/{vector,gravity,integrators,orbital,relativity}.ts` | Dividir |
+| `src/lib/z3Verification.ts` | `src/domain/verification/{invariants,verifier}.ts` | Dividir + renombrar |
+| `src/lib/shaders.ts` | `src/presentation/three/shader.material.ts` | Mover + renombrar |
+| `src/lib/gemini.ts` | `src/infrastructure/gemini/gemini.service.ts` | Mover + restringir a servidor |
+| `src/components/Layout.tsx` | `src/presentation/components/Layout.tsx` | Mover |
+| `src/pages/ZeroGSimulation.tsx` | `src/presentation/pages/ZeroGSimulationPage.tsx` | Renombrar |
+| `src/pages/SpatialDistortion.tsx` | `src/presentation/pages/SpatialDistortionPage.tsx` | Renombrar |
+| `src/pages/FormalVerification.tsx` | `src/presentation/pages/FormalVerificationPage.tsx` | Renombrar |
+| `src/pages/Assistant.tsx` | `src/presentation/pages/AssistantPage.tsx` | Renombrar + fix API key |
+| `src/types.ts` | `src/shared/types/*.types.ts` | Dividir |
+| *(no existía)* | `src/shared/constants/physical.constants.ts` | **Crear** |
+| *(no existía)* | `src/shared/constants/bodies.ts` | **Crear** |
+| *(no existía)* | `src/infrastructure/api/{http.client,assistant.api}.ts` | **Crear** |
+| *(no existía)* | `server/routes/*.route.ts` | **Crear** |
+| *(no existía)* | `server/middlewares/error.middleware.ts` | **Crear** |
+| *(no existía)* | `src/presentation/components/{MetricRow,RangeInput,ErrorBoundary}.tsx` | **Crear** |
+| *(no existía)* | `src/presentation/three/{scene.factory,shader.material,trail.buffer,satellite.mesh}.ts` | **Crear** |
+| *(no existía)* | `src/utils/{logger,format}.ts` | **Crear** |
+| *(no existía)* | `tsconfig.node.json` | **Crear** |
+
+---
+
+## 6. ESTRUCTURA FINAL
+
+```
+omega-zero-g/
+├── package.json
+├── metadata.json
+├── index.html
+├── vite.config.ts               🔴 fix: sin GEMINI_API_KEY
+├── tsconfig.json
+├── tsconfig.node.json           🆕
+├── .env.example
+├── .gitignore
+├── README.md
+├── LICENSE
+│
+├── server/
+│   ├── index.ts                 🔴 fix: bootstrap()
+│   ├── routes/
+│   │   ├── health.route.ts      🆕
+│   │   └── assistant.route.ts   🆕
+│   └── middlewares/
+│       └── error.middleware.ts  🆕
+│
+└── src/
+    ├── main.tsx
+    ├── index.css
+    ├── App.tsx                  🔧 ErrorBoundary + rutas nuevas
+    │
+    ├── shared/
+    │   ├── constants/
+    │   │   ├── physical.constants.ts  🆕
+    │   │   └── bodies.ts              🆕
+    │   └── types/
+    │       ├── physics.types.ts       🆕
+    │       ├── api.types.ts           🆕
+    │       └── index.ts               🆕
+    │
+    ├── domain/
+    │   ├── physics/
+    │   │   ├── vector.ts              🆕
+    │   │   ├── gravity.ts             🆕
+    │   │   ├── integrators.ts         🆕
+    │   │   ├── orbital.ts             🆕
+    │   │   └── relativity.ts          🆕
+    │   ├── verification/
+    │   │   ├── invariants.ts          🆕
+    │   │   └── verifier.ts            🆕
+    │   └── simulation/
+    │       └── trajectory.ts          🆕
+    │
+    ├── infrastructure/
+    │   ├── gemini/
+    │   │   └── gemini.service.ts      🆕 (solo servidor)
+    │   └── api/
+    │       ├── http.client.ts         🆕
+    │       └── assistant.api.ts       🆕
+    │
+    ├── presentation/
+    │   ├── components/
+    │   │   ├── Layout.tsx             🔧 movido
+    │   │   ├── MetricRow.tsx          🆕
+    │   │   ├── RangeInput.tsx         🆕
+    │   │   └── ErrorBoundary.tsx      🆕
+    │   ├── pages/
+    │   │   ├── ZeroGSimulationPage.tsx       🔧
+    │   │   ├── SpatialDistortionPage.tsx     🔧
+    │   │   ├── FormalVerificationPage.tsx    🔧
+    │   │   └── AssistantPage.tsx             🔴 fix API
+    │   └── three/
+    │       ├── scene.factory.ts       🆕
+    │       ├── shader.material.ts     🔧
+    │       ├── trail.buffer.ts        🆕 fix bug
+    │       └── satellite.mesh.ts      🆕
+    │
+    └── utils/
+        ├── logger.ts                  🆕
+        └── format.ts                  🆕
+```
+
+**Leyenda:** 🆕 creado · 🔧 refactorizado · 🔴 corregido crítico · ✅ sin cambios
+
+---
+
+## 7. VALIDACIÓN
+
+```bash
+# 1. Instalar
+npm install
+
+# 2. Configurar
+cp .env.example .env         # añadir GEMINI_API_KEY (solo servidor)
+
+# 3. Verificar tipos (cliente + servidor)
+npm run typecheck
+
+# 4. Arrancar en dev
+npm run dev                  # → http://localhost:3000
+
+# 5. Build producción
+npm run build
+NODE_ENV=production npm start
+```
+
+**Checklist post-migración:**
+- [ ] `npm run typecheck` pasa sin errores (ambos tsconfig)
+- [ ] `npm run build` genera `dist/server.cjs` sin top-level await
+- [ ] La pestaña Network del navegador **NO contiene** `GEMINI_API_KEY`
+- [ ] `curl http://localhost:3000/api/health` responde JSON
+- [ ] El trail de la simulación no se corta ni salta
+- [ ] El asistente responde sin errores CORS
+
+---
+
+## 8. REGISTRO
+
+| # | Chat | Estado |
+|---|---|---|
+| 7 | **Omega Zero-G** | ✅ **Desarticulado y auditado** |
+
+---
+
+**Resumen ejecutivo:** se han inventariado **43 herramientas** en 11 categorías. Se corrigieron **4 vulnerabilidades/bugs críticos** (exposición de API key, top-level await en CJS, buffer de trail roto, naming engañoso de "Z3"). Se **crearon 22 archivos nuevos** con separación por capas (shared / domain / infrastructure / presentation / server) y se renombraron 9 con nomenclatura profesional. El proyecto queda listo para auditoría, testing y despliegue.

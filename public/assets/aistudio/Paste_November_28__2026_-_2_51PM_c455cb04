@@ -1,0 +1,2246 @@
+# 🔧 DESARTICULACIÓN COMPLETA — Material 3 Web App
+
+**Proyecto:** `material3-web-app`
+**Versión:** 1.0.0
+**Autor:** Javier Alberto Abreu Molina
+**Licencia:** Apache-2.0
+**Enfoque:** Catálogo de piezas/herramientas por capa, uso y fin, con código fuente profesional y nomenclatura normalizada.
+
+---
+
+## 📑 ÍNDICE DE CAPAS Y HERRAMIENTAS
+
+| Capa | Prefijo | Piezas | Propósito |
+|------|---------|--------|-----------|
+| 0 | `T-CFG-*` | 7 | Configuración del proyecto |
+| 1 | `T-DSN-*` | 2 | Sistema de diseño Material 3 |
+| 2 | `T-UTL-*` | 4 | Utilidades transversales |
+| 3 | `T-TYP-*` | 2 | Contratos de tipos |
+| 4 | `T-HOK-*` | 6 | Hooks React |
+| 5 | `T-UI-*`  | 11 | Componentes UI Material 3 |
+| 6 | `T-LAY-*` | 4 | Componentes de layout |
+| 7 | `T-PAG-*` | 4 | Páginas |
+| 8 | `T-SRV-*` | 2 | Servicios cliente |
+| 9 | `T-BKD-*` | 7 | Backend Express + GenAI |
+| 10 | `T-AST-*` | 2 | Assets públicos |
+
+**Total: 51 herramientas**
+
+---
+
+## 🗂️ CAPA 0 — CONFIGURACIÓN DEL PROYECTO
+
+### T-CFG-001 · `package.json`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Manifiesto del proyecto y definición de scripts |
+| **Fines** | Declarar dependencias, scripts de build/dev/lint y metadatos |
+| **Archivo** | `package.json` |
+| **Dependencias** | Ninguna (raíz) |
+
+```json
+{
+  "name": "material3-web-app",
+  "version": "1.0.0",
+  "description": "Material 3 Web App - Web application built with React 19, Vite 6, and Tailwind 4, following Material Design 3 guidelines.",
+  "author": "Javier Alberto Abreu Molina",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "server": "tsx server.ts",
+    "server:watch": "tsx watch server.ts",
+    "start": "concurrently -n web,api -c blue,green \"npm:dev\" \"npm:server\""
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}
+```
+
+> **Nomenclatura corregida:** `react-example` → `material3-web-app`. Añadido `server:watch` y `start` para DX.
+
+---
+
+### T-CFG-002 · `tsconfig.json`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Configuración del compilador TypeScript |
+| **Fines** | Tipado estricto, aliases `@/*`, JSX moderno, sin emisión (Vite compila) |
+| **Archivo** | `tsconfig.json` |
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] },
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src", "server.ts", "server", "vite.config.ts"]
+}
+```
+
+---
+
+### T-CFG-003 · `vite.config.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Configuración del bundler Vite |
+| **Fines** | Plugins React + Tailwind 4, alias `@`, proxy `/api`, build optimizado |
+| **Archivo** | `vite.config.ts` |
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { "@": path.resolve(__dirname, "./src") },
+  },
+  server: {
+    port: 3000,
+    host: "0.0.0.0",
+    proxy: {
+      "/api": { target: "http://localhost:3001", changeOrigin: true },
+    },
+  },
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+    target: "es2022",
+    chunkSizeWarningLimit: 800,
+  },
+});
+```
+
+---
+
+### T-CFG-004 · `.env.example`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Plantilla de variables de entorno |
+| **Fines** | Documentar las variables necesarias sin exponer secretos |
+| **Archivo** | `.env.example` |
+| **Estado** | 🆕 CREADO (no existía) |
+
+```bash
+# ============================================
+# Material 3 Web App — Variables de entorno
+# ============================================
+# Copia este archivo a `.env` y rellena los valores.
+
+# Backend
+PORT=3001
+NODE_ENV=development
+
+# Google GenAI
+GEMINI_API_KEY=tu_api_key_de_google_ai_studio
+GEMINI_MODEL=gemini-2.0-flash
+
+# Frontend (expuestas a Vite, prefijo VITE_)
+VITE_API_BASE_URL=/api
+VITE_APP_NAME=Material 3 Web App
+```
+
+---
+
+### T-CFG-005 · `.gitignore`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Exclusión de archivos del repositorio |
+| **Fines** | Evitar commitear `node_modules`, `.env`, build y archivos del SO |
+| **Archivo** | `.gitignore` |
+| **Estado** | 🆕 CREADO |
+
+```gitignore
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+server.js
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+```
+
+---
+
+### T-CFG-006 · `metadata.json`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Metadatos de la app para AI Studio |
+| **Fines** | Declaración del nombre, descripción y permisos |
+| **Archivo** | `metadata.json` |
+
+```json
+{
+  "name": "Material 3 Web App",
+  "description": "Web application built with React 19, Vite 6, and Tailwind 4, following Material Design 3 guidelines.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
+```
+
+---
+
+### T-CFG-007 · `index.html`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Documento HTML raíz de la SPA |
+| **Fines** | Bootstrap de React, metadatos, favicon, `<noscript>` |
+| **Archivo** | `index.html` |
+
+```html
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Material 3 Web App - Web application built with React 19, Vite 6, and Tailwind 4, following Material Design 3 guidelines."
+    />
+    <meta name="author" content="Javier Alberto Abreu Molina" />
+    <meta name="theme-color" content="#6750A4" />
+    <title>Material 3 Web App</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Esta aplicación requiere JavaScript para ejecutarse.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+---
+
+## 🎨 CAPA 1 — SISTEMA DE DISEÑO MATERIAL 3
+
+### T-DSN-001 · Tokens de diseño (`index.css`)
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Definición de tokens de color, tipografía, forma y elevación Material 3 |
+| **Fines** | Fuente única de verdad para el theming claro/oscuro |
+| **Archivo** | `src/index.css` |
+| **Dependencias** | `tailwindcss` vía `@tailwindcss/vite` |
+
+```css
+@import "tailwindcss";
+
+/* =========================================================
+   Material 3 — Design Tokens (Light)
+   ========================================================= */
+@theme {
+  --color-primary: #6750a4;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #eaddff;
+  --color-on-primary-container: #21005d;
+
+  --color-secondary: #625b71;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #e8def8;
+  --color-on-secondary-container: #1d192b;
+
+  --color-tertiary: #7d5260;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #ffd8e4;
+  --color-on-tertiary-container: #31111d;
+
+  --color-error: #b3261e;
+  --color-on-error: #ffffff;
+  --color-error-container: #f9dedc;
+  --color-on-error-container: #410e0b;
+
+  --color-background: #fef7ff;
+  --color-on-background: #1d1b20;
+
+  --color-surface: #fef7ff;
+  --color-on-surface: #1d1b20;
+  --color-surface-variant: #e7e0ec;
+  --color-on-surface-variant: #49454f;
+
+  --color-outline: #79747e;
+  --color-outline-variant: #cac4d0;
+
+  --font-sans: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+
+  --shadow-e1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --shadow-e2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --shadow-e3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+@layer base {
+  html.dark {
+    --color-primary: #d0bcff;
+    --color-on-primary: #381e72;
+    --color-primary-container: #4f378b;
+    --color-on-primary-container: #eaddff;
+
+    --color-secondary: #ccc2dc;
+    --color-on-secondary: #332d41;
+    --color-secondary-container: #4a4458;
+    --color-on-secondary-container: #e8def8;
+
+    --color-tertiary: #efb8c8;
+    --color-on-tertiary: #492532;
+    --color-tertiary-container: #633b48;
+    --color-on-tertiary-container: #ffd8e4;
+
+    --color-error: #f2b8b5;
+    --color-on-error: #601410;
+    --color-error-container: #8c1d18;
+    --color-on-error-container: #f9dedc;
+
+    --color-background: #141218;
+    --color-on-background: #e6e0e9;
+
+    --color-surface: #141218;
+    --color-on-surface: #e6e0e9;
+    --color-surface-variant: #49454f;
+    --color-on-surface-variant: #cac4d0;
+
+    --color-outline: #938f99;
+    --color-outline-variant: #49454f;
+  }
+
+  body {
+    @apply bg-[var(--color-background)] text-[var(--color-on-background)];
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100dvh;
+  }
+
+  * { box-sizing: border-box; }
+}
+
+@utility state-layer { position: relative; overflow: hidden; }
+@utility state-layer-hover { background-color: color-mix(in srgb, currentColor 8%, transparent); }
+@utility state-layer-focus { background-color: color-mix(in srgb, currentColor 12%, transparent); }
+@utility state-layer-press { background-color: color-mix(in srgb, currentColor 12%, transparent); }
+```
+
+---
+
+### T-DSN-002 · Tipografía Material 3 (`typography.css`)
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Clases de escala tipográfica Material 3 |
+| **Fines** | Reutilización de estilos de texto coherentes con la guía M3 |
+| **Archivo** | `src/styles/typography.css` |
+| **Estado** | 🆕 CREADO |
+
+```css
+@layer components {
+  .m3-display-lg   { @apply text-[57px] leading-[64px] font-normal tracking-[-0.25px]; }
+  .m3-display-md   { @apply text-[45px] leading-[52px] font-normal tracking-[0px]; }
+  .m3-display-sm   { @apply text-[36px] leading-[44px] font-normal tracking-[0px]; }
+
+  .m3-headline-lg  { @apply text-[32px] leading-[40px] font-normal tracking-[0px]; }
+  .m3-headline-md  { @apply text-[28px] leading-[36px] font-normal tracking-[0px]; }
+  .m3-headline-sm  { @apply text-[24px] leading-[32px] font-normal tracking-[0px]; }
+
+  .m3-title-lg     { @apply text-[22px] leading-[28px] font-normal tracking-[0px]; }
+  .m3-title-md     { @apply text-[16px] leading-[24px] font-medium tracking-[0.15px]; }
+  .m3-title-sm     { @apply text-[14px] leading-[20px] font-medium tracking-[0.1px]; }
+
+  .m3-body-lg      { @apply text-[16px] leading-[24px] font-normal tracking-[0.5px]; }
+  .m3-body-md      { @apply text-[14px] leading-[20px] font-normal tracking-[0.25px]; }
+  .m3-body-sm      { @apply text-[12px] leading-[16px] font-normal tracking-[0.4px]; }
+
+  .m3-label-lg     { @apply text-[14px] leading-[20px] font-medium tracking-[0.1px]; }
+  .m3-label-md     { @apply text-[12px] leading-[16px] font-medium tracking-[0.5px]; }
+  .m3-label-sm     { @apply text-[11px] leading-[16px] font-medium tracking-[0.5px]; }
+}
+```
+
+---
+
+## 🧰 CAPA 2 — UTILIDADES TRANSVERSALES
+
+### T-UTL-001 · `cn` — Merge de clases
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Concatenar clases condicionales |
+| **Fines** | Evitar strings sucios y condicionales inline |
+| **Archivo** | `src/lib/cn.ts` |
+| **Dependencias** | Ninguna |
+
+```ts
+export type ClassValue = string | false | null | undefined;
+
+/**
+ * Une clases CSS válidas ignorando valores falsy.
+ * Uso: cn("base", cond && "active", undefined) → "base active"
+ */
+export function cn(...parts: ClassValue[]): string {
+  return parts.filter(Boolean).join(" ");
+}
+```
+
+---
+
+### T-UTL-002 · `env` — Validación de variables frontend
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Lectura tipada y validada de `import.meta.env` |
+| **Fines** | Evitar accesos ad-hoc a env vars en componentes |
+| **Archivo** | `src/lib/env.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+interface AppEnv {
+  apiBaseUrl: string;
+  appName: string;
+  isDev: boolean;
+}
+
+function readEnv(): AppEnv {
+  return {
+    apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "/api",
+    appName: import.meta.env.VITE_APP_NAME ?? "Material 3 Web App",
+    isDev: import.meta.env.DEV,
+  };
+}
+
+export const env: AppEnv = readEnv();
+```
+
+---
+
+### T-UTL-003 · `http` — Cliente HTTP tipado
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Wrapper de `fetch` con JSON y manejo de errores |
+| **Fines** | Centralizar la política de red y errores HTTP |
+| **Archivo** | `src/lib/http.ts` |
+| **Dependencias** | `env.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { env } from "./env";
+
+export class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
+interface RequestOptions extends Omit<RequestInit, "body"> {
+  body?: unknown;
+}
+
+export async function request<T>(
+  path: string,
+  { body, headers, ...rest }: RequestOptions = {}
+): Promise<T> {
+  const url = path.startsWith("http") ? path : `${env.apiBaseUrl}${path}`;
+  const hasBody = body !== undefined;
+
+  const res = await fetch(url, {
+    ...rest,
+    headers: {
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...headers,
+    },
+    body: hasBody ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => res.statusText);
+    throw new HttpError(res.status, message || `HTTP ${res.status}`);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export const http = {
+  get: <T>(path: string) => request<T>(path, { method: "GET" }),
+  post: <T>(path: string, body: unknown) => request<T>(path, { method: "POST", body }),
+};
+```
+
+---
+
+### T-UTL-004 · `logger` — Logger minimalista
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Logging estructurado en cliente |
+| **Fines** | Un único punto de salida, silenciable en producción |
+| **Archivo** | `src/lib/logger.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { env } from "./env";
+
+type Level = "debug" | "info" | "warn" | "error";
+
+const PREFIX = "[m3]";
+
+function log(level: Level, ...args: unknown[]): void {
+  if (!env.isDev && level === "debug") return;
+  const fn = console[level] ?? console.log;
+  fn(PREFIX, ...args);
+}
+
+export const logger = {
+  debug: (...a: unknown[]) => log("debug", ...a),
+  info: (...a: unknown[]) => log("info", ...a),
+  warn: (...a: unknown[]) => log("warn", ...a),
+  error: (...a: unknown[]) => log("error", ...a),
+};
+```
+
+---
+
+## 📐 CAPA 3 — CONTRATOS DE TIPOS
+
+### T-TYP-001 · Tipos de dominio compartidos
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Definir tipos compartidos entre cliente y servidor |
+| **Fines** | Contratos inmutables de chat y roles |
+| **Archivo** | `src/types/chat.ts` |
+| **Estado** | ♻️ Reestructurado desde `src/types.ts` |
+
+```ts
+export type Role = "user" | "assistant" | "system";
+
+export interface ChatMessage {
+  role: Role;
+  content: string;
+}
+
+export interface ChatRequest {
+  messages: ChatMessage[];
+}
+
+export interface ChatResponse {
+  reply: string;
+}
+
+export interface ApiError {
+  error: string;
+  code?: string;
+}
+```
+
+---
+
+### T-TYP-002 · Barrel de tipos
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Reexportar todos los tipos desde un único punto |
+| **Fines** | Facilitar imports (`@/types`) |
+| **Archivo** | `src/types/index.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+export type * from "./chat";
+```
+
+---
+
+## 🪝 CAPA 4 — HOOKS REACT
+
+### T-HOK-001 · `useTheme`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Gestionar tema claro/oscuro |
+| **Fines** | Persistencia en `localStorage`, respeto al SO, sync con `<meta theme-color>` |
+| **Archivo** | `src/hooks/useTheme.ts` |
+
+```ts
+import { useCallback, useEffect, useState } from "react";
+
+export type Theme = "light" | "dark";
+
+const STORAGE_KEY = "m3-theme";
+const THEME_COLOR = { light: "#6750A4", dark: "#141218" } as const;
+
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (stored === "light" || stored === "dark") return stored;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+export function useTheme() {
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    window.localStorage.setItem(STORAGE_KEY, theme);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    meta?.setAttribute("content", THEME_COLOR[theme]);
+  }, [theme]);
+
+  const setTheme = useCallback((t: Theme) => setThemeState(t), []);
+  const toggle = useCallback(
+    () => setThemeState((t) => (t === "dark" ? "light" : "dark")),
+    []
+  );
+
+  return { theme, setTheme, toggle };
+}
+```
+
+---
+
+### T-HOK-002 · `useLocalStorage`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Estado sincronizado con `localStorage` |
+| **Fines** | Reutilizar lógica de persistencia sin duplicar |
+| **Archivo** | `src/hooks/useLocalStorage.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { useCallback, useState } from "react";
+
+export function useLocalStorage<T>(key: string, initial: T) {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+
+  const set = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      setValue((prev) => {
+        const resolved =
+          typeof next === "function" ? (next as (p: T) => T)(prev) : next;
+        try {
+          window.localStorage.setItem(key, JSON.stringify(resolved));
+        } catch {
+          /* quota exceeded — silently ignore */
+        }
+        return resolved;
+      });
+    },
+    [key]
+  );
+
+  return [value, set] as const;
+}
+```
+
+---
+
+### T-HOK-003 · `useMediaQuery`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Detectar media queries |
+| **Fines** | Adaptar layout responsivo en JS |
+| **Archivo** | `src/hooks/useMediaQuery.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { useEffect, useState } from "react";
+
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState<boolean>(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mql.addEventListener("change", onChange);
+    setMatches(mql.matches);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+
+  return matches;
+}
+```
+
+---
+
+### T-HOK-004 · `useDebounce`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Debounce de un valor |
+| **Fines** | Evitar llamadas repetidas en inputs |
+| **Archivo** | `src/hooks/useDebounce.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { useEffect, useState } from "react";
+
+export function useDebounce<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+
+  return debounced;
+}
+```
+
+---
+
+### T-HOK-005 · `useGenAI`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Orquestar el estado del chat con GenAI |
+| **Fines** | Encapsular envío de mensajes, loading y error |
+| **Archivo** | `src/hooks/useGenAI.ts` |
+
+```ts
+import { useCallback, useState } from "react";
+import { chatService } from "@/services/chat.service";
+import type { ChatMessage } from "@/types";
+
+export function useGenAI() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const send = useCallback(
+    async (content: string) => {
+      setError(null);
+      const userMsg: ChatMessage = { role: "user", content };
+      const next = [...messages, userMsg];
+      setMessages(next);
+      setLoading(true);
+      try {
+        const reply = await chatService.send(next);
+        setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Error desconocido");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [messages]
+  );
+
+  const reset = useCallback(() => {
+    setMessages([]);
+    setError(null);
+  }, []);
+
+  return { messages, send, loading, error, reset };
+}
+```
+
+---
+
+### T-HOK-006 · `useSnackbar` (context)
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Mostrar notificaciones tipo snackbar |
+| **Fines** | Feedback global reutilizable |
+| **Archivo** | `src/hooks/useSnackbar.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React, { createContext, useCallback, useContext, useState } from "react";
+
+interface SnackbarState {
+  message: string;
+  open: boolean;
+}
+
+interface SnackbarContextValue {
+  state: SnackbarState;
+  show: (message: string) => void;
+  hide: () => void;
+}
+
+const SnackbarContext = createContext<SnackbarContextValue | null>(null);
+
+export function SnackbarProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<SnackbarState>({ message: "", open: false });
+
+  const show = useCallback((message: string) => {
+    setState({ message, open: true });
+    window.setTimeout(() => setState((s) => ({ ...s, open: false })), 3500);
+  }, []);
+
+  const hide = useCallback(() => setState((s) => ({ ...s, open: false })), []);
+
+  return (
+    <SnackbarContext.Provider value={{ state, show, hide }}>
+      {children}
+    </SnackbarContext.Provider>
+  );
+}
+
+export function useSnackbar(): SnackbarContextValue {
+  const ctx = useContext(SnackbarContext);
+  if (!ctx) throw new Error("useSnackbar debe usarse dentro de <SnackbarProvider>");
+  return ctx;
+}
+```
+
+---
+
+## 🎛️ CAPA 5 — COMPONENTES UI MATERIAL 3
+
+> Todos viven bajo `src/components/ui/` y se re-exportan desde `src/components/ui/index.ts`.
+
+### T-UI-001 · `Button`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Botón Material 3 (5 variantes, 3 tamaños) |
+| **Fines** | Acción primaria/secundaria consistente |
+| **Archivo** | `src/components/ui/Button.tsx` |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export type ButtonVariant = "filled" | "tonal" | "outlined" | "text" | "elevated";
+export type ButtonSize = "sm" | "md" | "lg";
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  icon?: React.ReactNode;
+  iconPosition?: "start" | "end";
+}
+
+const VARIANTS: Record<ButtonVariant, string> = {
+  filled: "bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-110 shadow-[var(--shadow-e1)]",
+  tonal: "bg-[var(--color-secondary-container)] text-[var(--color-on-secondary-container)] hover:brightness-105",
+  outlined: "bg-transparent text-[var(--color-primary)] border border-[var(--color-outline)] hover:bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)]",
+  text: "bg-transparent text-[var(--color-primary)] hover:bg-[color-mix(in_srgb,var(--color-primary)_8%,transparent)]",
+  elevated: "bg-[var(--color-surface)] text-[var(--color-primary)] shadow-[var(--shadow-e1)] hover:shadow-[var(--shadow-e2)]",
+};
+
+const SIZES: Record<ButtonSize, string> = {
+  sm: "h-8 px-3 text-sm",
+  md: "h-10 px-6 text-sm",
+  lg: "h-12 px-8 text-base",
+};
+
+export function Button({
+  variant = "filled",
+  size = "md",
+  icon,
+  iconPosition = "start",
+  className,
+  children,
+  ...rest
+}: ButtonProps) {
+  return (
+    <button
+      {...rest}
+      className={cn(
+        "inline-flex items-center justify-center gap-2 rounded-full font-medium",
+        "transition-all duration-150 ease-out",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2",
+        "disabled:opacity-40 disabled:pointer-events-none",
+        VARIANTS[variant],
+        SIZES[size],
+        className
+      )}
+    >
+      {icon && iconPosition === "start" && icon}
+      {children}
+      {icon && iconPosition === "end" && icon}
+    </button>
+  );
+}
+```
+
+---
+
+### T-UI-002 · `IconButton`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Botón solo-icono Material 3 |
+| **Fines** | Acciones compactas (top bar, dialogs, listas) |
+| **Archivo** | `src/components/ui/IconButton.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export type IconButtonVariant = "standard" | "filled" | "tonal" | "outlined";
+
+export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: IconButtonVariant;
+  "aria-label": string;
+}
+
+const VARIANTS: Record<IconButtonVariant, string> = {
+  standard: "bg-transparent text-[var(--color-on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--color-on-surface)_8%,transparent)]",
+  filled: "bg-[var(--color-primary)] text-[var(--color-on-primary)] hover:brightness-110",
+  tonal: "bg-[var(--color-secondary-container)] text-[var(--color-on-secondary-container)] hover:brightness-105",
+  outlined: "bg-transparent text-[var(--color-on-surface-variant)] border border-[var(--color-outline)] hover:bg-[color-mix(in_srgb,var(--color-on-surface)_8%,transparent)]",
+};
+
+export function IconButton({
+  variant = "standard",
+  className,
+  ...rest
+}: IconButtonProps) {
+  return (
+    <button
+      {...rest}
+      className={cn(
+        "inline-flex items-center justify-center h-10 w-10 rounded-full",
+        "transition-colors duration-150",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]",
+        "disabled:opacity-40 disabled:pointer-events-none",
+        VARIANTS[variant],
+        className
+      )}
+    />
+  );
+}
+```
+
+---
+
+### T-UI-003 · `Card`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Contenedor Material 3 |
+| **Fines** | Agrupar contenido (elevated / filled / outlined) |
+| **Archivo** | `src/components/ui/Card.tsx` |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export type CardVariant = "elevated" | "filled" | "outlined";
+
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: CardVariant;
+}
+
+const VARIANTS: Record<CardVariant, string> = {
+  elevated: "bg-[var(--color-surface)] shadow-[var(--shadow-e1)] hover:shadow-[var(--shadow-e2)]",
+  filled: "bg-[var(--color-surface-variant)]",
+  outlined: "bg-[var(--color-surface)] border border-[var(--color-outline-variant)]",
+};
+
+export function Card({ variant = "elevated", className, ...rest }: CardProps) {
+  return (
+    <div
+      {...rest}
+      className={cn("rounded-[var(--radius-md)] p-4 transition-shadow duration-200", VARIANTS[variant], className)}
+    />
+  );
+}
+```
+
+---
+
+### T-UI-004 · `TextField`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Input Material 3 con label y error |
+| **Fines** | Formularios accesibles y tipados |
+| **Archivo** | `src/components/ui/TextField.tsx` |
+
+```tsx
+import React, { useId } from "react";
+import { cn } from "@/lib/cn";
+
+export interface TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  label: string;
+  error?: string;
+}
+
+export function TextField({ label, error, className, id, ...rest }: TextFieldProps) {
+  const autoId = useId();
+  const fieldId = id ?? autoId;
+  const hasError = Boolean(error);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={fieldId} className="m3-label-md text-[var(--color-on-surface-variant)]">
+        {label}
+      </label>
+      <input
+        id={fieldId}
+        {...rest}
+        aria-invalid={hasError || undefined}
+        aria-describedby={hasError ? `${fieldId}-error` : undefined}
+        className={cn(
+          "h-12 px-4 rounded-[var(--radius-xs)] bg-transparent",
+          "border text-[var(--color-on-surface)] transition-colors duration-150",
+          "focus:outline-none focus:ring-2",
+          hasError
+            ? "border-[var(--color-error)] focus:ring-[var(--color-error)]"
+            : "border-[var(--color-outline)] focus:border-[var(--color-primary)] focus:ring-[var(--color-primary)]",
+          className
+        )}
+      />
+      {hasError && (
+        <span id={`${fieldId}-error`} className="m3-body-sm text-[var(--color-error)]">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### T-UI-005 · `Chip`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Etiqueta seleccionable |
+| **Fines** | Filtros, tags, selección múltiple |
+| **Archivo** | `src/components/ui/Chip.tsx` |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export interface ChipProps extends React.HTMLAttributes<HTMLDivElement> {
+  selected?: boolean;
+  icon?: React.ReactNode;
+}
+
+export function Chip({ selected = false, icon, className, children, ...rest }: ChipProps) {
+  return (
+    <div
+      {...rest}
+      className={cn(
+        "inline-flex items-center gap-2 h-8 px-3 rounded-[var(--radius-sm)]",
+        "m3-label-lg cursor-pointer select-none transition-colors duration-150",
+        selected
+          ? "bg-[var(--color-secondary-container)] text-[var(--color-on-secondary-container)]"
+          : "bg-transparent text-[var(--color-on-surface-variant)] border border-[var(--color-outline)]",
+        className
+      )}
+    >
+      {icon}
+      {children}
+    </div>
+  );
+}
+```
+
+---
+
+### T-UI-006 · `Switch`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Interruptor booleano Material 3 |
+| **Fines** | Toggles en ajustes |
+| **Archivo** | `src/components/ui/Switch.tsx` |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export interface SwitchProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: string;
+  disabled?: boolean;
+}
+
+export function Switch({ checked, onChange, label, disabled }: SwitchProps) {
+  return (
+    <label className={cn("inline-flex items-center gap-3 cursor-pointer select-none", disabled && "opacity-40 pointer-events-none")}>
+      {label && <span className="m3-body-md text-[var(--color-on-surface)]">{label}</span>}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          "relative h-8 w-14 rounded-full transition-colors duration-200",
+          checked ? "bg-[var(--color-primary)]" : "bg-[var(--color-surface-variant)] border border-[var(--color-outline)]"
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full transition-all duration-200",
+            checked ? "left-[calc(100%-1.75rem)] bg-[var(--color-on-primary)]" : "left-1 bg-[var(--color-outline)]"
+          )}
+        />
+      </button>
+    </label>
+  );
+}
+```
+
+---
+
+### T-UI-007 · `Dialog`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Modal Material 3 |
+| **Fines** | Confirmaciones, formularios modales |
+| **Archivo** | `src/components/ui/Dialog.tsx` |
+
+```tsx
+import React, { useEffect } from "react";
+import { X } from "lucide-react";
+import { IconButton } from "./IconButton";
+
+export interface DialogProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}
+
+export function Dialog({ open, onClose, title, children }: DialogProps) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose} role="dialog" aria-modal>
+      <div
+        className="w-full max-w-md rounded-[var(--radius-xl)] bg-[var(--color-surface)] p-6 shadow-[var(--shadow-e3)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="m3-headline-sm text-[var(--color-on-surface)]">{title}</h2>
+          <IconButton onClick={onClose} aria-label="Cerrar"><X size={20} /></IconButton>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+### T-UI-008 · `Divider`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Separador horizontal/vertical |
+| **Fines** | Segmentar contenido |
+| **Archivo** | `src/components/ui/Divider.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export interface DividerProps {
+  orientation?: "horizontal" | "vertical";
+  className?: string;
+}
+
+export function Divider({ orientation = "horizontal", className }: DividerProps) {
+  return (
+    <hr
+      className={cn(
+        "border-0 bg-[var(--color-outline-variant)]",
+        orientation === "horizontal" ? "h-px w-full" : "w-px h-full",
+        className
+      )}
+    />
+  );
+}
+```
+
+---
+
+### T-UI-009 · `ProgressIndicator`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Indicador de progreso (lineal o circular) |
+| **Fines** | Estados de carga determinados e indeterminados |
+| **Archivo** | `src/components/ui/ProgressIndicator.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React from "react";
+import { cn } from "@/lib/cn";
+
+export type ProgressVariant = "linear" | "circular";
+
+export interface ProgressIndicatorProps {
+  variant?: ProgressVariant;
+  value?: number; // 0–100 (indeterminate si undefined)
+  className?: string;
+}
+
+export function ProgressIndicator({ variant = "linear", value, className }: ProgressIndicatorProps) {
+  const indeterminate = value === undefined;
+
+  if (variant === "circular") {
+    return (
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={indeterminate ? undefined : value}
+        className={cn("relative h-10 w-10 rounded-full border-4 border-[var(--color-primary-container)]", className)}
+      >
+        <div className="absolute inset-0 rounded-full border-4 border-[var(--color-primary)] border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={indeterminate ? undefined : value}
+      className={cn("relative h-1 w-full overflow-hidden rounded-full bg-[var(--color-primary-container)]", className)}
+    >
+      {indeterminate ? (
+        <div className="absolute h-full w-1/3 bg-[var(--color-primary)] animate-[slide_1.4s_ease-in-out_infinite]" />
+      ) : (
+        <div className="h-full bg-[var(--color-primary)] transition-[width] duration-300" style={{ width: `${value}%` }} />
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### T-UI-010 · `Snackbar`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Notificación flotante Material 3 |
+| **Fines** | Feedback global no bloqueante |
+| **Archivo** | `src/components/ui/Snackbar.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React from "react";
+import { useSnackbar } from "@/hooks/useSnackbar";
+import { cn } from "@/lib/cn";
+
+export function Snackbar() {
+  const { state, hide } = useSnackbar();
+  if (!state.open) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "fixed left-1/2 bottom-6 -translate-x-1/2 z-50",
+        "min-w-[280px] max-w-[90vw] px-4 py-3 rounded-[var(--radius-sm)]",
+        "bg-[var(--color-on-surface)] text-[var(--color-surface)] shadow-[var(--shadow-e3)]",
+        "m3-body-md flex items-center justify-between gap-4"
+      )}
+      onClick={hide}
+    >
+      <span>{state.message}</span>
+    </div>
+  );
+}
+```
+
+---
+
+### T-UI-011 · Barrel `ui/index.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Exportar todos los componentes UI |
+| **Fines** | Import único: `import { Button, Card } from "@/components/ui"` |
+| **Archivo** | `src/components/ui/index.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+export { Button } from "./Button";
+export type { ButtonProps, ButtonVariant, ButtonSize } from "./Button";
+
+export { IconButton } from "./IconButton";
+export type { IconButtonProps } from "./IconButton";
+
+export { Card } from "./Card";
+export type { CardProps, CardVariant } from "./Card";
+
+export { TextField } from "./TextField";
+export type { TextFieldProps } from "./TextField";
+
+export { Chip } from "./Chip";
+export type { ChipProps } from "./Chip";
+
+export { Switch } from "./Switch";
+export type { SwitchProps } from "./Switch";
+
+export { Dialog } from "./Dialog";
+export type { DialogProps } from "./Dialog";
+
+export { Divider } from "./Divider";
+export type { DividerProps } from "./Divider";
+
+export { ProgressIndicator } from "./ProgressIndicator";
+export type { ProgressIndicatorProps, ProgressVariant } from "./ProgressIndicator";
+
+export { Snackbar } from "./Snackbar";
+```
+
+---
+
+## 🧱 CAPA 6 — COMPONENTES DE LAYOUT
+
+### T-LAY-001 · `TopAppBar`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Barra superior Material 3 |
+| **Fines** | Título, menú, toggle de tema |
+| **Archivo** | `src/components/layout/TopAppBar.tsx` |
+| **Estado** | ♻️ Movido de `components/TopAppBar.tsx` |
+
+```tsx
+import React from "react";
+import { Menu } from "lucide-react";
+import { IconButton } from "@/components/ui";
+import { ThemeToggle } from "./ThemeToggle";
+
+export interface TopAppBarProps {
+  title: string;
+  onMenuClick?: () => void;
+}
+
+export function TopAppBar({ title, onMenuClick }: TopAppBarProps) {
+  return (
+    <header className="sticky top-0 z-30 flex items-center gap-3 h-16 px-4 bg-[var(--color-surface)] border-b border-[var(--color-outline-variant)]">
+      {onMenuClick && (
+        <IconButton onClick={onMenuClick} aria-label="Abrir menú"><Menu size={22} /></IconButton>
+      )}
+      <h1 className="m3-title-lg text-[var(--color-on-surface)] flex-1">{title}</h1>
+      <ThemeToggle />
+    </header>
+  );
+}
+```
+
+---
+
+### T-LAY-002 · `NavigationBar`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Barra de navegación inferior Material 3 |
+| **Fines** | Cambio de página entre secciones principales |
+| **Archivo** | `src/components/layout/NavigationBar.tsx` |
+| **Estado** | ♻️ Movido |
+
+```tsx
+import React from "react";
+import { Home, MessageSquare, Settings } from "lucide-react";
+import { cn } from "@/lib/cn";
+
+export type NavKey = "home" | "chat" | "settings";
+
+export interface NavigationBarProps {
+  active: NavKey;
+  onChange: (key: NavKey) => void;
+}
+
+const ITEMS: Array<{ key: NavKey; label: string; icon: React.ReactNode }> = [
+  { key: "home", label: "Inicio", icon: <Home size={22} /> },
+  { key: "chat", label: "Chat", icon: <MessageSquare size={22} /> },
+  { key: "settings", label: "Ajustes", icon: <Settings size={22} /> },
+];
+
+export function NavigationBar({ active, onChange }: NavigationBarProps) {
+  return (
+    <nav className="sticky bottom-0 z-30 flex items-center justify-around h-20 bg-[var(--color-surface-variant)] border-t border-[var(--color-outline-variant)]">
+      {ITEMS.map((item) => {
+        const isActive = item.key === active;
+        return (
+          <button
+            key={item.key}
+            onClick={() => onChange(item.key)}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-[var(--radius-md)]",
+              "transition-colors duration-150 min-w-[72px]",
+              isActive ? "text-[var(--color-on-secondary-container)]" : "text-[var(--color-on-surface-variant)]"
+            )}
+          >
+            <span className={cn("flex items-center justify-center h-8 w-16 rounded-full transition-colors", isActive && "bg-[var(--color-secondary-container)]")}>
+              {item.icon}
+            </span>
+            <span className="m3-label-md">{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+```
+
+---
+
+### T-LAY-003 · `ThemeToggle`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Botón de cambio de tema |
+| **Fines** | Override manual claro/oscuro |
+| **Archivo** | `src/components/layout/ThemeToggle.tsx` |
+
+```tsx
+import React from "react";
+import { Sun, Moon } from "lucide-react";
+import { IconButton } from "@/components/ui";
+import { useTheme } from "@/hooks/useTheme";
+
+export function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const isDark = theme === "dark";
+  return (
+    <IconButton
+      onClick={toggle}
+      aria-label={isDark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+    >
+      {isDark ? <Sun size={20} /> : <Moon size={20} />}
+    </IconButton>
+  );
+}
+```
+
+---
+
+### T-LAY-004 · `AppShell`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Envoltorio común de página |
+| **Fines** | Proveer TopAppBar + NavigationBar + main consistente |
+| **Archivo** | `src/components/layout/AppShell.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React from "react";
+import { TopAppBar } from "./TopAppBar";
+import { NavigationBar, type NavKey } from "./NavigationBar";
+
+interface AppShellProps {
+  title: string;
+  active: NavKey;
+  onNavigate: (key: NavKey) => void;
+  children: React.ReactNode;
+}
+
+export function AppShell({ title, active, onNavigate, children }: AppShellProps) {
+  return (
+    <div className="flex flex-col min-h-dvh bg-[var(--color-background)]">
+      <TopAppBar title={title} />
+      <main className="flex-1">{children}</main>
+      <NavigationBar active={active} onChange={onNavigate} />
+    </div>
+  );
+}
+```
+
+---
+
+## 📄 CAPA 7 — PÁGINAS
+
+### T-PAG-001 · `HomePage`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Landing informativa |
+| **Fines** | Presentar el stack y features |
+| **Archivo** | `src/pages/HomePage.tsx` |
+
+```tsx
+import React from "react";
+import { Sparkles, Palette, Zap } from "lucide-react";
+import { Card, Chip } from "@/components/ui";
+
+const FEATURES = [
+  { icon: <Palette size={28} />, title: "Material Design 3", description: "Tokens de color, tipografía y elevación siguiendo la guía oficial." },
+  { icon: <Zap size={28} />, title: "React 19 + Vite 6", description: "Render moderno, HMR instantáneo y build optimizado con esbuild." },
+  { icon: <Sparkles size={28} />, title: "Google GenAI", description: "Integración segura vía backend Express, sin exponer la API key." },
+];
+
+export function HomePage() {
+  return (
+    <div className="p-4 md:p-8 max-w-5xl mx-auto flex flex-col gap-8">
+      <section className="flex flex-col gap-3">
+        <div className="flex gap-2 flex-wrap">
+          <Chip selected>React 19</Chip>
+          <Chip>Vite 6</Chip>
+          <Chip>Tailwind 4</Chip>
+          <Chip>Material 3</Chip>
+        </div>
+        <h2 className="m3-display-sm text-[var(--color-on-surface)]">Material 3 Web App</h2>
+        <p className="m3-body-lg text-[var(--color-on-surface-variant)] max-w-2xl">
+          Aplicación web construida con React 19, Vite 6 y Tailwind 4, siguiendo las guías de Material Design 3.
+        </p>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        {FEATURES.map((f) => (
+          <Card key={f.title} variant="elevated" className="flex flex-col gap-3">
+            <span className="text-[var(--color-primary)]">{f.icon}</span>
+            <h3 className="m3-title-lg text-[var(--color-on-surface)]">{f.title}</h3>
+            <p className="m3-body-md text-[var(--color-on-surface-variant)]">{f.description}</p>
+          </Card>
+        ))}
+      </section>
+    </div>
+  );
+}
+```
+
+---
+
+### T-PAG-002 · `ChatPage`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Interfaz de chat con GenAI |
+| **Fines** | Enviar/recibir mensajes con scroll automático |
+| **Archivo** | `src/pages/ChatPage.tsx` |
+
+```tsx
+import React, { useEffect, useRef, useState } from "react";
+import { Send } from "lucide-react";
+import { Button, Card, TextField, ProgressIndicator } from "@/components/ui";
+import { useGenAI } from "@/hooks/useGenAI";
+
+export function ChatPage() {
+  const [input, setInput] = useState("");
+  const { messages, send, loading, error } = useGenAI();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+    const text = input.trim();
+    setInput("");
+    await send(text);
+  };
+
+  return (
+    <div className="flex flex-col h-[calc(100dvh-9rem)] max-w-3xl mx-auto p-4 gap-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto flex flex-col gap-3">
+        {messages.length === 0 && (
+          <Card variant="filled" className="text-center m3-body-md text-[var(--color-on-surface-variant)]">
+            Escribe un mensaje para comenzar.
+          </Card>
+        )}
+        {messages.map((m, i) => (
+          <Card
+            key={i}
+            variant={m.role === "user" ? "filled" : "elevated"}
+            className={m.role === "user" ? "self-end max-w-[80%]" : "self-start max-w-[80%]"}
+          >
+            <p className="m3-body-md whitespace-pre-wrap text-[var(--color-on-surface)]">{m.content}</p>
+          </Card>
+        ))}
+        {loading && <Card variant="outlined" className="self-start"><ProgressIndicator /></Card>}
+        {error && (
+          <Card variant="outlined" className="self-start border-[var(--color-error)]">
+            <p className="m3-body-md text-[var(--color-error)]">{error}</p>
+          </Card>
+        )}
+      </div>
+
+      <form onSubmit={onSubmit} className="flex items-end gap-2">
+        <div className="flex-1">
+          <TextField
+            label="Mensaje"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Escribe aquí…"
+            disabled={loading}
+          />
+        </div>
+        <Button type="submit" disabled={loading || !input.trim()} icon={<Send size={18} />}>Enviar</Button>
+      </form>
+    </div>
+  );
+}
+```
+
+---
+
+### T-PAG-003 · `SettingsPage`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Pantalla de ajustes |
+| **Fines** | Cambio de tema y metadatos de la app |
+| **Archivo** | `src/pages/SettingsPage.tsx` |
+
+```tsx
+import React from "react";
+import { Card, Switch } from "@/components/ui";
+import { useTheme } from "@/hooks/useTheme";
+
+export function SettingsPage() {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === "dark";
+
+  return (
+    <div className="p-4 md:p-8 max-w-2xl mx-auto flex flex-col gap-4">
+      <h2 className="m3-headline-md text-[var(--color-on-surface)]">Ajustes</h2>
+
+      <Card variant="elevated" className="flex flex-col gap-4">
+        <Switch checked={isDark} onChange={(v) => setTheme(v ? "dark" : "light")} label="Tema oscuro" />
+        <p className="m3-body-sm text-[var(--color-on-surface-variant)]">
+          El tema se guarda en <code>localStorage</code> y respeta la preferencia del sistema cuando no hay override.
+        </p>
+      </Card>
+
+      <Card variant="outlined" className="m3-body-md text-[var(--color-on-surface-variant)]">
+        <p className="m3-title-md text-[var(--color-on-surface)] mb-2">Acerca de</p>
+        <p>Material 3 Web App · v1.0.0</p>
+        <p>Autor: Javier Alberto Abreu Molina</p>
+        <p>Licencia: Apache-2.0</p>
+      </Card>
+    </div>
+  );
+}
+```
+
+---
+
+### T-PAG-004 · `NotFoundPage`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Página 404 |
+| **Fines** | Feedback para rutas no reconocidas |
+| **Archivo** | `src/pages/NotFoundPage.tsx` |
+| **Estado** | 🆕 CREADO |
+
+```tsx
+import React from "react";
+import { Button } from "@/components/ui";
+
+interface NotFoundPageProps {
+  onGoHome: () => void;
+}
+
+export function NotFoundPage({ onGoHome }: NotFoundPageProps) {
+  return (
+    <div className="grid place-items-center min-h-[60dvh] p-6 text-center gap-4">
+      <h2 className="m3-display-sm text-[var(--color-on-surface)]">404</h2>
+      <p className="m3-body-lg text-[var(--color-on-surface-variant)]">La página que buscas no existe.</p>
+      <Button onClick={onGoHome}>Volver al inicio</Button>
+    </div>
+  );
+}
+```
+
+---
+
+## 🌐 CAPA 8 — SERVICIOS CLIENTE
+
+### T-SRV-001 · `chat.service`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Abstracción del endpoint `/api/chat` |
+| **Fines** | Separar UI de red, tipado fuerte |
+| **Archivo** | `src/services/chat.service.ts` |
+| **Estado** | 🆕 CREADO (reemplaza `lib/genai.ts`) |
+
+```ts
+import { http } from "@/lib/http";
+import type { ChatMessage, ChatRequest, ChatResponse } from "@/types";
+
+export const chatService = {
+  async send(messages: ChatMessage[]): Promise<string> {
+    const body: ChatRequest = { messages };
+    const res = await http.post<ChatResponse>("/chat", body);
+    if (!res.reply) throw new Error("Respuesta vacía del servidor");
+    return res.reply;
+  },
+
+  async health(): Promise<{ status: string }> {
+    return http.get<{ status: string }>("/health");
+  },
+};
+```
+
+---
+
+### T-SRV-002 · Barrel `services/index.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Exportar servicios |
+| **Archivo** | `src/services/index.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+export { chatService } from "./chat.service";
+```
+
+---
+
+## 🖥️ CAPA 9 — BACKEND EXPRESS + GENAI
+
+> Estructura modular bajo `server/`. El archivo `server.ts` (raíz) solo orquesta.
+
+### T-BKD-001 · `server.ts` (orquestador)
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Punto de entrada del backend |
+| **Fines** | Crear app Express, montar rutas, escuchar puerto |
+| **Archivo** | `server.ts` |
+| **Dependencias** | `server/app.ts` |
+
+```ts
+import "dotenv/config";
+import { env } from "./server/config/env";
+import { createApp } from "./server/app";
+
+const app = createApp();
+
+app.listen(env.port, () => {
+  console.log(`✅ API escuchando en http://localhost:${env.port}`);
+});
+```
+
+---
+
+### T-BKD-002 · `server/config/env.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Validación de variables de entorno del backend |
+| **Fines** | Fallar rápido si falta `GEMINI_API_KEY` |
+| **Archivo** | `server/config/env.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+interface ServerEnv {
+  port: number;
+  nodeEnv: "development" | "production" | "test";
+  geminiApiKey: string;
+  geminiModel: string;
+}
+
+function readEnv(): ServerEnv {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error("❌ Falta GEMINI_API_KEY en el entorno");
+    process.exit(1);
+  }
+  return {
+    port: Number(process.env.PORT ?? 3001),
+    nodeEnv: (process.env.NODE_ENV as ServerEnv["nodeEnv"]) ?? "development",
+    geminiApiKey: apiKey,
+    geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+  };
+}
+
+export const env: ServerEnv = readEnv();
+```
+
+---
+
+### T-BKD-003 · `server/app.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Fábrica de la app Express |
+| **Fines** | Registrar middlewares y rutas |
+| **Archivo** | `server/app.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import express from "express";
+import chatRoutes from "./routes/chat.routes";
+import { errorMiddleware } from "./middleware/error.middleware";
+import { notFoundMiddleware } from "./middleware/not-found.middleware";
+
+export function createApp() {
+  const app = express();
+  app.use(express.json({ limit: "1mb" }));
+
+  app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.use("/api/chat", chatRoutes);
+
+  app.use(notFoundMiddleware);
+  app.use(errorMiddleware);
+
+  return app;
+}
+```
+
+---
+
+### T-BKD-004 · `server/routes/chat.routes.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Declarar rutas de chat |
+| **Fines** | Separar router de lógica |
+| **Archivo** | `server/routes/chat.routes.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { Router } from "express";
+import { chatController } from "../controllers/chat.controller";
+import { validateChatRequest } from "../middleware/validate.middleware";
+
+const router = Router();
+
+router.post("/", validateChatRequest, chatController.send);
+
+export default router;
+```
+
+---
+
+### T-BKD-005 · `server/controllers/chat.controller.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Controlador HTTP de chat |
+| **Fines** | Orquestar request → servicio → response |
+| **Archivo** | `server/controllers/chat.controller.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import type { Request, Response, NextFunction } from "express";
+import { geminiService } from "../services/gemini.service";
+import type { ChatRequest } from "../../src/types";
+
+export const chatController = {
+  async send(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { messages } = req.body as ChatRequest;
+      const reply = await geminiService.generate(messages);
+      res.json({ reply });
+    } catch (err) {
+      next(err);
+    }
+  },
+};
+```
+
+---
+
+### T-BKD-006 · `server/services/gemini.service.ts`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Comunicación con Google GenAI |
+| **Fines** | Encapsular prompt → respuesta |
+| **Archivo** | `server/services/gemini.service.ts` |
+| **Estado** | 🆕 CREADO |
+
+```ts
+import { GoogleGenAI } from "@google/genai";
+import { env } from "../config/env";
+import type { ChatMessage } from "../../src/types";
+
+const ai = new GoogleGenAI({ apiKey: env.geminiApiKey });
+
+export const geminiService = {
+  async generate(messages: ChatMessage[]): Promise<string> {
+    const contents = messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+    const response = await ai.models.generateContent({
+      model: env.geminiModel,
+      contents,
+    });
+
+    return response.text ?? "";
+  },
+};
+```
+
+---
+
+### T-BKD-007 · Middlewares + not-found
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Validación, manejo de errores y 404 |
+| **Fines** | Contratos de error consistentes |
+| **Archivos** | `server/middleware/*.ts` |
+| **Estado** | 🆕 CREADO |
+
+**`server/middleware/validate.middleware.ts`**
+```ts
+import type { Request, Response, NextFunction } from "express";
+
+export function validateChatRequest(req: Request, res: Response, next: NextFunction) {
+  const { messages } = req.body ?? {};
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "messages debe ser un array no vacío" });
+  }
+  const valid = messages.every(
+    (m) => m && typeof m.content === "string" && ["user", "assistant", "system"].includes(m.role)
+  );
+  if (!valid) {
+    return res.status(400).json({ error: "Mensaje inválido: se espera { role, content }" });
+  }
+  next();
+}
+```
+
+**`server/middleware/error.middleware.ts`**
+```ts
+import type { Request, Response, NextFunction } from "express";
+import { logger } from "./logger";
+
+export function errorMiddleware(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+  const message = err instanceof Error ? err.message : "Error interno";
+  logger.error("[api]", message);
+  res.status(500).json({ error: message });
+}
+```
+
+**`server/middleware/not-found.middleware.ts`**
+```ts
+import type { Request, Response } from "express";
+
+export function notFoundMiddleware(_req: Request, res: Response) {
+  res.status(404).json({ error: "Ruta no encontrada" });
+}
+```
+
+**`server/middleware/logger.ts`** *(🆕, para backend)*
+```ts
+const PREFIX = "[api]";
+export const logger = {
+  info: (...a: unknown[]) => console.info(PREFIX, ...a),
+  warn: (...a: unknown[]) => console.warn(PREFIX, ...a),
+  error: (...a: unknown[]) => console.error(PREFIX, ...a),
+};
+```
+
+---
+
+## 🖼️ CAPA 10 — ASSETS PÚBLICOS
+
+### T-AST-001 · `favicon.svg`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Icono de la pestaña |
+| **Fines** | Branding básico |
+| **Archivo** | `public/favicon.svg` |
+
+```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="8" fill="#6750A4"/>
+  <path d="M8 22 L16 8 L24 22 Z" fill="#FFFFFF"/>
+</svg>
+```
+
+---
+
+### T-AST-002 · `robots.txt`
+
+| Campo | Valor |
+|-------|-------|
+| **Uso** | Reglas para crawlers |
+| **Fines** | Permitir indexación general |
+| **Archivo** | `public/robots.txt` |
+| **Estado** | 🆕 CREADO |
+
+```txt
+User-agent: *
+Allow: /
+```
+
+---
+
+## 🧭 APLICACIÓN ORQUESTADA — `src/App.tsx` y `src/main.tsx`
+
+### `src/main.tsx`
+```tsx
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { App } from "./App";
+import "./index.css";
+import "./styles/typography.css";
+
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("No se encontró #root en index.html");
+
+ReactDOM.createRoot(rootEl).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+### `src/App.tsx`
+```tsx
+import React, { useState } from "react";
+import { AppShell } from "@/components/layout/AppShell";
+import type { NavKey } from "@/components/layout/NavigationBar";
+import { HomePage } from "@/pages/HomePage";
+import { ChatPage } from "@/pages/ChatPage";
+import { SettingsPage } from "@/pages/SettingsPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
+import { SnackbarProvider } from "@/hooks/useSnackbar";
+import { Snackbar } from "@/components/ui";
+
+const TITLES: Record<NavKey, string> = {
+  home: "Material 3 Web App",
+  chat: "Chat GenAI",
+  settings: "Ajustes",
+};
+
+export function App() {
+  const [route, setRoute] = useState<NavKey>("home");
+
+  const renderPage = () => {
+    switch (route) {
+      case "home": return <HomePage />;
+      case "chat": return <ChatPage />;
+      case "settings": return <SettingsPage />;
+      default: return <NotFoundPage onGoHome={() => setRoute("home")} />;
+    }
+  };
+
+  return (
+    <SnackbarProvider>
+      <AppShell title={TITLES[route]} active={route} onNavigate={setRoute}>
+        {renderPage()}
+      </AppShell>
+      <Snackbar />
+    </SnackbarProvider>
+  );
+}
+```
+
+---
+
+## 📊 MAPA DE DEPENDENCIAS ENTRE CAPAS
+
+```
+┌──────────────┐
+│  CAPA 0 CFG  │  (configura build/dev)
+└──────┬───────┘
+       │
+┌──────▼───────┐    ┌──────────────┐
+│  CAPA 3 TYP  │◄───│ CAPA 1 DSN   │  (design tokens)
+└──────┬───────┘    └──────────────┘
+       │
+┌──────▼───────┐    ┌──────────────┐
+│  CAPA 2 UTL  │◄───│ CAPA 4 HOK   │
+└──────┬───────┘    └──────┬───────┘
+       │                   │
+       ├────────┬──────────┘
+       ▼        ▼
+┌────────────┐  ┌──────────────┐
+│ CAPA 5 UI  │  │ CAPA 6 LAY   │
+└─────┬──────┘  └──────┬───────┘
+      │                │
+      └────────┬───────┘
+               ▼
+        ┌──────────────┐
+        │  CAPA 7 PAG  │
+        └──────┬───────┘
+               │
+        ┌──────▼───────┐
+        │  CAPA 8 SRV  │
+        └──────┬───────┘
+               │ HTTP
+        ┌──────▼───────┐
+        │  CAPA 9 BKD  │──► Google GenAI
+        └──────────────┘
+```
+
+---
+
+## ✅ CHECKLIST DE NOMENCLATURA CORREGIDA
+
+| Antes | Después | Motivo |
+|-------|---------|--------|
+| `react-example` | `material3-web-app` | Coherencia con dominio |
+| `src/types.ts` | `src/types/chat.ts` + barrel | Módulo por dominio |
+| `src/lib/genai.ts` | `src/services/chat.service.ts` | Separación servicio/cliente |
+| `src/pages/Home.tsx` | `src/pages/HomePage.tsx` | Sufijo `Page` |
+| `src/pages/Chat.tsx` | `src/pages/ChatPage.tsx` | Sufijo `Page` |
+| `src/pages/Settings.tsx` | `src/pages/SettingsPage.tsx` | Sufijo `Page` |
+| `src/components/TopAppBar.tsx` | `src/components/layout/TopAppBar.tsx` | Agrupar layout |
+| `src/components/NavigationBar.tsx` | `src/components/layout/NavigationBar.tsx` | Agrupar layout |
+| `server.ts` monolítico | `server/` modular + `server.ts` orquestador | Separación de responsabilidades |
+| Sin `.env.example` | `.env.example` creado | Onboarding |
+| Sin `.gitignore` | `.gitignore` creado | Higiene de repo |
+| Sin `robots.txt` | `robots.txt` creado | SEO |
+| `logger` inline | `src/lib/logger.ts` + `server/middleware/logger.ts` | Reutilización |
+
+---
+
+## 🚀 EJECUCIÓN
+
+```bash
+# 1. Instalar
+npm install
+
+# 2. Configurar env
+cp .env.example .env
+# editar .env con GEMINI_API_KEY real
+
+# 3. Arrancar todo (web + api)
+npm start
+
+# 4. O por separado
+npm run dev        # http://localhost:3000
+npm run server     # http://localhost:3001
+```
+
+---
+
+## 📌 RESUMEN FINAL
+
+| Capa | Herramientas | Estado |
+|------|--------------|--------|
+| 0 · Configuración | 7 | ✅ 2 nuevas, 5 corregidas |
+| 1 · Diseño | 2 | ✅ 1 nueva, 1 existente |
+| 2 · Utilidades | 4 | ✅ 3 nuevas, 1 existente |
+| 3 · Tipos | 2 | ✅ 1 nueva, 1 reestructurada |
+| 4 · Hooks | 6 | ✅ 3 nuevas, 3 existentes |
+| 5 · UI Kit | 11 | ✅ 5 nuevas, 6 existentes |
+| 6 · Layout | 4 | ✅ 1 nueva, 3 reorganizadas |
+| 7 · Páginas | 4 | ✅ 1 nueva, 3 renombradas |
+| 8 · Servicios | 2 | ✅ 2 nuevas |
+| 9 · Backend | 7 | ✅ 7 nuevas (modularización) |
+| 10 · Assets | 2 | ✅ 1 nueva, 1 existente |
+| **TOTAL** | **51** | **30 nuevas · 21 reorganizadas** |
+
+**Código profesional, nombres coherentes, sin `Math.random()` en métricas, sin nombres exagerados.**  
+**Arquitectura por capas con dependencias unidireccionales.**  
+**Backend desacoplado del frontend, GenAI aislado en servicio.**
+
+*Fin del informe de desarticulación.*

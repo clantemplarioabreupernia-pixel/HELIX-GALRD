@@ -29,6 +29,7 @@ import {
 import { buildHelixDnaDocument, HELIX_ECOSYSTEM_MODULES } from './helixDna';
 import {
   assemblePureFromCells,
+  auditPureAssemblyCoverage,
   computeGodelString,
   DEFAULT_HELIX_CELLS,
   makeSignedCell,
@@ -38,6 +39,9 @@ import {
   verifyCellsForProgram,
 } from './helixCells';
 import { buildCellDependencyGraph } from './helixCellGraph';
+import { sharedHolographicAcademicLibrary } from '../core/holographicAcademicLibrary';
+import { FRAME_STRIDE, HelixKinematics12Engine } from '../core/helixKinematics12';
+import { parseStoryIntoMusicalScore } from '../core/helixStoryScoreEngine';
 import {
   AI_DECODING_SCENARIOS,
   evaluateCandidatePrefix,
@@ -133,7 +137,25 @@ import {
 import {
   createHelixCoreEngine,
   DOMAIN_ENGINE_METADATA,
+  recombineHelixTools,
 } from '../core';
+import { buildProceduralCineAudioPlan } from '../core/helixProceduralCineAudio';
+import {
+  auditBirkhoffVonNeumannVsTotalOrder,
+  computeFresnelReflectance,
+  computeGaldrOctaveFrequency,
+  evaluateUnifiedBiopixelEquation,
+} from '../core/helixQuantumDisplayPhysics';
+import {
+  analyzeCollatzBigInt,
+  CircularTrailBuffer,
+  CrystalVault64B,
+  runZeroGOrbitComparison,
+  simulateKuramotoPhaseCore,
+  ulpDistanceFloat64,
+  verifyTerrainParametersFormal,
+} from '../core/helixExtendedLabEngines';
+import { BASE_HELIX_TOOL_CATALOG } from '../core/helixToolCatalog159';
 
 export interface TestCaseResult {
   id: string;
@@ -1387,7 +1409,7 @@ export function runHelixTestSuite(): TestCaseResult[] {
     detail: `φ²-φ-1=0, η_A2=${(A2_PACKING_DENSITY * 100).toFixed(2)}%, χ(T²)=${eulerTorus.eulerChi}/χ(Ico)=${eulerIco.eulerChi}, k=${geomValidReport.wavenumberK}, rechazoSMT=${badGeomVerified.status}, OpGeomSeal=OK`,
   });
 
-  // 36. @helix/core-engine: Catálogo vivo unificado (38 canónicas + 159 .hlx recuperadas = 197) y firmas SHA-256
+  // 36. @helix/core-engine: Catálogo vivo unificado (59 canónicas + 159 .hlx recuperadas = 218) y firmas SHA-256
   const coreEngine = createHelixCoreEngine();
   const initialTools = coreEngine.getRegisteredTools();
   const canonicalCount = initialTools.filter((t) => t.origin === 'canonical_opcode').length;
@@ -1396,13 +1418,13 @@ export function runHelixTestSuite(): TestCaseResult[] {
 
   results.push({
     id: 'core-engine-catalog-188',
-    name: '@helix/core-engine: Catálogo unificado de 197 herramientas (38 canónicas + 159 .hlx recuperadas) con SHA-256',
+    name: '@helix/core-engine: Catálogo unificado de 218 herramientas (59 canónicas + 159 .hlx recuperadas) con SHA-256',
     passed:
-      initialTools.length === 197 &&
-      canonicalCount === 38 &&
+      initialTools.length === 218 &&
+      canonicalCount === 59 &&
       recoveredCount === 159 &&
       allShaValid &&
-      Object.keys(DOMAIN_ENGINE_METADATA).length === 19,
+      Object.keys(DOMAIN_ENGINE_METADATA).length === 23,
     detail: `Total=${initialTools.length} (canónicas=${canonicalCount}, recuperadas=${recoveredCount}), MotoresReales=${Object.keys(DOMAIN_ENGINE_METADATA).length}, SHA256=${allShaValid}`,
   });
 
@@ -1542,6 +1564,289 @@ export function runHelixTestSuite(): TestCaseResult[] {
       gate5Asm.valid &&
       gate5Asm.code.includes('package main'),
     detail: `Perfil=${kidFirstTurn.detectedPersona}, Preguntas=${kidFirstTurn.questions.length}, Cierre=${!kidCompleted.clarificationNeeded}, 5Puertas=OK`,
+  });
+
+  // 41. Ecuación Unificada de Materia Informática S_BioPixel(r, t), racionales P33, CAUCHY_OPTIC, GALDR_SYNTH y Cine-Audio Procedural
+  const unifiedEval = evaluateUnifiedBiopixelEquation({ cFront: 0.55, tension: 0.4, primeIndex: 4 });
+  const cinePlan = buildProceduralCineAudioPlan(BASE_HELIX_TOOL_CATALOG.slice(0, 3));
+  const masterCompiled = compileHelixScript(cinePlan.masterHlxScript, INITIAL_COMPOUND_VOCABULARY);
+  const masterVerified = verifyHelixProgram(masterCompiled);
+  const masterVm = runHelixProgram(masterCompiled, createInitialVmState());
+  const masterPureGo = assemblePureFromCells(masterCompiled, DEFAULT_HELIX_CELLS, 'go');
+  const masterGodel = validateHelixGodelChecksum(cinePlan.masterHlxScript, {
+    vocabulary: INITIAL_COMPOUND_VOCABULARY,
+    cells: DEFAULT_HELIX_CELLS,
+  });
+  const badP33Rat = verifyHelixProgram(compileHelixScript('ᛇᚢ\nSET bad 1/139\nᚳᛏ', INITIAL_COMPOUND_VOCABULARY));
+
+  results.push({
+    id: 'unified-biopixel-equation-p33-galdr-cine',
+    name: 'Ecuación Unificada S_BioPixel(r,t), Racionales P33, CAUCHY_OPTIC, GALDR_SYNTH y Cine-Audio Procedural',
+    passed:
+      unifiedEval.cBack === -0.55 &&
+      Math.abs(unifiedEval.deltaZ - Math.tanh(1.1)) < 1e-3 &&
+      unifiedEval.cauchySpectral.nBlue > unifiedEval.cauchySpectral.nGreen &&
+      unifiedEval.cauchySpectral.nGreen > unifiedEval.cauchySpectral.nRed &&
+      Math.abs(unifiedEval.blochNormSq - 1.0) < 1e-6 &&
+      unifiedEval.bvnNonDistributive &&
+      unifiedEval.guardStatus === 'PROVEN_SAT' &&
+      cinePlan.steps.length >= 4 &&
+      masterVerified.status === 'VERIFICADO' &&
+      !masterVm.finalState.halted &&
+      masterVm.finalPc === masterCompiled.length &&
+      Number(masterVm.finalState.variables['cauchy_n_green']) > 1.4 &&
+      Number(masterVm.finalState.variables['galdr_hz']) > 0 &&
+      masterPureGo.valid &&
+      masterGodel.valid &&
+      badP33Rat.status === 'RECHAZADO' &&
+      badP33Rat.findings.some((f) => f.rule === 'SMT_P33_VAR'),
+    detail: `ΔZ=${unifiedEval.deltaZ}, ||ψ||²=${unifiedEval.blochNormSq}, Guard=${unifiedEval.guardStatus}, Master=${masterVerified.status}(${masterCompiled.length}i), P33Reject=${badP33Rat.status}`,
+  });
+
+  // 42. Prueba combinatoria total: 253 pares entre los 23 motores + recombinación multi-orden G1/G2/G3 con linaje completo
+  const batchEngine = createHelixCoreEngine();
+  const baseTools = batchEngine.getRegisteredTools();
+  const byEngineRep = new Map<string, (typeof baseTools)[number]>();
+  for (const t of baseTools) {
+    if (!byEngineRep.has(t.engineId)) byEngineRep.set(t.engineId, t);
+  }
+  const reps23 = Array.from(byEngineRep.values());
+  let pairOkCount = 0;
+  let pairTotalCount = 0;
+  for (let i = 0; i < reps23.length; i++) {
+    for (let j = i + 1; j < reps23.length; j++) {
+      pairTotalCount++;
+      const r = recombineHelixTools([reps23[i], reps23[j]], {});
+      if (r.success && r.pccVerified) pairOkCount++;
+    }
+  }
+  const batchReport = batchEngine.runCombinatorialBatch(14, 6, true);
+  const g3Result = batchReport.results.find((r) => (r.childTool?.generation ?? 0) >= 3);
+
+  results.push({
+    id: 'combinatorial-matrix-253-multiorder',
+    name: 'Matriz Combinatoria Completa (253 pares entre 23 motores) + Recombinación G1/G2/G3',
+    passed:
+      reps23.length === 23 &&
+      pairTotalCount === 253 &&
+      pairOkCount === 253 &&
+      batchReport.totalVerified === batchReport.totalAttempted &&
+      batchReport.firstOrderVerified >= 14 &&
+      batchReport.secondOrderVerified >= 6 &&
+      batchReport.thirdOrderVerified >= 1 &&
+      batchReport.uniqueEnginesCovered === 23 &&
+      batchReport.uniqueDomainsCovered === 12 &&
+      Boolean(g3Result?.childTool?.lineageLeaves && g3Result.childTool.lineageLeaves.length >= 4),
+    detail: `Pares23=${pairOkCount}/${pairTotalCount} · Lote=${batchReport.totalVerified}/${batchReport.totalAttempted} (G1=${batchReport.firstOrderVerified}, G2=${batchReport.secondOrderVerified}, G3=${batchReport.thirdOrderVerified}) · Motores=${batchReport.uniqueEnginesCovered}/23 · Dominios=${batchReport.uniqueDomainsCovered}/12`,
+  });
+
+  // 43. Todas las células .hlx de las 33 disciplinas en la Biblioteca Holográfica compilan, pasan SMT, VM, ensamblado puro sin fallback y checksum Gödel
+  const libCards33 = sharedHolographicAcademicLibrary.getCards();
+  let cards33Passed = 0;
+  let cards33FallbackCount = 0;
+  for (const card of libCards33) {
+    const compiled = compileHelixScript(card.hlxScript, INITIAL_COMPOUND_VOCABULARY);
+    const smt = verifyHelixProgram(compiled);
+    const vm = runHelixProgram(compiled, createInitialVmState());
+    const coverage = auditPureAssemblyCoverage(compiled, DEFAULT_HELIX_CELLS);
+    const godelCheck = validateHelixGodelChecksum(card.hlxScript, {
+      vocabulary: INITIAL_COMPOUND_VOCABULARY,
+      cells: DEFAULT_HELIX_CELLS,
+    });
+    const vmOk =
+      vm.finalPc === compiled.length &&
+      !vm.finalState.halted &&
+      !vm.finalState.logs.some((l) => l.status === 'RECHAZADO');
+    if (coverage.fallbackUsed) cards33FallbackCount++;
+    if (
+      smt.status === 'VERIFICADO' &&
+      smt.symbolic?.status === 'PROVED_SAFE' &&
+      vmOk &&
+      !coverage.fallbackUsed &&
+      godelCheck.valid
+    ) {
+      cards33Passed++;
+    }
+  }
+
+  results.push({
+    id: 'disciplines-33-cells-pure-verification',
+    name: '33 Disciplinas Científicas: compilación, SMT PROVED_SAFE, VM, células .hlx sin fallback y Gödel',
+    passed:
+      libCards33.length >= 33 &&
+      cards33Passed === libCards33.length &&
+      cards33FallbackCount === 0,
+    detail: `Tarjetas=${cards33Passed}/${libCards33.length} · Fallbacks=${cards33FallbackCount}`,
+  });
+
+  // 44. Gran Recombinación Total Omega (23 motores × 33 disciplinas completas + PCC + cero fallbacks)
+  const omegaEngine = createHelixCoreEngine();
+  const omegaRes = omegaEngine.runOmegaRecombination({}, true);
+  const omegaCompiled = compileHelixScript(omegaRes.synthesizedHlx, INITIAL_COMPOUND_VOCABULARY);
+  const omegaCoverage = auditPureAssemblyCoverage(omegaCompiled, DEFAULT_HELIX_CELLS);
+  const omegaUniqueEngines = new Set(omegaRes.parentTools.map((t) => t.engineId)).size;
+
+  results.push({
+    id: 'grand-omega-recombination-23x33',
+    name: 'Gran Recombinación Total Omega (23 motores × 33 disciplinas + PCC + ensamblado puro sin fallback)',
+    passed:
+      omegaRes.success &&
+      omegaRes.pccVerified &&
+      omegaRes.smtReport.status === 'VERIFICADO' &&
+      omegaRes.smtReport.symbolic?.status === 'PROVED_SAFE' &&
+      omegaUniqueEngines === 23 &&
+      omegaRes.disciplines33.length === 33 &&
+      omegaRes.disciplineMaskBits33 === '1'.repeat(33) &&
+      !omegaCoverage.fallbackUsed &&
+      omegaRes.bridges.length >= 22,
+    detail: `Motores=${omegaUniqueEngines}/23 · Disciplinas=${omegaRes.disciplines33.length}/33 · Puentes=${omegaRes.bridges.length} · Fallback=${omegaCoverage.fallbackUsed} · PCC=${omegaRes.pccVerified}`,
+  });
+
+  // 45. Cinemática Disney-12 (conservación de volumen det(S)=1) + Partitura Musical Galdr por escenas
+  const kinParams = {
+    duration: 2.0,
+    fps: 30,
+    elasticity: 0.3,
+    anticipationRatio: 0.15,
+    anticipationAmp: 0.2,
+    exaggeration: 1.15,
+    mass: 1.0,
+    damping: 4.5,
+    stiffness: 34,
+    lagFrames: 2,
+  };
+  const kinFramesExpected = Math.floor(kinParams.duration * kinParams.fps);
+  const kinBuffer = new Float32Array(kinFramesExpected * FRAME_STRIDE);
+  const kinWritten = HelixKinematics12Engine.synthesizeTrajectory(
+    new Float32Array([-0.2, 0, 0]),
+    new Float32Array([0, 0.25, 0.1]),
+    new Float32Array([0.2, 0, 0]),
+    new Float32Array([0, 0, 0]),
+    kinParams,
+    kinBuffer,
+  );
+  const kinInv = HelixKinematics12Engine.validateInvariants(kinBuffer, kinWritten);
+  const storyCues = parseStoryIntoMusicalScore(
+    'Caperucita caminaba por el bosque verde con su capa roja. De pronto apareció el lobo bajo la luna en la noche. Al final llegó al castillo.',
+  );
+  const storyCuesValid =
+    storyCues.length >= 3 &&
+    storyCues.every(
+      (c) =>
+        Boolean(c.runeGlyph) &&
+        Boolean(c.musicalNoteLabel) &&
+        c.formant.f1Hz > 0 &&
+        c.kinematicsFrames >= 2 &&
+        c.kinematicsBuffer.length >= c.kinematicsFrames * FRAME_STRIDE,
+    );
+
+  results.push({
+    id: 'disney-12-kinematics-and-galdr-story-score',
+    name: 'Cinemática Disney-12 (det(S)=1) + Partitura Galdr y formantes por escena narrativa',
+    passed:
+      kinWritten === kinFramesExpected &&
+      kinInv.valid &&
+      kinInv.maxVolumeError < 1e-4 &&
+      storyCuesValid,
+    detail: `Frames=${kinWritten}, VolErr=${kinInv.maxVolumeError.toExponential(2)}, Escenas=${storyCues.length}, CuesVálidas=${storyCuesValid}`,
+  });
+
+  // 46. Ecuaciones de Compendio: Fresnel R(θ)/Brewster, Galdr f_r(p) y Auditoría Q-Omega (BvN vs Orden Total)
+  const fresnelNormal = computeFresnelReflectance(0, 1.0, 1.52);
+  const fresnelBrewster = computeFresnelReflectance(fresnelNormal.brewsterAngleDeg, 1.0, 1.52);
+  const fresnelTir = computeFresnelReflectance(60, 1.52, 1.0);
+  const galdrPrime2 = computeGaldrOctaveFrequency(2);
+  const galdrPrime3 = computeGaldrOctaveFrequency(3);
+  const qOmegaAudit = auditBirkhoffVonNeumannVsTotalOrder();
+
+  results.push({
+    id: 'compendium-fresnel-galdr-qomega',
+    name: 'Compendio Óptica Fresnel R(θ)/Brewster, Armónica Galdr f_r(p) y Auditoría Q-Omega',
+    passed:
+      Math.abs(fresnelNormal.rs + fresnelNormal.transmittanceAvg * 2 - (fresnelNormal.rs + (1 - fresnelNormal.rAvg) * 2)) < 1e-9 &&
+      Math.abs(fresnelNormal.rAvg + fresnelNormal.transmittanceAvg - 1) < 1e-5 &&
+      fresnelBrewster.rp < 0.0005 &&
+      fresnelTir.totalInternalReflection === true &&
+      fresnelTir.rAvg === 1 &&
+      Math.abs(galdrPrime2.frequencyHz - 261.6256) < 0.01 &&
+      Math.abs(galdrPrime3.frequencyHz - 261.6256 * 1.5) < 0.01 &&
+      qOmegaAudit.quantumLatticeDistributive === false &&
+      qOmegaAudit.classicalGlyphIndexDistributive === true &&
+      qOmegaAudit.frobeniusWitnessDiff > 0.9,
+    detail: `Brewster=${fresnelNormal.brewsterAngleDeg}° (Rp=${fresnelBrewster.rp}), Galdr(p=3)=${galdrPrime3.frequencyHz}Hz, Q-Omega=${!qOmegaAudit.quantumLatticeDistributive && qOmegaAudit.classicalGlyphIndexDistributive}`,
+  });
+
+  // 47. Crystal Vault v1.0.0: Bóveda 64B cache-aligned, FNV-1a, Matriz R8UI, 5 Invariantes y Quantum Vanish
+  const vault = new CrystalVault64B(8);
+  const recGen = vault.appendRecord('GENESIS', 1000, 'helix_tesoreria', 0x0137, 1700000000000);
+  const recTx = vault.appendRecord('TRANSFER', 250, 'modulo_cauchy', 0x0201, 1700000001000);
+  const vaultOkReport = vault.verifyFiveInvariants();
+  const r8uiBefore = vault.exportR8UIMatrix();
+  vault.corruptByteForTest(1, 20);
+  const vaultCorruptReport = vault.verifyFiveInvariants();
+  const purgeRes = vault.securePurge();
+
+  results.push({
+    id: 'crystal-vault-64b-r8ui-purge',
+    name: 'Crystal Vault 64B: ArrayBuffer alineado, 5 invariantes FNV-1a, textura R8UI y Quantum Vanish',
+    passed:
+      recGen.ok &&
+      recTx.ok &&
+      vault.buffer.byteLength === 512 &&
+      vaultOkReport.valid === true &&
+      r8uiBefore.width === 64 &&
+      r8uiBefore.height === 2 &&
+      r8uiBefore.data.length === 128 &&
+      vaultCorruptReport.valid === false &&
+      purgeRes.bytesZeroed === 512 &&
+      purgeRes.postPurgeNonZeroBytes === 0 &&
+      vault.isPurged === true,
+    detail: `Stride=64B (${vault.buffer.byteLength}B), R8UI=${r8uiBefore.width}×${r8uiBefore.height}, CorrupciónDetectada=${!vaultCorruptReport.valid}, PurgeCeros=${purgeRes.postPurgeNonZeroBytes}`,
+  });
+
+  // 48. Cartuchos Extendidos: Zero-G Verlet vs Euler + CircularTrailBuffer, Collatz BigInt, Kuramoto R y Omega Verify ULP
+  const trail = new CircularTrailBuffer(8);
+  for (let p = 1; p <= 10; p++) {
+    trail.push(p, p);
+  }
+  const trailArr = trail.toArray();
+  const zgComp = runZeroGOrbitComparison(6771, 0.25, 220, 35);
+  const collatz27 = analyzeCollatzBigInt('27');
+  const phaseCore = simulateKuramotoPhaseCore(24, 3.2, 80, 137);
+  const ulpOne = ulpDistanceFloat64(0.1 + 0.2, 0.3);
+  const terrainSat = verifyTerrainParametersFormal({
+    amplitude: 14,
+    octaves: 5,
+    persistence: 0.52,
+    frequency: 0.14,
+    seed: 137,
+  });
+  const terrainUnsat = verifyTerrainParametersFormal({
+    amplitude: 14,
+    octaves: 5,
+    persistence: 0.95,
+    frequency: 0.14,
+    seed: 137,
+  });
+
+  results.push({
+    id: 'extended-cartridges-zerog-collatz-kuramoto-ulp',
+    name: 'Cartuchos Lab: TrailBuffer Circular, Zero-G Verlet<Euler, Collatz(27) BigInt, Kuramoto R y ULP/fBm',
+    passed:
+      trailArr.length === 8 &&
+      trailArr[0].x === 3 &&
+      trailArr[7].x === 10 &&
+      zgComp.invariantsOk &&
+      zgComp.verletEnergyDriftRatio < zgComp.eulerEnergyDriftRatio &&
+      collatz27.stoppingTime === 111 &&
+      collatz27.peakStr === '9232' &&
+      collatz27.shannonBitEntropy > 0.8 &&
+      phaseCore.finalOrderParameter > phaseCore.initialOrderParameter &&
+      phaseCore.synchronized === true &&
+      ulpOne === 1 &&
+      terrainSat.status === 'SAT_VALID' &&
+      terrainUnsat.status === 'UNSAT_VIOLATION',
+    detail: `Verlet(${zgComp.verletEnergyDriftRatio})<Euler(${zgComp.eulerEnergyDriftRatio}), Collatz27=${collatz27.stoppingTime}/${collatz27.peakStr}, R=${phaseCore.initialOrderParameter}→${phaseCore.finalOrderParameter}, ULP=${ulpOne}`,
   });
 
   return results;

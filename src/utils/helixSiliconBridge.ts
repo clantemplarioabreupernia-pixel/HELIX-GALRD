@@ -159,12 +159,12 @@ export const HELIX_OPTIC_FRAGMENT_SSS_CAUCHY = `
 vec3 hN = normalize(vHelixWorldNormal);
 vec3 hV = normalize(cameraPosition - vHelixWorldPos);
 float hNdotV = clamp(dot(hN, hV), 0.0, 1.0);
-float hFresnel = pow(1.0 - hNdotV, 3.0);
+float hFresnel = pow(max(1.0 - hNdotV, 0.0001), 3.0);
 
 // Wrap-diffuse Subsurface Scattering (SSS) sin texturas pesadas
 vec3 hKeyDir = normalize(vec3(0.55, 0.80, 0.50));
 float hWrap = clamp((dot(hN, hKeyDir) + 0.55) / 1.55, 0.0, 1.0);
-float hBackScatter = pow(clamp(dot(hV, -hKeyDir) * 0.5 + 0.5, 0.0, 1.0), 2.5);
+float hBackScatter = pow(clamp(dot(hV, -hKeyDir) * 0.5 + 0.5, 0.0001, 1.0), 2.5);
 vec3 hSssTint = vec3(0.16, 0.58, 0.86) * hWrap + vec3(0.92, 0.42, 0.32) * hBackScatter * 0.45;
 gl_FragColor.rgb += hSssTint * uHelixSssStrength * (0.14 + 0.24 * vHelixCurlEnergy);
 

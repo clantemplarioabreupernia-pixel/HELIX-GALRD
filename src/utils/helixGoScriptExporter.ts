@@ -83,6 +83,19 @@ export const HELIX_GO_OPCODE_DEFINITIONS: GoOpcodeDefinition[] = [
   { opcode: 'BVN_LATTICE', goConst: 'OpBvnLattice', category: 'FISICA_CUANTICA', glyphs: 'ᚦᛉ', description: 'Evalúa reticulado cuántico Birkhoff-von Neumann' },
   { opcode: 'WEBER_GUARD', goConst: 'OpWeberGuard', category: 'FISICA_CUANTICA', glyphs: 'ᛋᚦ', description: 'Filtro perceptual Weber-Fechner (SKIP_FRAME)' },
   { opcode: 'GEOM_SEAL', goConst: 'OpGeomSeal', category: 'FISICA_CUANTICA', glyphs: 'ᛟᚹ', description: 'Epílogo geométrico universal (T²/Schläfli-Euler/φ/Helmholtz)' },
+  { opcode: 'CAUCHY_OPTIC', goConst: 'OpCauchyOptic', category: 'FISICA_CUANTICA', glyphs: 'ᚩᚫ', description: 'Dispersión óptica espectral de Cauchy n(λ) en líneas de Fraunhofer' },
+  { opcode: 'GALDR_SYNTH', goConst: 'OpGaldrSynth', category: 'IO_BUS', glyphs: 'ᚫᛣ', description: 'Síntesis procedural Galdr (runa, primo, Hz, fonema y formantes)' },
+  { opcode: 'ORBIT_KEPLER', goConst: 'OpOrbitKepler', category: 'FISICA_CUANTICA', glyphs: 'ᚱᚩ', description: 'Integración orbital Kepler + Verlet simpléctico' },
+  { opcode: 'KINETIC_P33', goConst: 'OpKineticP33', category: 'FISICA_CUANTICA', glyphs: 'ᛟᛡ', description: 'Cinemática racional exacta sobre subanillo P33' },
+  { opcode: 'TENSOR_VM', goConst: 'OpTensorVm', category: 'FISICA_CUANTICA', glyphs: 'ᚹᚹ', description: 'Tensor de esfuerzos de Cauchy y criterio von Mises' },
+  { opcode: 'QASM_STATE', goConst: 'OpQasmState', category: 'FISICA_CUANTICA', glyphs: 'ᛒᛡ', description: 'Simulación multi-qubit Statevector y entropía Shannon' },
+  { opcode: 'TERRAIN_FBM', goConst: 'OpTerrainFbm', category: 'ESCENA_3D', glyphs: 'ᛗᛚ', description: 'Síntesis fractal de terreno fBm y biomas 3D' },
+  { opcode: 'RIGID_COLLIDE', goConst: 'OpRigidCollide', category: 'ESCENA_3D', glyphs: 'ᛤᚹ', description: 'Colisión rígida 3D e impulso de restitución' },
+  { opcode: 'LIPSYNC_DSP', goConst: 'OpLipSyncDsp', category: 'IO_BUS', glyphs: 'ᚫᛚ', description: 'Análisis vocal DSP en 3 bandas y sincronización labial' },
+  { opcode: 'LEDGER_MERKLE', goConst: 'OpLedgerMerkle', category: 'SEGURIDAD', glyphs: 'ᚠᛥ', description: 'Contabilidad exacta en centavos y raíz Merkle SHA-256' },
+  { opcode: 'CHEM_THERMO', goConst: 'OpChemThermo', category: 'FISICA_CUANTICA', glyphs: 'ᚳᛜ', description: 'Química cuántica: Gibbs, Nernst, Arrhenius y Morse' },
+  { opcode: 'NANO_BRUS', goConst: 'OpNanoBrus', category: 'FISICA_CUANTICA', glyphs: 'ᛡᛥ', description: 'Nanotecnología Brus CdSe, túnel WKB y Mott-Gurney' },
+  { opcode: 'DISNEY_KIN12', goConst: 'OpDisneyKin12', category: 'ESCENA_3D', glyphs: 'ᛞᛒ', description: 'Cinemática Disney de 12 principios con squash-and-stretch' },
 
   { opcode: 'MESH_NODE', goConst: 'OpMeshNode', category: 'ESCENA_3D', glyphs: 'ᚠᛜ', description: 'Declara nodo geométrico 3D acotado en triángulos' },
   { opcode: 'MAT_ORM', goConst: 'OpMatOrm', category: 'ESCENA_3D', glyphs: 'ᛟᛣ', description: 'Asigna canales PBR ORM [0..1]' },
@@ -460,11 +473,34 @@ func inSubringP33(n int) bool {
 \treturn cur == 1
 }
 
+func parseRationalOrFloat(arg string) (float64, bool, error) {
+\ttrimmed := strings.TrimSpace(arg)
+\tif parts := strings.Split(trimmed, "/"); len(parts) == 2 {
+\t\tnum, errN := strconv.ParseInt(parts[0], 10, 64)
+\t\tden, errD := strconv.ParseInt(parts[1], 10, 64)
+\t\tif errN == nil && errD == nil {
+\t\t\tif den <= 0 {
+\t\t\t\treturn 0, false, errors.New("divisor racional cero o negativo")
+\t\t\t}
+\t\t\treturn float64(num) / float64(den), inSubringP33(int(den)), nil
+\t\t}
+\t}
+\tv, err := strconv.ParseFloat(trimmed, 64)
+\treturn v, true, err
+}
+
 func (vm *HelixVM) resolveFloat(arg string) (float64, error) {
 \tif v, ok := vm.Vars[arg]; ok {
 \t\treturn v, nil
 \t}
-\treturn strconv.ParseFloat(arg, 64)
+\tv, inP33, err := parseRationalOrFloat(arg)
+\tif err != nil {
+\t\treturn 0, err
+\t}
+\tif !inP33 {
+\t\treturn 0, fmt.Errorf("racional %s fuera del subanillo P33", arg)
+\t}
+\treturn v, nil
 }
 
 func VerifyProgram(program []Instruction) error {
@@ -591,7 +627,10 @@ func VerifySymbolicBounds(program []Instruction) error {
 \t\tcase OpSet:
 \t\t\tif len(inst.Args) >= 2 {
 \t\t\t\tinitVars[inst.Args[0]] = true
-\t\t\t\tif v, err := strconv.ParseFloat(inst.Args[1], 64); err == nil {
+\t\t\t\tif v, inP33, err := parseRationalOrFloat(inst.Args[1]); err == nil {
+\t\t\t\t\tif !inP33 {
+\t\t\t\t\t\treturn fmt.Errorf("SMT_P33_VAR linea %d: racional %s fuera de P33", inst.Line, inst.Args[1])
+\t\t\t\t\t}
 \t\t\t\t\tvars[inst.Args[0]] = v
 \t\t\t\t} else if vv, ok := vars[inst.Args[1]]; ok {
 \t\t\t\t\tvars[inst.Args[0]] = vv
@@ -1236,6 +1275,42 @@ func (vm *HelixVM) Run(program []Instruction) error {
 \t\t\tvm.Vars["GEOM_K"] = vm.GeomWavenumber
 \t\t\tvm.StringVars["GEOM_TOPOLOGY"] = topo
 \t\t\tvm.StringVars["GEOM_SAMPLING"] = samp
+
+\t\tcase OpCauchyOptic:
+\t\t\ta, b, c := 1.458, 0.00354, 0.00012
+\t\t\tif len(inst.Args) >= 1 {
+\t\t\t\tif v, err := vm.resolveFloat(inst.Args[0]); err == nil {
+\t\t\t\t\ta = v
+\t\t\t\t}
+\t\t\t}
+\t\t\tif len(inst.Args) >= 2 {
+\t\t\t\tif v, err := vm.resolveFloat(inst.Args[1]); err == nil {
+\t\t\t\t\tb = v
+\t\t\t\t}
+\t\t\t}
+\t\t\tif len(inst.Args) >= 3 {
+\t\t\t\tif v, err := vm.resolveFloat(inst.Args[2]); err == nil {
+\t\t\t\t\tc = v
+\t\t\t\t}
+\t\t\t}
+\t\t\tnRed := a + b/(0.700*0.700) + c/math.Pow(0.700, 4)
+\t\t\tnGreen := a + b/(0.5461*0.5461) + c/math.Pow(0.5461, 4)
+\t\t\tnBlue := a + b/(0.4358*0.4358) + c/math.Pow(0.4358, 4)
+\t\t\tvm.Vars["cauchy_n_red"] = nRed
+\t\t\tvm.Vars["cauchy_n_green"] = nGreen
+\t\t\tvm.Vars["cauchy_n_blue"] = nBlue
+
+\t\tcase OpGaldrSynth:
+\t\t\trIdx := 0
+\t\t\tif len(inst.Args) >= 1 {
+\t\t\t\tif v, err := vm.resolveFloat(inst.Args[0]); err == nil {
+\t\t\t\t\trIdx = int(math.Abs(v)) % len(HelixTokens)
+\t\t\t\t}
+\t\t\t}
+\t\t\ttok := HelixTokens[rIdx]
+\t\t\tvm.Vars["galdr_prime"] = float64(tok.Prime)
+\t\t\tvm.Vars["galdr_hz"] = tok.FreqHz
+\t\t\tvm.StringVars["GALDR_ACTIVE"] = fmt.Sprintf("%s:%d:%0.2fHz", tok.Glyph, tok.Prime, tok.FreqHz)
 
 \t\tcase OpIoBusTx, OpIoGuard, OpWsEmit:
 \t\t\tpayload := strings.Join(inst.Args, " ")

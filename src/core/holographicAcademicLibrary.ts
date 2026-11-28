@@ -177,13 +177,66 @@ export function decodeAcademicCard17B(card: HolographicAcademicCard): DecodedAca
   };
 }
 
+function opcodeForDisciplineEngine(engineId: string, discPrime: number, freqHz: number): string {
+  switch (engineId) {
+    case 'pauli_viscoelastic_soa':
+      return 'SOA_INIT 32\nCURL_STEP 0.45 0.016\nNEMESIS_DECAY 0.08';
+    case 'cauchy_tensor_von_mises':
+      return 'TENSOR_VM 180 90 45';
+    case 'cauchy_optical_sss':
+      return 'CAUCHY_OPTIC 1458/1000 354/100000 12/100000';
+    case 'nanotech_biopixel_quantum':
+      return 'NANO_BRUS 2.6\nCAUCHY_OPTIC 1458/1000 354/100000 12/100000';
+    case 'orbital_kepler_verlet':
+      return 'ORBIT_KEPLER 420 398600.4418';
+    case 'kinetic_p33_rational':
+      return 'KINETIC_P33 12 5 0.016';
+    case 'rigid_collision_3d':
+      return 'RIGID_COLLIDE 10 10 8 0.85';
+    case 'terrain_fbm_mulberry':
+      return 'TERRAIN_FBM 6 1.2';
+    case 'quantum_bloch_bvn':
+      return 'BLOCH_ROT 0 1 0 1.2 1\nBVN_LATTICE 1.5708 0 3.1416 q_nondist';
+    case 'quantum_statevector_qasm':
+      return 'QASM_STATE 3\nBLOCH_ROT 0 1 0 1.2 1';
+    case 'telecom_5g_sat_rf':
+      return 'ITU_P676 28 35 1013.25 15 7.5 0.0\nMMWAVE_3GPP 28 250 UMi-LoS 10 1.5';
+    case 'radar_fmcw_doppler':
+      return 'RADAR_FMCW 77 4000 24 42 1.0';
+    case 'annealing_optimizer':
+      return 'ANNEAL_OPT 100 0.995 1000';
+    case 'crypto_ed25519_merkle':
+      return 'CRYPTO_AUDIT 256 8 DISC_SEAL';
+    case 'ledger_p33_merkle':
+      return 'LEDGER_MERKLE 10000 10000\nCRYPTO_AUDIT 256 8 LEDGER_SEAL';
+    case 'audio_p33_cymatic':
+      return `GALDR_SYNTH ${discPrime % 33} CIMATICA_P33`;
+    case 'lipsync_3band_dsp':
+      return `LIPSYNC_DSP ${freqHz.toFixed(1)} 0.65\nGALDR_SYNTH ${discPrime % 33} LIPSYNC`;
+    case 'sintergia_cinema_spline':
+      return 'CAM_6DOF 3.2 2.1 3.8 38 18 45\nDISNEY_KIN12 1.18';
+    case 'chemistry_quantum_thermodynamics':
+      return 'CHEM_THERMO 298.15 4.52';
+    case 'qpsk_telemetry_bus':
+      return 'WS_EMIT qpsk_132b z4_telemetry';
+    case 'geom_seal_topology':
+      return `MESH_NODE disc_mesh torus 640 1.0\nMAT_ORM disc_mesh 0.92 0.18 0.85`;
+    case 'interval_formal_guard':
+    case 'neural_smt_synthesizer':
+    default:
+      return 'WEBER_GUARD 0.015 1.0 1.05 wf_disc';
+  }
+}
+
 function buildSeeded33Cards(): HolographicAcademicCard[] {
   return DISCIPLINES_33.map((disc) => {
+    const domainBody = opcodeForDisciplineEngine(disc.primaryEngineId, disc.prime, disc.frequencyHz);
     const hlxScript = [
       `# FICHA CIENTIFICA 17B · ${disc.name}`,
       'ᛇᚢ',
       'ᛗᚦ acad_lib',
       `SET p33_prime ${disc.prime}`,
+      domainBody,
       `GEOM_SEAL TORUS_T2 PHI_FIBONACCI ${disc.frequencyHz.toFixed(2)}`,
       'ᚳᛏ',
     ].join('\n');

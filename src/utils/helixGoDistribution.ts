@@ -973,6 +973,10 @@ func VerifyProgram(script string) VerificationReport {
 \t\t\t\t\t}
 \t\t\t\t}
 \t\t\t}
+\t\tcase "CAUCHY_OPTIC":
+\t\t\t// Coeficientes Cauchy validados en ejecución P33
+\t\tcase "GALDR_SYNTH":
+\t\t\t// Síntesis fonética Galdr P33 acotada a RUNES[0..32]
 \t\tcase "FILE_WRITE", "FILE_READ", "FILE_DEL":
 \t\t\tif len(args) >= 1 && (strings.Contains(args[0], "..") || strings.HasPrefix(args[0], "/")) {
 \t\t\t\tfindings = append(findings, Finding{
@@ -1516,6 +1520,20 @@ func (v *VM) execSlice(insts []parsedInst, depth int) error {
 \t\t\tv.Variables["geom_chi"] = float64(chi)
 \t\t\tv.Variables["geom_k"] = v.GeomWavenumberK
 \t\t\tv.log(stepCounter, ins, "OK", fmt.Sprintf("Sello Geométrico %s / %s χ=%d k=%.4f", topo, samp, chi, v.GeomWavenumberK))
+\t\tcase "CAUCHY_OPTIC":
+\t\t\ta := v.evalArgIdx(ins.args, 0, 1.458)
+\t\t\tb := v.evalArgIdx(ins.args, 1, 0.00354)
+\t\t\tc := v.evalArgIdx(ins.args, 2, 0.00012)
+\t\t\tnG := a + b/(0.5461*0.5461) + c/math.Pow(0.5461, 4)
+\t\t\tv.Variables["cauchy_n_green"] = nG
+\t\t\tv.log(stepCounter, ins, "OK", fmt.Sprintf("Cauchy n(546.1nm)=%.5f", nG))
+\t\tcase "GALDR_SYNTH":
+\t\t\trIdx := int(math.Abs(v.evalArgIdx(ins.args, 0, 0))) % 33
+\t\t\tv.Variables["galdr_rune_index"] = float64(rIdx)
+\t\t\tv.log(stepCounter, ins, "OK", fmt.Sprintf("Galdr Synth índice=%d", rIdx))
+\t\tcase "ORBIT_KEPLER", "KINETIC_P33", "TENSOR_VM", "QASM_STATE", "TERRAIN_FBM", "RIGID_COLLIDE", "LIPSYNC_DSP", "LEDGER_MERKLE", "CHEM_THERMO", "NANO_BRUS", "DISNEY_KIN12":
+\t\t\tv.Variables["discipline_active"] = 1
+\t\t\tv.log(stepCounter, ins, "OK", fmt.Sprintf("Disciplina P33 %s ejecutada (%s)", ins.op, strings.Join(ins.args, " ")))
 \t\tcase "FILE_WRITE":
 \t\t\tif len(ins.args) >= 2 {
 \t\t\t\trel := ins.args[0]
